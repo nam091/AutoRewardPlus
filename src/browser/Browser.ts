@@ -45,18 +45,18 @@ class Browser {
 
     async createBrowser(account: Account): Promise<BrowserCreationResult> {
         let browser: rebrowser.Browser
-        try {
-            const proxyConfig = account.proxy.url
-                ? {
-                      server: this.formatProxyServer(account.proxy),
-                      ...(account.proxy.username &&
-                          account.proxy.password && {
-                              username: account.proxy.username,
-                              password: account.proxy.password
-                          })
-                  }
-                : undefined
+        const proxyConfig = account.proxy.url
+            ? {
+                  server: this.formatProxyServer(account.proxy),
+                  ...(account.proxy.username &&
+                      account.proxy.password && {
+                          username: account.proxy.username,
+                          password: account.proxy.password
+                      })
+              }
+            : undefined
 
+        try {
             browser = await rebrowser.chromium.launch({
                 headless: this.bot.config.headless,
                 ...(proxyConfig && { proxy: proxyConfig }),
