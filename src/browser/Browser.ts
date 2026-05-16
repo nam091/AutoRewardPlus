@@ -1,12 +1,16 @@
 import rebrowser, { BrowserContext } from 'patchright'
 import { newInjectedContext } from 'fingerprint-injector'
 import { BrowserFingerprintWithHeaders, FingerprintGenerator } from 'fingerprint-generator'
+import dns from 'dns'
+import { promisify } from 'util'
 
 import type { MicrosoftRewardsBot } from '../index'
 import { loadSessionData, saveFingerprintData } from '../util/Load'
 import { UserAgentManager } from './UserAgent'
 
 import type { Account, AccountProxy } from '../interface/Account'
+
+const dnsLookup = promisify(dns.lookup)
 
 /* Test Stuff
 https://abrahamjuliot.github.io/creepjs/
@@ -47,7 +51,7 @@ class Browser {
         let browser: rebrowser.Browser
         const proxyConfig = account.proxy.url
             ? {
-                  server: this.formatProxyServer(account.proxy),
+                  server: await this.formatProxyServer(account.proxy),
                   ...(account.proxy.username &&
                       account.proxy.password && {
                           username: account.proxy.username,
@@ -121,13 +125,24 @@ class Browser {
         }
     }
 
-    private formatProxyServer(proxy: AccountProxy): string {
+    private async formatProxyServer(proxy: AccountProxy): Promise<string> {
         try {
             const urlObj = new URL(proxy.url)
             const protocol = urlObj.protocol.replace(':', '')
-            return `${protocol}://${urlObj.hostname}:${proxy.port}`
+            const hostname = urlObj.hostname
+            try {
+                const { address } = await dnsLookup(hostname)
+                return `${protocol}://${address}:${proxy.port}`
+            } catch {
+                return `${protocol}://${hostname}:${proxy.port}`
+            }
         } catch {
-            return `http://${proxy.url}:${proxy.port}`
+            try {
+                const { address } = await dnsLookup(proxy.url)
+                return `http://${address}:${proxy.port}`
+            } catch {
+                return `http://${proxy.url}:${proxy.port}`
+            }
         }
     }
 
