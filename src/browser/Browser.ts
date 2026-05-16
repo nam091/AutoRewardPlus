@@ -126,7 +126,7 @@ class Browser {
             const protocol = urlObj.protocol.replace(':', '')
             return `${protocol}://${urlObj.hostname}:${proxy.port}`
         } catch {
-            return `${proxy.url}:${proxy.port}`
+            return `http://${proxy.url}:${proxy.port}`
         }
     }
 
