@@ -82,7 +82,8 @@ class Browser {
                 fingerprint,
                 newContextOptions: {
                     permissions: [],
-                    ignoreHTTPSErrors: true
+                    ignoreHTTPSErrors: true,
+                    ...(proxyConfig && { proxy: proxyConfig })
                 }
             })
 
