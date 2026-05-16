@@ -80,7 +80,8 @@ export class Login {
 
             await page
                 .goto('https://rewards.bing.com/createuser?idru=%2F&userScenarioId=anonsignin', {
-                    waitUntil: 'domcontentloaded'
+                    waitUntil: 'domcontentloaded',
+                    timeout: 30000
                 })
                 .catch(() => {})
             await this.bot.utils.wait(2000)
@@ -437,7 +438,7 @@ export class Login {
                     await page
                         .goto(this.bot.config.baseURL, {
                             waitUntil: 'domcontentloaded',
-                            timeout: 10000
+                            timeout: 30000
                         })
                         .catch(() => {})
                     await this.bot.utils.wait(3000)
@@ -448,7 +449,7 @@ export class Login {
                     await page
                         .goto('https://login.live.com/', {
                             waitUntil: 'domcontentloaded',
-                            timeout: 10000
+                            timeout: 30000
                         })
                         .catch(() => {})
                     await this.bot.utils.wait(3000)
