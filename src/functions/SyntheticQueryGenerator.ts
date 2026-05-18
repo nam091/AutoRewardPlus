@@ -207,48 +207,95 @@ const SHORT_NOISE_POOL = [
     'absolutely', 'definitely', 'probably', 'actually', 'basically'
 ] as const
 
-const QUESTIONS = [
-    'how to change a tire', 'how to cook rice', 'how to tie a tie',
-    'how to fold a shirt', 'how to remove a stain', 'how to fix a leaky faucet',
-    'how to unclog a drain', 'how to jump start a car', 'how to parallel park',
-    'how to write a resume', 'how to learn guitar', 'how to boil water',
-    'how to get a passport', 'how to lose weight', 'how to save money',
-    'how to make coffee', 'how to clean an oven', 'how to plant a tree',
-    'how to change oil in car', 'how to train a dog', 'how to bake bread',
-    'what is the meaning of life', 'what is the speed of light',
-    'what is the deepest ocean', 'what is the tallest building',
-    'what is the longest river', 'what is the largest country',
-    'what is quantum physics', 'what is blockchain', 'what is cryptocurrency',
-    'what is climate change', 'what is artificial intelligence',
-    'what is the stock market', 'what is inflation', 'what is DNA',
-    'what is the difference between affect and effect',
-    'what is the difference between weather and climate',
-    'what is the difference between college and university',
-    'what is the difference between a virus and bacteria',
-    'why is the sky blue', 'why do cats purr', 'why do dogs bark',
-    'why do we dream', 'why is the ocean salty', 'why do leaves change color',
-    'when was the internet invented', 'when was the first computer made',
-    'when was electricity discovered', 'when was the moon landing',
-    'where is the bermuda triangle', 'where is area 51',
-    'where is the great barrier reef', 'where is mount everest',
-    'how many countries are there', 'how many bones in the human body',
-    'how many planets in the solar system', 'how many oceans are there',
-    'how much does a passport cost', 'how much does netflix cost',
-    'how much does spotify cost', 'how much does an oil change cost',
-    'how long does it take to boil water', 'how long does it take to fly to japan',
-    'how long does it take to learn python', 'how long does it take to get a passport',
-    'how far is the moon', 'how far is the sun', 'how far is mars',
-    'how old is the earth', 'how old is the universe', 'how old is the pyramids',
-    'who invented the telephone', 'who invented the internet',
-    'who discovered gravity', 'who discovered electricity',
-    'who painted the mona lisa', 'who wrote hamlet',
-    'is it safe to drink tap water', 'is it safe to eat raw eggs',
-    'can you freeze milk', 'can you recycle pizza boxes',
-    'should I learn python or javascript', 'should I buy or rent a house',
-    'what happens if you swallow gum', 'what happens if you eat too much salt',
-    'what are the best programming languages', 'what are the best exercises for back pain',
-    'what time does walmart close', 'what time does the post office open'
-] as const
+const QUESTION_TEMPLATES: Record<string, readonly string[]> = {
+    'how to': [
+        'change a tire', 'cook rice', 'tie a tie', 'fold a shirt',
+        'remove a stain', 'fix a leaky faucet', 'unclog a drain',
+        'jump start a car', 'parallel park', 'write a resume',
+        'learn guitar', 'boil an egg', 'get a passport', 'lose weight',
+        'save money', 'make coffee', 'clean an oven', 'plant a tree',
+        'change oil in car', 'train a dog', 'bake bread', 'meditate',
+        'improve credit score', 'start a podcast', 'make a budget',
+        'sleep better', 'reduce stress', 'cook steak', 'iron a shirt',
+        'set up a vpn', 'backup iphone', 'screenshot on mac',
+        'delete instagram account', 'clear cache', 'update windows'
+    ],
+    'what is': [
+        'the meaning of life', 'the speed of light', 'the deepest ocean',
+        'the tallest building', 'the longest river', 'the largest country',
+        'quantum physics', 'blockchain', 'cryptocurrency', 'climate change',
+        'artificial intelligence', 'the stock market', 'inflation', 'DNA',
+        'machine learning', 'dark matter', 'the metaverse', 'NFT',
+        'a black hole', 'photosynthesis', 'the electoral college',
+        'net neutrality', 'a solar eclipse', 'the fibonacci sequence',
+        'serotonin', 'dopamine', 'a supernova', 'the big bang theory'
+    ],
+    'why is': [
+        'the sky blue', 'the ocean salty', 'the sun yellow',
+        'space dark', 'fire hot', 'ice slippery', 'grass green',
+        'blood red', 'snow white', 'gold expensive', 'water wet',
+        'the moon bright', 'honey sticky', 'yawning contagious'
+    ],
+    'why do': [
+        'cats purr', 'dogs bark', 'we dream', 'leaves change color',
+        'birds sing', 'onions make you cry', 'we yawn', 'stars twinkle',
+        'people snore', 'mosquitoes bite', 'volcanoes erupt', 'we hiccup',
+        'dogs wag their tails', 'we get goosebumps', 'babies cry'
+    ],
+    'how many': [
+        'countries are there', 'bones in the human body',
+        'planets in the solar system', 'oceans are there',
+        'states in the US', 'continents are there',
+        'teeth do adults have', 'hours in a year',
+        'calories in a banana', 'ounces in a gallon',
+        'feet in a mile', 'weeks in a year', 'days in a year'
+    ],
+    'how much does': [
+        'a passport cost', 'netflix cost', 'spotify cost',
+        'an oil change cost', 'a new roof cost', 'a gallon of milk cost',
+        'youtube premium cost', 'a tesla cost', 'disney plus cost',
+        'a wedding cost', 'a tattoo cost', 'a crown cost at dentist',
+        'it cost to ship a car', 'hulu cost', 'a home inspection cost'
+    ],
+    'how long does it take to': [
+        'boil water', 'fly to japan', 'learn python', 'get a passport',
+        'learn guitar', 'grow a beard', 'build muscle', 'learn to drive',
+        'charge a tesla', 'bake a potato', 'hard boil an egg',
+        'get to mars', 'digest food', 'learn a language', 'walk a mile'
+    ],
+    'how far is': [
+        'the moon', 'the sun', 'mars', 'the nearest star',
+        'pluto', 'the international space station', 'jupiter',
+        'the edge of the universe', 'venus', 'mercury from earth'
+    ],
+    'who invented': [
+        'the telephone', 'the internet', 'the light bulb', 'the airplane',
+        'the television', 'the computer', 'the printing press', 'the radio',
+        'the car', 'the vaccine', 'the microwave', 'the refrigerator',
+        'bluetooth', 'wifi', 'the camera', 'the bicycle'
+    ],
+    'when was': [
+        'the internet invented', 'the first computer made',
+        'electricity discovered', 'the moon landing',
+        'the great wall of china built', 'america discovered',
+        'the first iphone released', 'world war 2',
+        'the eiffel tower built', 'google founded',
+        'facebook created', 'the titanic sinking'
+    ],
+    'where is': [
+        'the bermuda triangle', 'area 51', 'the great barrier reef',
+        'mount everest', 'the amazon rainforest', 'the sahara desert',
+        'the dead sea', 'yellowstone national park', 'stonehenge',
+        'the north pole', 'the mariana trench', 'machu picchu'
+    ],
+    'what is the difference between': [
+        'affect and effect', 'weather and climate', 'college and university',
+        'a virus and bacteria', 'their and there', 'who and whom',
+        'further and farther', 'less and fewer', 'i.e. and e.g.',
+        'alligators and crocodiles', 'bees and wasps', 'frogs and toads',
+        'butter and margarine', 'jam and jelly', 'soup and stew'
+    ]
+} as const
 
 export class SyntheticQueryGenerator {
     private rng: SeededRNG
@@ -395,7 +442,15 @@ export class SyntheticQueryGenerator {
     }
 
     private generateQuestion(count: number): string[] {
-        return this.rng.pickN(QUESTIONS, Math.min(count, QUESTIONS.length))
+        const starters = Object.keys(QUESTION_TEMPLATES)
+        const results: string[] = []
+        for (let i = 0; i < count; i++) {
+            const starter = this.rng.pick(starters)
+            const subjects = QUESTION_TEMPLATES[starter]!
+            const subject = this.rng.pick(subjects)
+            results.push(`${starter} ${subject}`)
+        }
+        return results
     }
 
     private introduceTypo(query: string): string {
