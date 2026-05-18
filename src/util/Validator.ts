@@ -20,7 +20,7 @@ const DelaySchema = z.object({
     max: NumberOrString
 })
 
-const QueryEngineSchema = z.enum(['google', 'wikipedia', 'reddit', 'local'])
+const QueryEngineSchema = z.enum(['google', 'wikipedia', 'reddit', 'local', 'synthetic'])
 
 // Webhook
 const WebhookSchema = z.object({
@@ -71,7 +71,11 @@ export const ConfigSchema = z.object({
         queryEngines: z.array(QueryEngineSchema),
         searchResultVisitTime: NumberOrString,
         searchDelay: DelaySchema,
-        readDelay: DelaySchema
+        readDelay: DelaySchema,
+        maxClusterSize: z.number().int().min(1).max(10).default(1),
+        randomSubsetSize: z.number().int().min(1).max(50).default(12),
+        syntheticQueryCount: z.number().int().min(10).max(200).default(50),
+        includeTypos: z.boolean().default(true)
     }),
     debugLogs: z.boolean(),
     proxy: z.object({

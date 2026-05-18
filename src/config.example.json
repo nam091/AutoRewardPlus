@@ -21,7 +21,7 @@
         "scrollRandomResults": false,
         "clickRandomResults": false,
         "parallelSearching": true,
-        "queryEngines": ["google", "wikipedia", "reddit", "local"],
+        "queryEngines": ["synthetic", "google", "wikipedia"],
         "searchResultVisitTime": "10sec",
         "searchDelay": {
             "min": "30sec",
@@ -30,7 +30,11 @@
         "readDelay": {
             "min": "30sec",
             "max": "1min"
-        }
+        },
+        "maxClusterSize": 1,
+        "randomSubsetSize": 12,
+        "syntheticQueryCount": 50,
+        "includeTypos": true
     },
     "debugLogs": false,
     "consoleLogFilter": {

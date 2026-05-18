@@ -14,7 +14,7 @@ export interface Config {
     webhook: ConfigWebhook
 }
 
-export type QueryEngine = 'google' | 'wikipedia' | 'reddit' | 'local'
+export type QueryEngine = 'google' | 'wikipedia' | 'reddit' | 'local' | 'synthetic'
 
 export interface ConfigSearchSettings {
     scrollRandomResults: boolean
@@ -24,6 +24,10 @@ export interface ConfigSearchSettings {
     searchResultVisitTime: number | string
     searchDelay: ConfigDelay
     readDelay: ConfigDelay
+    maxClusterSize: number
+    randomSubsetSize: number
+    syntheticQueryCount: number
+    includeTypos: boolean
 }
 
 export interface ConfigDelay {

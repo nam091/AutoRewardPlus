@@ -4,6 +4,8 @@ import path from 'path'
 import type { GoogleSearch, GoogleTrendsResponse, RedditListing, WikipediaTopResponse } from '../interface/Search'
 import type { MicrosoftRewardsBot } from '../index'
 import { QueryEngine } from '../interface/Config'
+import { SyntheticQueryGenerator } from './SyntheticQueryGenerator'
+import { QueryMixer } from './QueryMixer'
 
 export class QueryCore {
     constructor(private bot: MicrosoftRewardsBot) {}
@@ -15,14 +17,20 @@ export class QueryCore {
             related?: boolean
             langCode?: string
             geoLocale?: string
+            maxClusterSize?: number
+            randomSubsetSize?: number
+            sessionSeed?: string
         } = {}
     ): Promise<string[]> {
         const {
             shuffle = false,
-            sourceOrder = ['google', 'wikipedia', 'reddit', 'local'],
+            sourceOrder = ['synthetic', 'google', 'wikipedia', 'reddit', 'local'],
             related = true,
             langCode = 'en',
-            geoLocale = 'US'
+            geoLocale = 'US',
+            maxClusterSize = this.bot.config.searchSettings.maxClusterSize ?? 1,
+            randomSubsetSize = this.bot.config.searchSettings.randomSubsetSize ?? 12,
+            sessionSeed = `${Date.now()}`
         } = options
 
         try {
@@ -35,28 +43,48 @@ export class QueryCore {
             const topicLists: string[][] = []
 
             const sourceHandlers: Record<
-                'google' | 'wikipedia' | 'reddit' | 'local',
+                'google' | 'wikipedia' | 'reddit' | 'local' | 'synthetic',
                 (() => Promise<string[]>) | (() => string[])
             > = {
                 google: async () => {
                     const topics = await this.getGoogleTrends(geoLocale.toUpperCase()).catch(() => [])
-                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `google: ${topics.length}`)
-                    return topics
+                    const subset = topics.length > randomSubsetSize
+                        ? this.randomSubset(topics, randomSubsetSize)
+                        : topics
+                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `google: ${topics.length} -> subset: ${subset.length}`)
+                    return subset
                 },
                 wikipedia: async () => {
                     const topics = await this.getWikipediaTrending(langCode).catch(() => [])
-                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `wikipedia: ${topics.length}`)
-                    return topics
+                    const subset = topics.length > randomSubsetSize
+                        ? this.randomSubset(topics, randomSubsetSize)
+                        : topics
+                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `wikipedia: ${topics.length} -> subset: ${subset.length}`)
+                    return subset
                 },
                 reddit: async () => {
                     const topics = await this.getRedditTopics().catch(() => [])
-                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `reddit: ${topics.length}`)
-                    return topics
+                    const subset = topics.length > randomSubsetSize
+                        ? this.randomSubset(topics, randomSubsetSize)
+                        : topics
+                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `reddit: ${topics.length} -> subset: ${subset.length}`)
+                    return subset
                 },
                 local: () => {
                     const topics = this.getLocalQueryList()
-                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `local: ${topics.length}`)
-                    return topics
+                    const subset = topics.length > randomSubsetSize
+                        ? this.randomSubset(topics, randomSubsetSize)
+                        : topics
+                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `local: ${topics.length} -> subset: ${subset.length}`)
+                    return subset
+                },
+                synthetic: () => {
+                    const generator = new SyntheticQueryGenerator(sessionSeed)
+                    const syntheticCount = this.bot.config.searchSettings.syntheticQueryCount ?? 50
+                    const includeTypos = this.bot.config.searchSettings.includeTypos ?? true
+                    const tagged = generator.generate({ count: syntheticCount, includeTypos })
+                    this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `synthetic: ${tagged.length}`)
+                    return tagged.map(t => t.query)
                 }
             }
 
@@ -88,10 +116,7 @@ export class QueryCore {
             )
             this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', `baseTopics: ${baseTopics.length}`)
 
-            const clusters = related ? await this.buildRelatedClusters(baseTopics, langCode) : baseTopics.map(t => [t])
-
-            this.bot.utils.shuffleArray(clusters)
-            this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', 'clusters shuffled')
+            const clusters = related ? await this.buildRelatedClusters(baseTopics, langCode, maxClusterSize) : baseTopics.map(t => [t])
 
             let finalQueries = clusters.flat()
             this.bot.logger.debug(
@@ -100,13 +125,13 @@ export class QueryCore {
                 `clusters flattened | total=${finalQueries.length}`
             )
 
-            // Do not cluster searches and shuffle
-            if (shuffle) {
-                this.bot.utils.shuffleArray(finalQueries)
-                this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', 'finalQueries shuffled')
-            }
-
             finalQueries = this.normalizeAndDedupe(finalQueries)
+
+            // Use QueryMixer for anti-adjacency interleaving instead of simple shuffle
+            const buckets = new Map<string, string[]>()
+            buckets.set('trending', finalQueries)
+            finalQueries = QueryMixer.interleave(buckets)
+            this.bot.logger.debug(this.bot.isMobile, 'QUERY-MANAGER', 'finalQueries interleaved via QueryMixer')
             this.bot.logger.debug(
                 this.bot.isMobile,
                 'QUERY-MANAGER',
@@ -131,8 +156,17 @@ export class QueryCore {
         }
     }
 
-    private async buildRelatedClusters(baseTopics: string[], langCode: string): Promise<string[][]> {
+    private async buildRelatedClusters(baseTopics: string[], langCode: string, maxClusterSize: number = 1): Promise<string[][]> {
         const clusters: string[][] = []
+
+        if (maxClusterSize <= 1) {
+            this.bot.logger.debug(
+                this.bot.isMobile,
+                'QUERY-MANAGER',
+                `clustering disabled (maxClusterSize=${maxClusterSize}) | topics=${baseTopics.length}`
+            )
+            return baseTopics.map(t => [t])
+        }
 
         const LIMIT = 50
         const head = baseTopics.slice(0, LIMIT)
@@ -153,8 +187,12 @@ export class QueryCore {
             const suggestions = await this.getBingSuggestions(topic, langCode).catch(() => [])
             const relatedTerms = await this.getBingRelatedTerms(topic).catch(() => [])
 
-            const usedSuggestions = suggestions.slice(0, 6)
-            const usedRelated = relatedTerms.slice(0, 3)
+            const extraCount = maxClusterSize - 1
+            const sugCount = Math.min(suggestions.length, Math.ceil(extraCount * 0.67))
+            const relCount = Math.min(relatedTerms.length, extraCount - sugCount)
+
+            const usedSuggestions = suggestions.slice(0, sugCount)
+            const usedRelated = relatedTerms.slice(0, relCount)
 
             const cluster = this.normalizeAndDedupe([topic, ...usedSuggestions, ...usedRelated])
 
@@ -479,5 +517,17 @@ export class QueryCore {
             )
             return []
         }
+    }
+
+    private randomSubset<T>(arr: T[], count: number): T[] {
+        const copy = [...arr]
+        const result: T[] = []
+        const n = Math.min(count, copy.length)
+        for (let i = 0; i < n; i++) {
+            const idx = Math.floor(Math.random() * copy.length)
+            result.push(copy[idx]!)
+            copy.splice(idx, 1)
+        }
+        return result
     }
 }

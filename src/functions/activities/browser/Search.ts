@@ -49,7 +49,10 @@ export class Search extends Workers {
                 related: true,
                 langCode,
                 geoLocale: locale,
-                sourceOrder: ['google', 'wikipedia', 'reddit', 'local']
+                sourceOrder: this.bot.config.searchSettings.queryEngines,
+                maxClusterSize: this.bot.config.searchSettings.maxClusterSize,
+                randomSubsetSize: this.bot.config.searchSettings.randomSubsetSize,
+                sessionSeed: `${this.bot.userData.userName}-${new Date().toISOString().slice(0, 10)}-0`
             })
 
             queries = [...new Set(queries.map(q => q.trim()).filter(Boolean))]
@@ -136,7 +139,10 @@ export class Search extends Workers {
                         related: true,
                         langCode,
                         geoLocale: locale,
-                        sourceOrder: this.bot.config.searchSettings.queryEngines
+                        sourceOrder: this.bot.config.searchSettings.queryEngines,
+                        maxClusterSize: this.bot.config.searchSettings.maxClusterSize,
+                        randomSubsetSize: this.bot.config.searchSettings.randomSubsetSize,
+                        sessionSeed: `${this.bot.userData.userName}-${new Date().toISOString().slice(0, 10)}-1`
                     })
 
                     const merged = [...queries, ...extra].map(q => q.trim()).filter(Boolean)
@@ -163,7 +169,10 @@ export class Search extends Workers {
                         related: true,
                         langCode,
                         geoLocale: locale,
-                        sourceOrder: this.bot.config.searchSettings.queryEngines
+                        sourceOrder: this.bot.config.searchSettings.queryEngines,
+                        maxClusterSize: this.bot.config.searchSettings.maxClusterSize,
+                        randomSubsetSize: this.bot.config.searchSettings.randomSubsetSize,
+                        sessionSeed: `${this.bot.userData.userName}-${new Date().toISOString().slice(0, 10)}-2`
                     })
 
                     const merged = [...queries, ...extra].map(q => q.trim()).filter(Boolean)
