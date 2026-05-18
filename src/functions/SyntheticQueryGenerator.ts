@@ -207,31 +207,47 @@ const SHORT_NOISE_POOL = [
     'absolutely', 'definitely', 'probably', 'actually', 'basically'
 ] as const
 
-const QUESTION_STARTERS = [
-    'how to', 'what is', 'why do', 'when was', 'where is',
-    'how many', 'how much does', 'what are the best', 'is it safe to',
-    'can you', 'should I', 'what happens if', 'how long does',
-    'how far is', 'what time does', 'who invented', 'who discovered',
-    'what year was', 'how old is', 'what is the difference between'
-] as const
-
-const QUESTION_SUBJECTS = [
-    'change a tire', 'cook rice', 'tie a tie', 'fold a shirt',
-    'remove a stain', 'fix a leaky faucet', 'unclog a drain',
-    'jump start a car', 'parallel park', 'write a resume',
-    'the meaning of life', 'the speed of light', 'the deepest ocean',
-    'the tallest building', 'the longest river', 'the largest country',
-    'the human brain', 'black holes', 'quantum physics', 'DNA',
-    'climate change', 'solar energy', 'electric cars', 'AI',
-    'blockchain', 'cryptocurrency', 'stock market', 'inflation',
-    'a passport cost', 'a gallon of milk cost', 'netflix cost',
-    'spotify cost', 'an oil change cost', 'a new roof cost',
-    'it take to learn guitar', 'it take to boil water',
-    'it take to fly to japan', 'it take to get a passport',
-    'the earth', 'the universe', 'the pyramids', 'the internet',
-    'english', 'spanish', 'python', 'javascript',
-    'the sun and a star', 'a virus and bacteria', 'weather and climate',
-    'college and university', 'affect and effect', 'their and there'
+const QUESTIONS = [
+    'how to change a tire', 'how to cook rice', 'how to tie a tie',
+    'how to fold a shirt', 'how to remove a stain', 'how to fix a leaky faucet',
+    'how to unclog a drain', 'how to jump start a car', 'how to parallel park',
+    'how to write a resume', 'how to learn guitar', 'how to boil water',
+    'how to get a passport', 'how to lose weight', 'how to save money',
+    'how to make coffee', 'how to clean an oven', 'how to plant a tree',
+    'how to change oil in car', 'how to train a dog', 'how to bake bread',
+    'what is the meaning of life', 'what is the speed of light',
+    'what is the deepest ocean', 'what is the tallest building',
+    'what is the longest river', 'what is the largest country',
+    'what is quantum physics', 'what is blockchain', 'what is cryptocurrency',
+    'what is climate change', 'what is artificial intelligence',
+    'what is the stock market', 'what is inflation', 'what is DNA',
+    'what is the difference between affect and effect',
+    'what is the difference between weather and climate',
+    'what is the difference between college and university',
+    'what is the difference between a virus and bacteria',
+    'why is the sky blue', 'why do cats purr', 'why do dogs bark',
+    'why do we dream', 'why is the ocean salty', 'why do leaves change color',
+    'when was the internet invented', 'when was the first computer made',
+    'when was electricity discovered', 'when was the moon landing',
+    'where is the bermuda triangle', 'where is area 51',
+    'where is the great barrier reef', 'where is mount everest',
+    'how many countries are there', 'how many bones in the human body',
+    'how many planets in the solar system', 'how many oceans are there',
+    'how much does a passport cost', 'how much does netflix cost',
+    'how much does spotify cost', 'how much does an oil change cost',
+    'how long does it take to boil water', 'how long does it take to fly to japan',
+    'how long does it take to learn python', 'how long does it take to get a passport',
+    'how far is the moon', 'how far is the sun', 'how far is mars',
+    'how old is the earth', 'how old is the universe', 'how old is the pyramids',
+    'who invented the telephone', 'who invented the internet',
+    'who discovered gravity', 'who discovered electricity',
+    'who painted the mona lisa', 'who wrote hamlet',
+    'is it safe to drink tap water', 'is it safe to eat raw eggs',
+    'can you freeze milk', 'can you recycle pizza boxes',
+    'should I learn python or javascript', 'should I buy or rent a house',
+    'what happens if you swallow gum', 'what happens if you eat too much salt',
+    'what are the best programming languages', 'what are the best exercises for back pain',
+    'what time does walmart close', 'what time does the post office open'
 ] as const
 
 export class SyntheticQueryGenerator {
@@ -379,13 +395,7 @@ export class SyntheticQueryGenerator {
     }
 
     private generateQuestion(count: number): string[] {
-        const results: string[] = []
-        for (let i = 0; i < count; i++) {
-            const starter = this.rng.pick(QUESTION_STARTERS)
-            const subject = this.rng.pick(QUESTION_SUBJECTS)
-            results.push(`${starter} ${subject}`)
-        }
-        return results
+        return this.rng.pickN(QUESTIONS, Math.min(count, QUESTIONS.length))
     }
 
     private introduceTypo(query: string): string {
