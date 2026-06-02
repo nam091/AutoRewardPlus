@@ -31,7 +31,7 @@ export class StarSearch {
             // Generate completely unique, meaningful queries that Bing cannot predict
             // No external sources — pure algorithmic generation
             // Queries are generated in the account's configured language for natural behavior
-            const uniqueQueries = this.generateUniqueQueries(starCount, langCode)
+            const uniqueQueries = await this.generateUniqueQueries(starCount, langCode)
 
             if (uniqueQueries.length === 0) {
                 this.bot.logger.warn(isMobile, 'STAR-SEARCH', 'No queries generated, skipping')
@@ -371,17 +371,99 @@ export class StarSearch {
     }
 
     /**
-     * Generate completely unique, meaningful search queries algorithmically.
-     * No external sources — Bing cannot predict these because they combine
-     * unrelated concepts in meaningful ways.
+     * AI API configuration for query generation
+     */
+    private readonly aiConfig = {
+        baseUrl: 'https://9router.qwen2api.pp.ua/v1',
+        model: 'reward_bing',
+        apiKey: 'sk-d8d38c4dbe7182c6-5wpch9-c84f2f0a'
+    }
+
+    /**
+     * Generate search queries using Qwen AI API.
+     * Falls back to algorithmic generation if API fails.
+     */
+    private async generateQueriesWithAI(count: number, langCode: string): Promise<string[]> {
+        const languageNames: Record<string, string> = {
+            vi: 'Vietnamese',
+            en: 'English',
+            ja: 'Japanese',
+            ko: 'Korean',
+            fr: 'French'
+        }
+        const langName = languageNames[langCode] || 'English'
+
+        const prompt = `Generate exactly ${count} search queries in ${langName}. FORMAT RULES:
+- Output ONLY the queries, one per line
+- NO numbering (no "1.", "2.", etc.)
+- NO bullet points (no "-", "*", etc.)
+- NO extra text, explanations, or headers
+- Each query: 5-15 words, natural sounding
+- Topics: science, history, technology, culture, health, travel, food, education
+
+Example output format:
+how does quantum computing work
+best restaurants in tokyo japan
+history of ancient roman architecture`
+
+        try {
+            const response = await fetch(`${this.aiConfig.baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.aiConfig.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: this.aiConfig.model,
+                    messages: [
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false
+                })
+            })
+
+            if (!response.ok) {
+                this.bot.logger.warn(false, 'STAR-SEARCH', `AI query generation failed: HTTP ${response.status}`)
+                return []
+            }
+
+            const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+            const content = data.choices?.[0]?.message?.content || ''
+
+            const queries = content
+                .split('\n')
+                .map((line: string) => line.trim())
+                .filter((line: string) => line.length > 5 && line.length < 200 && !/^\d+[.)]/.test(line) && !/^-/.test(line))
+                .slice(0, count)
+
+            if (queries.length > 0) {
+                this.bot.logger.info(false, 'STAR-SEARCH', `AI generated ${queries.length} queries`)
+            }
+            return queries
+        } catch (error) {
+            this.bot.logger.warn(false, 'STAR-SEARCH', `AI query generation error: ${errMsg(error)}`)
+            return []
+        }
+    }
+
+    /**
+     * Generate completely unique, meaningful search queries.
+     * Tries AI-powered generation first, falls back to algorithmic word-pool templates.
      *
      * Queries are generated in the account's configured language (vi, en, ja, ko, fr...).
      * Vietnamese example: "tại sao vật lý lượng tử ảnh hưởng đến phương thức giao tiếp thời kỳ đổi mới ở vùng ven biển"
      * English example: "how quantum physics affected communication methods during the 1847 gold rush in coastal regions"
      */
-    private generateUniqueQueries(count: number, langCode: string): string[] {
-        const queries: string[] = []
-        const seen = new Set<string>()
+    private async generateUniqueQueries(count: number, langCode: string): Promise<string[]> {
+        // Try AI-powered generation first
+        const aiQueries = await this.generateQueriesWithAI(count, langCode)
+        if (aiQueries.length >= count) {
+            return aiQueries.slice(0, count)
+        }
+
+        // Fallback to algorithmic generation
+        const queries: string[] = [...aiQueries]
+        const seen = new Set<string>(aiQueries.map(q => q.toLowerCase()))
 
         const pool = this.getWordPool(langCode)
 
@@ -391,16 +473,16 @@ export class StarSearch {
         while (queries.length < count && attempts < maxAttempts) {
             attempts++
 
-            const pattern = pool.patterns[Math.floor(Math.random() * pool.patterns.length)]
-            const domain1 = pool.domains[Math.floor(Math.random() * pool.domains.length)]
-            const domain2 = pool.domains[Math.floor(Math.random() * pool.domains.length)]
-            const temporal = pool.temporalMarkers[Math.floor(Math.random() * pool.temporalMarkers.length)]
-            const specific = pool.specificity[Math.floor(Math.random() * pool.specificity.length)]
-            const action = pool.actions[Math.floor(Math.random() * pool.actions.length)]
-            const concept = pool.concepts[Math.floor(Math.random() * pool.concepts.length)]
+            const pattern = pool.patterns[Math.floor(Math.random() * pool.patterns.length)] ?? ''
+            const domain1 = pool.domains[Math.floor(Math.random() * pool.domains.length)] ?? ''
+            const domain2 = pool.domains[Math.floor(Math.random() * pool.domains.length)] ?? ''
+            const temporal = pool.temporalMarkers[Math.floor(Math.random() * pool.temporalMarkers.length)] ?? ''
+            const specific = pool.specificity[Math.floor(Math.random() * pool.specificity.length)] ?? ''
+            const action = pool.actions[Math.floor(Math.random() * pool.actions.length)] ?? ''
+            const concept = pool.concepts[Math.floor(Math.random() * pool.concepts.length)] ?? ''
 
-            // Skip if same domain twice
-            if (domain1 === domain2) continue
+            // Skip if same domain twice or empty
+            if (domain1 === domain2 || !domain1 || !domain2) continue
 
             // Pick a random template
             const templateIdx = Math.floor(Math.random() * pool.templates.length)
