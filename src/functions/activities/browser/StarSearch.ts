@@ -22,8 +22,9 @@ export class StarSearch {
 
     async doStarSearch(page: Page, isMobile: boolean): Promise<void> {
         const starCount = this.bot.config.workers.starSearchCount ?? 5
-        const langCode = (this.bot.userData.langCode ?? 'en').toLowerCase()
-        const geoLocale = (this.bot.userData.geoLocale ?? 'US').toLowerCase()
+        // Force Vietnamese for all searches
+        const langCode = 'vi'
+        const geoLocale = (this.bot.userData.geoLocale ?? 'VN').toLowerCase()
 
         this.bot.logger.info(isMobile, 'STAR-SEARCH', `Starting STAR Search | topics=${starCount} | lang=${langCode} | geo=${geoLocale}`)
 
@@ -371,40 +372,41 @@ export class StarSearch {
     }
 
     /**
-     * AI API configuration for query generation
+     * Default AI API configuration (used when config.json has no ai section)
      */
-    private readonly aiConfig = {
+    private readonly defaultAiConfig = {
         baseUrl: 'https://9router.qwen2api.pp.ua/v1',
         model: 'reward_bing',
         apiKey: 'sk-d8d38c4dbe7182c6-5wpch9-c84f2f0a'
     }
 
     /**
-     * Generate search queries using Qwen AI API.
-     * Falls back to algorithmic generation if API fails.
+     * Get AI config from config.json or fall back to defaults
      */
-    private async generateQueriesWithAI(count: number, langCode: string): Promise<string[]> {
-        const languageNames: Record<string, string> = {
-            vi: 'Vietnamese',
-            en: 'English',
-            ja: 'Japanese',
-            ko: 'Korean',
-            fr: 'French'
-        }
-        const langName = languageNames[langCode] || 'English'
+    private get aiConfig() {
+        return this.bot.config.ai ?? this.defaultAiConfig
+    }
 
-        const prompt = `Generate exactly ${count} search queries in ${langName}. FORMAT RULES:
-- Output ONLY the queries, one per line
-- NO numbering (no "1.", "2.", etc.)
-- NO bullet points (no "-", "*", etc.)
-- NO extra text, explanations, or headers
-- Each query: 5-15 words, natural sounding
-- Topics: science, history, technology, culture, health, travel, food, education
+    /**
+     * Generate search queries using Qwen AI API.
+     * Always generates in Vietnamese. Falls back to algorithmic generation if API fails.
+     */
+    private async generateQueriesWithAI(count: number, _langCode: string): Promise<string[]> {
+        // Always use Vietnamese
+        const prompt = `Tạo chính xác ${count} câu search bằng tiếng Việt. QUY TẮC FORMAT:
+- Chỉ trả về các câu search, mỗi dòng một câu
+- KHÔNG đánh số (không "1.", "2.", v.v.)
+- KHÔNG gạch đầu dòng (không "-", "*", v.v.)
+- KHÔNG thêm giải thích, tiêu đề hay văn bản thừa
+- Mỗi câu: 5-15 từ, nghe tự nhiên như người thật tìm kiếm
+- Chủ đề đa dạng: khoa học, lịch sử, công nghệ, văn hóa, sức khỏe, du lịch, ẩm thực, giáo dục, thể thao, giải trí
 
-Example output format:
-how does quantum computing work
-best restaurants in tokyo japan
-history of ancient roman architecture`
+Ví dụ format đúng:
+cách làm bánh flan dừa tại nhà
+lịch sử đền hùng phú thọ
+tác dụng của trà xanh với sức khỏe`
+
+        this.bot.logger.info(false, 'STAR-SEARCH', `[AI] Requesting ${count} Vietnamese queries from Qwen API...`)
 
         try {
             const response = await fetch(`${this.aiConfig.baseUrl}/chat/completions`, {
@@ -423,25 +425,30 @@ history of ancient roman architecture`
             })
 
             if (!response.ok) {
-                this.bot.logger.warn(false, 'STAR-SEARCH', `AI query generation failed: HTTP ${response.status}`)
+                this.bot.logger.warn(false, 'STAR-SEARCH', `[AI] Query generation FAILED: HTTP ${response.status}`)
                 return []
             }
 
             const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
             const content = data.choices?.[0]?.message?.content || ''
 
+            this.bot.logger.info(false, 'STAR-SEARCH', `[AI] Raw response length: ${content.length} chars`)
+
             const queries = content
                 .split('\n')
                 .map((line: string) => line.trim())
-                .filter((line: string) => line.length > 5 && line.length < 200 && !/^\d+[.)]/.test(line) && !/^-/.test(line))
+                .filter((line: string) => line.length > 5 && line.length < 200 && !/^\d+[.)]/.test(line) && !/^-/.test(line) && !/^\*/.test(line))
                 .slice(0, count)
 
             if (queries.length > 0) {
-                this.bot.logger.info(false, 'STAR-SEARCH', `AI generated ${queries.length} queries`)
+                this.bot.logger.info(false, 'STAR-SEARCH', `[AI] ✅ Generated ${queries.length} Vietnamese queries`)
+                this.bot.logger.info(false, 'STAR-SEARCH', `[AI] Sample queries: ${queries.slice(0, 3).map(q => `"${q}"`).join(', ')}`)
+            } else {
+                this.bot.logger.warn(false, 'STAR-SEARCH', `[AI] ⚠️ No valid queries parsed from response`)
             }
             return queries
         } catch (error) {
-            this.bot.logger.warn(false, 'STAR-SEARCH', `AI query generation error: ${errMsg(error)}`)
+            this.bot.logger.warn(false, 'STAR-SEARCH', `[AI] ❌ Query generation ERROR: ${errMsg(error)}`)
             return []
         }
     }

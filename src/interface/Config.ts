@@ -12,6 +12,13 @@ export interface Config {
     proxy: ConfigProxy
     consoleLogFilter: LogFilter
     webhook: ConfigWebhook
+    ai?: ConfigAI
+}
+
+export interface ConfigAI {
+    baseUrl: string
+    model: string
+    apiKey: string
 }
 
 export type QueryEngine = 'google' | 'wikipedia' | 'reddit' | 'local'

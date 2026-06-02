@@ -44,6 +44,13 @@ const WebhookSchema = z.object({
     webhookLogFilter: LogFilterSchema
 })
 
+// AI Config
+const AISchema = z.object({
+    baseUrl: z.string(),
+    model: z.string(),
+    apiKey: z.string()
+})
+
 // Config
 export const ConfigSchema = z.object({
     baseURL: z.string(),
@@ -82,7 +89,8 @@ export const ConfigSchema = z.object({
         queryEngine: z.boolean()
     }),
     consoleLogFilter: LogFilterSchema,
-    webhook: WebhookSchema
+    webhook: WebhookSchema,
+    ai: AISchema.optional()
 })
 
 // Account

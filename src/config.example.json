@@ -68,5 +68,10 @@
             "keywords": ["starting account", "select number", "collected"],
             "regexPatterns": []
         }
+    },
+    "ai": {
+        "baseUrl": "https://9router.qwen2api.pp.ua/v1",
+        "model": "reward_bing",
+        "apiKey": "sk-d8d38c4dbe7182c6-5wpch9-c84f2f0a"
     }
 }
