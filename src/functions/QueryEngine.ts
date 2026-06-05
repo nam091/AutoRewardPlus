@@ -4,7 +4,7 @@ import path from 'path'
 import type { GoogleSearch, GoogleTrendsResponse, RedditListing, WikipediaTopResponse } from '../interface/Search'
 import type { MicrosoftRewardsBot } from '../index'
 import { QueryEngine } from '../interface/Config'
-import { errDetail } from '../util/Utils'
+import { errDetail, errMsg } from '../util/Utils'
 
 export class QueryCore {
     constructor(private bot: MicrosoftRewardsBot) {}
@@ -465,6 +465,86 @@ export class QueryCore {
                 `read/parse failed | error=${errDetail(error)}`
             )
             return []
+        }
+    }
+
+    /**
+     * Default AI API configuration (used when config.json has no ai section)
+     */
+    private readonly defaultAiConfig = {
+        baseUrl: 'https://9router.qwen2api.pp.ua/v1',
+        model: 'reward_bing',
+        apiKey: 'sk-d8d38c4dbe7182c6-5wpch9-c84f2f0a'
+    }
+
+    private get aiConfig() {
+        return this.bot.config.ai ?? this.defaultAiConfig
+    }
+
+    /**
+     * Generate search queries using AI API.
+     * Generates random topics in the specified language.
+     * Falls back to local query list if API fails.
+     */
+    async generateAIQueries(count: number, langCode: string = 'vi'): Promise<string[]> {
+        const prompt = `Tạo chính xác ${count} câu search bằng tiếng Việt. QUY TẮC FORMAT:
+- Chỉ trả về các câu search, mỗi dòng một câu
+- KHÔNG đánh số (không "1.", "2.", v.v.)
+- KHÔNG gạch đầu dòng (không "-", "*", v.v.)
+- KHÔNG thêm giải thích, tiêu đề hay văn bản thừa
+- Mỗi câu: 5-15 từ, nghe tự nhiên như người thật tìm kiếm
+- Chủ đề đa dạng: khoa học, lịch sử, công nghệ, văn hóa, sức khỏe, du lịch, ẩm thực, giáo dục, thể thao, giải trí
+
+Ví dụ format đúng:
+cách làm bánh flan dừa tại nhà
+lịch sử đền hùng phú thọ
+tác dụng của trà xanh với sức khỏe`
+
+        this.bot.logger.info(false, 'AI-QUERY', `[AI] Requesting ${count} queries from AI API...`)
+
+        try {
+            const response = await fetch(`${this.aiConfig.baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.aiConfig.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: this.aiConfig.model,
+                    messages: [
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false
+                })
+            })
+
+            if (!response.ok) {
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] Query generation FAILED: HTTP ${response.status}`)
+                return this.getLocalQueryList().slice(0, count)
+            }
+
+            const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+            const content = data.choices?.[0]?.message?.content || ''
+
+            this.bot.logger.info(false, 'AI-QUERY', `[AI] Raw response length: ${content.length} chars`)
+
+            const queries = content
+                .split('\n')
+                .map((line: string) => line.trim())
+                .filter((line: string) => line.length > 5 && line.length < 200 && !/^\d+[.)]/.test(line) && !/^-/.test(line) && !/^\*/.test(line))
+                .slice(0, count)
+
+            if (queries.length > 0) {
+                this.bot.logger.info(false, 'AI-QUERY', `[AI] ✅ Generated ${queries.length} queries`)
+                this.bot.logger.info(false, 'AI-QUERY', `[AI] Sample queries: ${queries.slice(0, 3).map(q => `"${q}"`).join(', ')}`)
+            } else {
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ No valid queries parsed from response, falling back to local`)
+                return this.getLocalQueryList().slice(0, count)
+            }
+            return queries
+        } catch (error) {
+            this.bot.logger.warn(false, 'AI-QUERY', `[AI] ❌ Query generation ERROR: ${errMsg(error)}, falling back to local`)
+            return this.getLocalQueryList().slice(0, count)
         }
     }
 }

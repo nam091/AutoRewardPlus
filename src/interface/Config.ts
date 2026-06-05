@@ -54,8 +54,6 @@ export interface ConfigWorkers {
     doReadToEarn: boolean
     doMissions: boolean
     doClaimPoints: boolean
-    doStarSearch: boolean
-    starSearchCount: number
 }
 
 // Webhooks

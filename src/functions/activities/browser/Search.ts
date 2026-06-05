@@ -4,10 +4,10 @@ import { randomBytes } from 'crypto'
 
 import type { Counters, DashboardData } from '../../../interface/DashboardData'
 
-import { QueryCore } from '../../QueryEngine'
+import { QueryCore } from '../../QueryEngine.js'
 
-import { Workers } from '../../Workers'
-import { errMsg } from '../../../util/Utils'
+import { Workers } from '../../Workers.js'
+import { errMsg } from '../../../util/Utils.js'
 
 export class Search extends Workers {
     private bingHome = 'https://bing.com'
@@ -39,26 +39,20 @@ export class Search extends Workers {
             )
 
             const queryCore = new QueryCore(this.bot)
-            const locale = (this.bot.userData.geoLocale ?? 'US').toUpperCase()
-            const langCode = (this.bot.userData.langCode ?? 'en').toLowerCase()
+            const langCode = (this.bot.userData.langCode ?? 'vi').toLowerCase()
 
             this.bot.logger.debug(
                 isMobile,
                 'SEARCH-BING',
-                `Resolving search queries via QueryCore | locale=${locale} | lang=${langCode} | related=true`
+                `Generating AI search queries | lang=${langCode}`
             )
 
-            let queries = await queryCore.queryManager({
-                shuffle: true,
-                related: true,
-                langCode,
-                geoLocale: locale,
-                sourceOrder: ['google', 'wikipedia', 'reddit', 'local']
-            })
+            // Generate all queries using AI - random topics
+            let queries = await queryCore.generateAIQueries(50, langCode)
 
             queries = [...new Set(queries.map(q => q.trim()).filter(Boolean))]
 
-            this.bot.logger.info(isMobile, 'SEARCH-BING', `Search query pool ready | count=${queries.length}`)
+            this.bot.logger.info(isMobile, 'SEARCH-BING', `AI search query pool ready | count=${queries.length}`)
 
             // Go to bing
             const targetUrl = this.searchPageURL ? this.searchPageURL : this.bingHome
@@ -122,19 +116,13 @@ export class Search extends Workers {
                             this.bot.logger.warn(
                                 isMobile,
                                 tag,
-                                `Low query buffer, regenerating | remainingQueries=${remaining} | missing=${missingPointsTotal}`
+                                `Low query buffer, regenerating via AI | remainingQueries=${remaining} | missing=${missingPointsTotal}`
                             )
-                            const extra = await queryCore.queryManager({
-                                shuffle: true,
-                                related: true,
-                                langCode,
-                                geoLocale: locale,
-                                sourceOrder: this.bot.config.searchSettings.queryEngines
-                            })
+                            const extra = await queryCore.generateAIQueries(30, langCode)
                             const merged = [...queryPool, ...extra].map(q => q.trim()).filter(Boolean)
                             queryPool = [...new Set(merged)]
                             queryPool = this.bot.utils.shuffleArray(queryPool)
-                            this.bot.logger.debug(isMobile, tag, `Query pool regenerated | count=${queryPool.length}`)
+                            this.bot.logger.debug(isMobile, tag, `AI query pool regenerated | count=${queryPool.length}`)
                         }
                     }
                 }
@@ -148,18 +136,12 @@ export class Search extends Workers {
                 this.bot.logger.info(
                     isMobile,
                     'SEARCH-BING',
-                    `Continuing with extra queries | remaining=${missingPointsTotal}`
+                    `Continuing with extra AI queries | remaining=${missingPointsTotal}`
                 )
 
                 const MAX_EXTRA_ROUNDS = 3
                 for (let round = 0; round < MAX_EXTRA_ROUNDS && missingPointsTotal > 0; round++) {
-                    const extra = await queryCore.queryManager({
-                        shuffle: true,
-                        related: true,
-                        langCode,
-                        geoLocale: locale,
-                        sourceOrder: this.bot.config.searchSettings.queryEngines
-                    })
+                    const extra = await queryCore.generateAIQueries(30, langCode)
 
                     const merged = [...queries, ...extra].map(q => q.trim()).filter(Boolean)
                     queries = this.bot.utils.shuffleArray([...new Set(merged)])
@@ -167,7 +149,7 @@ export class Search extends Workers {
                     this.bot.logger.info(
                         isMobile,
                         'SEARCH-BING-EXTRA',
-                        `Round ${round + 1} | queries=${queries.length}`
+                        `Round ${round + 1} | AI queries=${queries.length}`
                     )
 
                     const extraResult = await runSearchLoop(queries, 'SEARCH-BING-EXTRA', 5)

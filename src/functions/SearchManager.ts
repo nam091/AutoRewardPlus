@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from 'patchright'
+import type { BrowserContext } from 'patchright'
 
 import type { BrowserFingerprintWithHeaders } from 'fingerprint-generator'
 
@@ -8,7 +8,6 @@ import type { DashboardData } from '../interface/DashboardData'
 
 import type { Account } from '../interface/Account'
 import { ModernUIWorkers } from './ModernUIWorkers'
-import { StarSearch } from './activities/browser/StarSearch'
 import { errMsg } from '../util/Utils'
 
 interface BrowserSession {
@@ -94,25 +93,16 @@ export class SearchManager {
                 }
             }
 
-            // Even if no searches, run Modern UI tasks + STAR Search on desktop
-            if (this.bot.rewardsVersion === 'modern' || this.bot.config.workers.doStarSearch) {
-                const reason = [
-                    this.bot.rewardsVersion === 'modern' ? 'Modern UI tasks' : '',
-                    this.bot.config.workers.doStarSearch ? 'STAR Search' : ''
-                ]
-                    .filter(Boolean)
-                    .join(' + ')
-                this.bot.logger.info('main', 'SEARCH-MANAGER', `Creating desktop session for: ${reason}`)
+            // Even if no searches, run Modern UI tasks on desktop
+            if (this.bot.rewardsVersion === 'modern') {
+                this.bot.logger.info('main', 'SEARCH-MANAGER', 'Creating desktop session for: Modern UI tasks')
                 try {
                     const desktopSession = await executionContext.run({ isMobile: false, account }, async () =>
                         this.createDesktopSession(account, accountEmail)
                     )
                     await executionContext.run({ isMobile: false, account }, async () => {
-                        if (this.bot.rewardsVersion === 'modern') {
-                            const data = await this.bot.browser.func.getDashboardData()
-                            await this.runModernUITasks(data)
-                        }
-                        await this.runStarSearch(this.bot.mainDesktopPage, false)
+                        const data = await this.bot.browser.func.getDashboardData()
+                        await this.runModernUITasks(data)
                         await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
                     })
                 } catch (error) {
@@ -203,8 +193,7 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Mobile session closed (no mobile search)')
             }
 
-            const needDesktopSession = shouldDoDesktop || this.bot.config.workers.doStarSearch
-            if (needDesktopSession) {
+            if (shouldDoDesktop) {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Desktop login start')
                 this.bot.logger.debug(
                     'main',
@@ -253,15 +242,6 @@ export class SearchManager {
 
             const mobilePoints = shouldDoMobile ? (results[0] ?? 0) : 0
             const desktopPoints = shouldDoDesktop ? (results[shouldDoMobile ? 1 : 0] ?? 0) : 0
-
-            // Run STAR Search on desktop if desktop search was skipped but session exists
-            if (!shouldDoDesktop && desktopSession && this.bot.config.workers.doStarSearch) {
-                await executionContext.run({ isMobile: false, accountEmail }, async () => {
-                    await this.runStarSearch(this.bot.mainDesktopPage, false)
-                    await this.bot.browser.func.closeBrowser(desktopSession!.context, accountEmail)
-                })
-                desktopSession = null
-            }
 
             this.bot.logger.info(
                 'main',
@@ -371,20 +351,6 @@ export class SearchManager {
                 executionContext
             )
             this.bot.logger.info('main', 'SEARCH-MANAGER', `Step 2: desktop done | earned=${desktopPoints}`)
-        } else if (this.bot.config.workers.doStarSearch) {
-            // No desktop search needed but STAR search is enabled — create a desktop session for it
-            this.bot.logger.info('main', 'SEARCH-MANAGER', 'Step 2: skip desktop search, running STAR Search only')
-            try {
-                const desktopSession = await executionContext.run({ isMobile: false, account }, async () =>
-                    this.createDesktopSession(account, accountEmail)
-                )
-                await executionContext.run({ isMobile: false, account }, async () => {
-                    await this.runStarSearch(this.bot.mainDesktopPage, false)
-                    await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
-                })
-            } catch (error) {
-                this.bot.logger.error('main', 'SEARCH-MANAGER', `STAR Search desktop failed: ${errMsg(error)}`)
-            }
         } else {
             const reason = !this.bot.config.workers.doDesktopSearch ? 'disabled' : 'no-points'
             this.bot.logger.info('main', 'SEARCH-MANAGER', `Step 2: skip desktop (${reason})`)
@@ -400,17 +366,6 @@ export class SearchManager {
         this.bot.logger.debug('main', 'SEARCH-MANAGER', `Sequential done | account=${accountEmail}`)
 
         return { mobilePoints, desktopPoints }
-    }
-
-    private async runStarSearch(page: Page, isMobile: boolean): Promise<void> {
-        if (!this.bot.config.workers.doStarSearch) return
-
-        try {
-            const starSearch = new StarSearch(this.bot)
-            await starSearch.doStarSearch(page, isMobile)
-        } catch (error) {
-            this.bot.logger.error(isMobile, 'STAR-SEARCH', `Failed: ${errMsg(error)}`)
-        }
     }
 
     private async createDesktopSession(account: Account, accountEmail: string): Promise<BrowserSession> {
@@ -591,9 +546,6 @@ export class SearchManager {
                     `Result | account=${accountEmail} | earned=${pointsEarned}`
                 )
 
-                // Run STAR Search on desktop before closing
-                await this.runStarSearch(this.bot.mainDesktopPage, false)
-
                 return pointsEarned
             } catch (error) {
                 this.bot.logger.error('main', 'SEARCH-DESKTOP-PARALLEL', `Failed: ${errMsg(error)}`)
@@ -669,9 +621,6 @@ export class SearchManager {
                     'SEARCH-DESKTOP-SEQUENTIAL',
                     `Result | account=${accountEmail} | earned=${pointsEarned}`
                 )
-
-                // Run STAR Search on desktop before closing
-                await this.runStarSearch(this.bot.mainDesktopPage, false)
 
                 return pointsEarned
             } catch (error) {
