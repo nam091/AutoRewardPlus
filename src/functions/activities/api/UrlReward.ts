@@ -14,16 +14,48 @@ export class UrlReward extends Workers {
 
     private oldBalance: number = this.bot.userData.currentPoints
 
-    public async doUrlReward(promotion: BasePromotion) {
-        if (!this.bot.requestToken && this.bot.rewardsVersion === 'legacy') {
-            this.bot.logger.warn(
-                this.bot.isMobile,
-                'URL-REWARD',
-                'Skipping: Request token not available, this activity requires it!'
-            )
-            return
-        }
+    /**
+     * Fetch a fresh __RequestVerificationToken from the desktop dashboard.
+     * Desktop cookies are required because the token must match the session.
+     */
+    private async fetchDesktopRequestToken(): Promise<string> {
+        try {
+            const request: AxiosRequestConfig = {
+                url: 'https://rewards.bing.com/',
+                method: 'GET',
+                headers: {
+                    ...(this.bot.fingerprint?.headers ?? {}),
+                    Cookie: this.cookieHeader,
+                    Referer: 'https://rewards.bing.com/'
+                }
+            }
 
+            const response = await this.bot.axios.request(request)
+            const html: string = response.data ?? ''
+
+            // Try input[name="__RequestVerificationToken"] first
+            const inputMatch = html.match(/<input[^>]*name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)["']/i)
+            if (inputMatch?.[1]) {
+                this.bot.logger.debug(this.bot.isMobile, 'URL-REWARD', 'Extracted request token from desktop dashboard (input)')
+                return inputMatch[1]
+            }
+
+            // Fallback: meta[name="__RequestVerificationToken"]
+            const metaMatch = html.match(/<meta[^>]*name=["']__RequestVerificationToken["'][^>]*content=["']([^"']+)["']/i)
+            if (metaMatch?.[1]) {
+                this.bot.logger.debug(this.bot.isMobile, 'URL-REWARD', 'Extracted request token from desktop dashboard (meta)')
+                return metaMatch[1]
+            }
+
+            this.bot.logger.warn(this.bot.isMobile, 'URL-REWARD', 'Could not extract request token from desktop dashboard')
+            return ''
+        } catch (error) {
+            this.bot.logger.error(this.bot.isMobile, 'URL-REWARD', `Failed to fetch desktop request token: ${errMsg(error)}`)
+            return ''
+        }
+    }
+
+    public async doUrlReward(promotion: BasePromotion) {
         const offerId = promotion.offerId
 
         this.bot.logger.info(
@@ -39,6 +71,28 @@ export class UrlReward extends Workers {
                 ['bing.com', 'live.com', 'microsoftonline.com']
             )
 
+            if (!this.cookieHeader) {
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'URL-REWARD',
+                    'Skipping: No desktop cookies available'
+                )
+                return
+            }
+
+            // Fetch a fresh request token that matches the desktop session
+            // The current this.bot.requestToken may be from mobile context → causes 401
+            const requestToken = await this.fetchDesktopRequestToken()
+
+            if (!requestToken && this.bot.rewardsVersion === 'legacy') {
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'URL-REWARD',
+                    'Skipping: Could not obtain desktop request token'
+                )
+                return
+            }
+
             const fingerprintHeaders = { ...this.bot.fingerprint.headers }
             delete fingerprintHeaders['Cookie']
             delete fingerprintHeaders['cookie']
@@ -47,7 +101,7 @@ export class UrlReward extends Workers {
             this.bot.logger.debug(
                 this.bot.isMobile,
                 'URL-REWARD',
-                `Prepared UrlReward headers | offerId=${offerId} | cookieLength=${this.cookieHeader.length} | fingerprintHeaderKeys=${Object.keys(this.fingerprintHeader).length}`
+                `Prepared UrlReward headers | offerId=${offerId} | cookieLength=${this.cookieHeader.length} | hasToken=${!!requestToken}`
             )
 
             const formData = new URLSearchParams({
@@ -58,7 +112,7 @@ export class UrlReward extends Workers {
                 dbs: '0',
                 form: '',
                 type: '',
-                __RequestVerificationToken: this.bot.requestToken
+                __RequestVerificationToken: requestToken || this.bot.requestToken
             })
 
             this.bot.logger.debug(
