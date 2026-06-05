@@ -8,8 +8,6 @@ import { errMsg } from '../../../util/Utils'
 export class UrlReward extends Workers {
     private cookieHeader: string = ''
 
-    private fingerprintHeader: { [x: string]: string } = {}
-
     private gainedPoints: number = 0
 
     private oldBalance: number = this.bot.userData.currentPoints
@@ -92,11 +90,6 @@ export class UrlReward extends Workers {
                 )
                 return
             }
-
-            const fingerprintHeaders = { ...this.bot.fingerprint.headers }
-            delete fingerprintHeaders['Cookie']
-            delete fingerprintHeaders['cookie']
-            this.fingerprintHeader = fingerprintHeaders
 
             this.bot.logger.debug(
                 this.bot.isMobile,
