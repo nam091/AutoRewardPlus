@@ -33,8 +33,9 @@ export class UrlReward extends Workers {
         )
 
         try {
+            // Always use desktop cookies for UrlReward API — mobile cookies cause HTTP 400
             this.cookieHeader = this.bot.browser.func.buildCookieHeader(
-                this.bot.isMobile ? this.bot.cookies.mobile : this.bot.cookies.desktop,
+                this.bot.cookies.desktop,
                 ['bing.com', 'live.com', 'microsoftonline.com']
             )
 
