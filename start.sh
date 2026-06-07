@@ -14,6 +14,13 @@ if ! command -v node &> /dev/null; then
     read -p "Press any key to exit..."
     exit 1
 fi
+echo "[INFO] Building project..."
+npm install
+if [ $? -ne 0 ]; then
+    echo "[ERROR] install failed!"
+    read -p "Press any key to exit..."
+    exit 1
+fi
 
 # Always rebuild before running
 echo "[INFO] Building project..."
