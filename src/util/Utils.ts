@@ -98,4 +98,35 @@ export default class Util {
         const maxMs = typeof max === 'number' ? max : this.stringToNumber(max)
         return Math.floor(this.randomNumber(minMs, maxMs))
     }
+
+    /**
+     * Returns delay following exponential distribution.
+     * Most values cluster near minMs, with occasional long tails toward maxMs.
+     * Simulates human behavior where most actions are quick but sometimes there's a longer pause.
+     */
+    exponentialDelay(minMs: number, maxMs: number): number {
+        const range = maxMs - minMs
+        return Math.floor(minMs + range * Math.pow(Math.random(), 3))
+    }
+
+    /**
+     * Returns per-character typing delay in ms that mimics human typing.
+     * Normal range: 30-120ms. ~15% chance of a "thinking pause" returning 200-600ms.
+     */
+    humanTypingDelay(): number {
+        if (Math.random() < 0.15) {
+            // Thinking pause between words or mid-thought
+            return this.randomNumber(200, 600)
+        }
+        return this.randomNumber(30, 120)
+    }
+
+    /**
+     * Returns true if current local hour is between 1am-5am.
+     * Used to reduce search frequency during unrealistic hours.
+     */
+    isQuietHours(): boolean {
+        const hour = new Date().getHours()
+        return hour >= 1 && hour < 5
+    }
 }

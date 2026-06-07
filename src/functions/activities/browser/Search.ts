@@ -14,6 +14,30 @@ export class Search extends Workers {
     private searchPageURL = ''
     private searchCount = 0
 
+    /** Lightweight feedback tracker: counts successful vs failed queries per prefix pattern */
+    private queryFeedback: Map<string, { success: number; fail: number }> = new Map()
+
+    private recordFeedback(query: string, earnedPoints: boolean): void {
+        // Track by first 2 words as pattern key
+        const key = query.toLowerCase().split(/\s+/).slice(0, 2).join(' ')
+        const existing = this.queryFeedback.get(key) ?? { success: 0, fail: 0 }
+        if (earnedPoints) {
+            existing.success++
+        } else {
+            existing.fail++
+        }
+        this.queryFeedback.set(key, existing)
+    }
+
+    /** Get feedback summary for logging */
+    private getFeedbackSummary(): string {
+        const entries = [...this.queryFeedback.entries()]
+        if (entries.length === 0) return 'no data'
+        const totalSuccess = entries.reduce((s, [, v]) => s + v.success, 0)
+        const totalFail = entries.reduce((s, [, v]) => s + v.fail, 0)
+        return `success=${totalSuccess} | fail=${totalFail} | patterns=${entries.length}`
+    }
+
     public async doSearch(data: DashboardData, page: Page, isMobile: boolean): Promise<number> {
         const startBalance = Number(this.bot.userData.currentPoints ?? 0)
 
@@ -44,10 +68,10 @@ export class Search extends Workers {
             this.bot.logger.debug(
                 isMobile,
                 'SEARCH-BING',
-                `Generating AI search queries | lang=${langCode}`
+                `Generating AI search sessions | lang=${langCode}`
             )
 
-            // Generate all queries using AI - random topics
+            // Generate session-based queries via AI with hybrid trending sources
             let queries = await queryCore.generateAIQueries(50, langCode)
 
             queries = [...new Set(queries.map(q => q.trim()).filter(Boolean))]
@@ -69,14 +93,42 @@ export class Search extends Workers {
                 opts?: { refillQueries?: boolean }
             ): Promise<{ stagnant: boolean }> => {
                 let stagnantLoop = 0
+                let lastQuery = ''
 
                 for (let i = 0; i < queryPool.length; i++) {
-                    const query = queryPool[i] as string
+                    // Time-of-day awareness: reduce frequency during quiet hours
+                    if (this.bot.utils.isQuietHours()) {
+                        const quietDelay = this.bot.utils.exponentialDelay(60000, 180000)
+                        this.bot.logger.debug(
+                            isMobile,
+                            tag,
+                            `Quiet hours detected, extended delay | delayMs=${quietDelay}`
+                        )
+                        await this.bot.utils.wait(quietDelay)
+                    }
+
+                    let query = queryPool[i] as string
+
+                    // Query refinement: ~20% chance to refine previous query instead of using next one
+                    if (lastQuery && Math.random() < 0.2 && i > 0) {
+                        const refined = this.refineQuery(lastQuery, query)
+                        if (refined) {
+                            this.bot.logger.debug(
+                                isMobile,
+                                tag,
+                                `Query refinement | original="${lastQuery}" | refined="${refined}"`
+                            )
+                            query = refined
+                        }
+                    }
 
                     searchCounters = await this.bingSearch(page, query, isMobile)
                     const newMissing = this.bot.browser.func.missingSearchPoints(searchCounters, isMobile)
                     const newMissingTotal = newMissing.totalPoints
                     const gainedPoints = Math.max(0, missingPointsTotal - newMissingTotal)
+
+                    // Record feedback for pattern analysis
+                    this.recordFeedback(query, gainedPoints > 0)
 
                     if (gainedPoints === 0) {
                         stagnantLoop++
@@ -98,6 +150,7 @@ export class Search extends Workers {
                         )
                     }
 
+                    lastQuery = query
                     missingPointsTotal = newMissingTotal
 
                     if (missingPointsTotal === 0) {
@@ -162,7 +215,7 @@ export class Search extends Workers {
             this.bot.logger.info(
                 isMobile,
                 'SEARCH-BING',
-                `Completed Bing searches | startBalance=${startBalance} | newBalance=${finalBalance}`
+                `Completed Bing searches | startBalance=${startBalance} | newBalance=${finalBalance} | feedback=[${this.getFeedbackSummary()}]`
             )
 
             return totalGainedPoints
@@ -170,6 +223,30 @@ export class Search extends Workers {
             this.bot.logger.error(isMobile, 'SEARCH-BING', `Error in doSearch | message=${errMsg(error)}`)
             return totalGainedPoints
         }
+    }
+
+    /**
+     * Create a refined version of a previous query by combining elements.
+     * Simulates human behavior of narrowing/broadening search after seeing results.
+     */
+    private refineQuery(previousQuery: string, nextQuery: string): string | null {
+        const prevWords = previousQuery.split(/\s+/)
+        const nextWords = nextQuery.split(/\s+/)
+
+        // Strategy: take core of previous query (first 2-3 words) + add a modifier from next query
+        if (prevWords.length < 2 || nextWords.length < 2) return null
+
+        const core = prevWords.slice(0, Math.min(3, prevWords.length))
+        const modifier = nextWords.slice(-2)
+
+        // Only refine if the queries share at least some topical relation
+        const combined = [...core, ...modifier]
+        const uniqueWords = new Set(combined.map(w => w.toLowerCase()))
+
+        // If too few unique words, it's just repeating — skip
+        if (uniqueWords.size < 3) return null
+
+        return combined.join(' ')
     }
 
     private async bingSearch(searchPage: Page, query: string, isMobile: boolean) {
@@ -213,11 +290,18 @@ export class Search extends Workers {
                 await searchPage.keyboard.press('Home')
                 await searchBox.waitFor({ state: 'visible', timeout: 15000 })
 
-                await this.bot.utils.wait(1000)
+                // Human-like pre-typing pause: variable wait before starting to type
+                await this.bot.utils.wait(this.bot.utils.exponentialDelay(500, 2000))
                 await this.bot.browser.utils.ghostClick(searchPage, searchBar, { clickCount: 3 })
                 await searchBox.fill('')
 
-                await searchPage.keyboard.type(query, { delay: 50 })
+                // Human-like typing: variable per-character delay instead of fixed 50ms
+                for (const char of query) {
+                    await searchPage.keyboard.type(char, { delay: this.bot.utils.humanTypingDelay() })
+                }
+
+                // Brief pause before pressing Enter (humans don't hit enter instantly)
+                await this.bot.utils.wait(this.bot.utils.exponentialDelay(200, 800))
                 await searchPage.keyboard.press('Enter')
 
                 this.bot.logger.debug(
@@ -226,31 +310,32 @@ export class Search extends Workers {
                     `Submitted query to Bing | attempt=${i + 1}/${maxAttempts} | query="${query}"`
                 )
 
-                await this.bot.utils.wait(3000)
+                // Variable post-search wait instead of fixed 3000ms
+                await this.bot.utils.wait(this.bot.utils.exponentialDelay(2000, 5000))
 
                 if (this.bot.config.searchSettings.scrollRandomResults) {
-                    await this.bot.utils.wait(2000)
+                    await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
                     await this.randomScroll(searchPage, isMobile)
                 }
 
                 if (this.bot.config.searchSettings.clickRandomResults) {
-                    await this.bot.utils.wait(2000)
+                    await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
                     await this.clickRandomLink(searchPage, isMobile)
                 }
 
-                await this.bot.utils.wait(
-                    this.bot.utils.randomDelay(
-                        this.bot.config.searchSettings.searchDelay.min,
-                        this.bot.config.searchSettings.searchDelay.max
-                    )
+                // Exponential inter-query delay: mostly short, occasionally long pauses
+                const delayMs = this.bot.utils.exponentialDelay(
+                    this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.min),
+                    this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.max)
                 )
+                await this.bot.utils.wait(delayMs)
 
                 const counters = await this.bot.browser.func.getSearchPoints()
 
                 this.bot.logger.debug(
                     isMobile,
                     'SEARCH-BING',
-                    `Search counters after query | attempt=${i + 1}/${maxAttempts} | query="${query}"`
+                    `Search counters after query | attempt=${i + 1}/${maxAttempts} | query="${query}" | delayMs=${delayMs}`
                 )
 
                 return counters
@@ -276,7 +361,7 @@ export class Search extends Workers {
                     `Retrying search | attempt=${i + 1}/${maxAttempts} | query="${query}"`
                 )
 
-                await this.bot.utils.wait(2000)
+                await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 4000))
             }
         }
 

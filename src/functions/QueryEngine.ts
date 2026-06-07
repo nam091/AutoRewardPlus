@@ -482,25 +482,77 @@ export class QueryCore {
     }
 
     /**
-     * Generate search queries using AI API.
-     * Generates random topics in the specified language.
+     * Remove queries that are too similar to each other using word-level overlap.
+     * Preserves order of first occurrence. Different from normalizeAndDedupe which does exact-match only.
+     */
+    private enforceDiversity(queries: string[], maxOverlapRatio: number = 0.6): string[] {
+        const result: string[] = []
+        for (const q of queries) {
+            const words = q.toLowerCase().split(/\s+/)
+            const isDuplicate = result.some(existing => {
+                const existingWords = existing.toLowerCase().split(/\s+/)
+                const overlap = words.filter(w => existingWords.includes(w)).length
+                return overlap / Math.max(words.length, existingWords.length) > maxOverlapRatio
+            })
+            if (!isDuplicate) result.push(q)
+        }
+        return result
+    }
+
+    /**
+     * Generate search query sessions using AI API.
+     * Each session is a group of related queries simulating a real user's search flow.
+     * Uses trending topics as seeds for authenticity.
      * Falls back to local query list if API fails.
      */
-    async generateAIQueries(count: number, langCode: string = 'vi'): Promise<string[]> {
-        const prompt = `Tạo chính xác ${count} câu search bằng tiếng Việt. QUY TẮC FORMAT:
-- Chỉ trả về các câu search, mỗi dòng một câu
-- KHÔNG đánh số (không "1.", "2.", v.v.)
-- KHÔNG gạch đầu dòng (không "-", "*", v.v.)
-- KHÔNG thêm giải thích, tiêu đề hay văn bản thừa
-- Mỗi câu: 5-15 từ, nghe tự nhiên như người thật tìm kiếm
-- Chủ đề đa dạng: khoa học, lịch sử, công nghệ, văn hóa, sức khỏe, du lịch, ẩm thực, giáo dục, thể thao, giải trí
+    async generateAISessionQueries(sessionCount: number, langCode: string = 'vi'): Promise<string[][]> {
+        // Gather trending seeds from existing sources for hybrid authenticity
+        const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
+            this.getGoogleTrends('US').catch(() => []),
+            this.getWikipediaTrending(langCode).catch(() => []),
+            this.getRedditTopics().catch(() => [])
+        ])
+        const trendingSeeds = [
+            ...googleTrends.slice(0, 5),
+            ...wikiTrends.slice(0, 5),
+            ...redditTopics.slice(0, 5)
+        ]
 
-Ví dụ format đúng:
-cách làm bánh flan dừa tại nhà
-lịch sử đền hùng phú thọ
-tác dụng của trà xanh với sức khỏe`
+        this.bot.logger.info(
+            false,
+            'AI-SESSION',
+            `[AI] Gathering trending seeds | google=${googleTrends.length} | wiki=${wikiTrends.length} | reddit=${redditTopics.length} | seedsUsed=${trendingSeeds.length}`
+        )
 
-        this.bot.logger.info(false, 'AI-QUERY', `[AI] Requesting ${count} queries from AI API...`)
+        const seedSection = trendingSeeds.length > 0
+            ? `CHỦ ĐỀ GỢI Ý (có thể dùng hoặc không):\n${trendingSeeds.join('\n')}\n\n`
+            : ''
+
+        const prompt = `Bạn là một người dùng Bing thật ở Việt Nam. Hãy tạo ${sessionCount} phi��n tìm kiếm tự nhiên, mỗi phiên gồm 6-10 câu search liên tiếp.
+
+${seedSection}QUY TẮC BẮT BUỘC:
+- Mỗi phiên PHẢI có luồng suy nghĩ liên quan: bắt đầu từ 1 nhu cầu → đào sâu/mở rộng/chuyển hướng tự nhiên
+- Mỗi phiên PHẢI chứa: ít nhất 1 query ngắn (2-4 từ), 1 query dài (8-15 từ), 1 query refine/sửa đổi từ query tr��ớc đó
+- KHÔNG đánh số, KHÔNG gạch đầu dòng, KHÔNG giải thích
+- Mỗi dòng 1 câu search, các phiên cách nhau bằng dòng trống
+- Viết như đang NGHĨ và GÕ trên bàn phím, không phải viết văn
+- Chủ đề đa dạng: ẩm thực, sức khỏe, công nghệ, du lịch, giáo dục, giải trí, thể thao, tài chính, gia đình, thời trang
+
+VÍ D��� FORMAT ĐÚNG:
+cách làm bún bò huế
+bún bò huế ngon nhất sài g��n
+quán bún bò huế quận 3
+cách nấu bún bò huế tại nhà đơn giản
+mua nguyên liệu bún bò huế ở đâu
+bún bò huế bao nhiêu calo
+
+laptop bị nóng khi chơi game
+tại sao laptop dell bị nóng
+cách vệ sinh quạt laptop dell
+keo tản nhiệt loại nào tốt 2024
+thay keo tản nhiệt laptop giá bao nhiêu`
+
+        this.bot.logger.info(false, 'AI-SESSION', `[AI] Requesting ${sessionCount} search sessions from AI API...`)
 
         try {
             const response = await fetch(`${this.aiConfig.baseUrl}/chat/completions`, {
@@ -519,28 +571,104 @@ tác dụng của trà xanh với sức khỏe`
             })
 
             if (!response.ok) {
-                this.bot.logger.warn(false, 'AI-QUERY', `[AI] Query generation FAILED: HTTP ${response.status}`)
-                return this.getLocalQueryList().slice(0, count)
+                this.bot.logger.warn(false, 'AI-SESSION', `[AI] Session generation FAILED: HTTP ${response.status}`)
+                return []
             }
 
             const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
             const content = data.choices?.[0]?.message?.content || ''
 
-            this.bot.logger.info(false, 'AI-QUERY', `[AI] Raw response length: ${content.length} chars`)
+            this.bot.logger.info(false, 'AI-SESSION', `[AI] Raw response length: ${content.length} chars`)
 
-            const queries = content
-                .split('\n')
-                .map((line: string) => line.trim())
-                .filter((line: string) => line.length > 5 && line.length < 200 && !/^\d+[.)]/.test(line) && !/^-/.test(line) && !/^\*/.test(line))
-                .slice(0, count)
+            // Parse sessions: split by double newline, then each session by single newline
+            const rawSessions = content.split(/\n\s*\n/)
+            const sessions: string[][] = []
 
-            if (queries.length > 0) {
-                this.bot.logger.info(false, 'AI-QUERY', `[AI] ✅ Generated ${queries.length} queries`)
-                this.bot.logger.info(false, 'AI-QUERY', `[AI] Sample queries: ${queries.slice(0, 3).map(q => `"${q}"`).join(', ')}`)
+            for (const rawSession of rawSessions) {
+                const queries = rawSession
+                    .split('\n')
+                    .map((line: string) => line.trim())
+                    .filter((line: string) =>
+                        line.length > 3 &&
+                        line.length < 200 &&
+                        !/^\d+[.)]/.test(line) &&
+                        !/^-/.test(line) &&
+                        !/^\*/.test(line)
+                    )
+
+                if (queries.length >= 3) {
+                    sessions.push(queries)
+                }
+            }
+
+            if (sessions.length > 0) {
+                const totalQueries = sessions.reduce((sum, s) => sum + s.length, 0)
+                this.bot.logger.info(
+                    false,
+                    'AI-SESSION',
+                    `[AI] ✅ Generated ${sessions.length} sessions (${totalQueries} total queries)`
+                )
+                this.bot.logger.info(
+                    false,
+                    'AI-SESSION',
+                    `[AI] Sample session: ${sessions[0]?.slice(0, 3).map(q => `"${q}"`).join(' → ')}`
+                )
             } else {
-                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ No valid queries parsed from response, falling back to local`)
+                this.bot.logger.warn(false, 'AI-SESSION', `[AI] ⚠��� No valid sessions parsed from response`)
+            }
+
+            return sessions
+        } catch (error) {
+            this.bot.logger.warn(false, 'AI-SESSION', `[AI] ❌ Session generation ERROR: ${errMsg(error)}`)
+            return []
+        }
+    }
+
+    /**
+     * Generate search queries using AI API with session-based prompting and hybrid trending sources.
+     * Generates natural search sessions instead of flat random queries.
+     * Applies diversity enforcement to prevent repetitive patterns.
+     * Falls back to local query list if API fails.
+     */
+    async generateAIQueries(count: number, langCode: string = 'vi'): Promise<string[]> {
+        this.bot.logger.info(false, 'AI-QUERY', `[AI] Requesting ${count} queries via session-based generation...`)
+
+        try {
+            // Calculate how many sessions we need (aim for ~8 queries per session)
+            const sessionCount = Math.max(2, Math.ceil(count / 8))
+            const sessions = await this.generateAISessionQueries(sessionCount, langCode)
+
+            if (sessions.length === 0) {
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ No sessions generated, falling back to local`)
                 return this.getLocalQueryList().slice(0, count)
             }
+
+            // Flatten sessions into single array, preserving session order
+            let queries = sessions.flat()
+
+            // Apply diversity enforcement to remove near-duplicates
+            const beforeDiversity = queries.length
+            queries = this.enforceDiversity(queries)
+            this.bot.logger.debug(
+                false,
+                'AI-QUERY',
+                `[AI] diversity filter | before=${beforeDiversity} | after=${queries.length}`
+            )
+
+            // Shuffle to avoid predictable session ordering
+            this.bot.utils.shuffleArray(queries)
+
+            // Trim to requested count
+            queries = queries.slice(0, count)
+
+            if (queries.length > 0) {
+                this.bot.logger.info(false, 'AI-QUERY', `[AI] ✅ Generated ${queries.length} queries from ${sessions.length} sessions`)
+                this.bot.logger.info(false, 'AI-QUERY', `[AI] Sample queries: ${queries.slice(0, 3).map(q => `"${q}"`).join(', ')}`)
+            } else {
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ���️ All queries filtered out, falling back to local`)
+                return this.getLocalQueryList().slice(0, count)
+            }
+
             return queries
         } catch (error) {
             this.bot.logger.warn(false, 'AI-QUERY', `[AI] ❌ Query generation ERROR: ${errMsg(error)}, falling back to local`)
