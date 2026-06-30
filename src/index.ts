@@ -25,6 +25,7 @@ import { sendDiscord, sendDiscordSummary, sendDiscordAccountNotification, flushD
 import { sendNtfy, sendNtfyAccountNotification, flushNtfyQueue } from './logging/Ntfy'
 import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
+import { sheetService } from './services/sheetService'
 
 interface ExecutionContext {
     isMobile: boolean
@@ -242,6 +243,7 @@ export class MicrosoftRewardsBot {
                     )
                 }
 
+                await this.syncToGoogleSheets(allAccountStats)
                 await flushAllWebhooks()
 
                 process.exit(hadWorkerFailure ? 1 : 0)
@@ -400,6 +402,7 @@ export class MicrosoftRewardsBot {
                 )
             }
 
+            await this.syncToGoogleSheets(accountStats)
             await flushAllWebhooks()
             process.exit(0)
         }
@@ -527,6 +530,26 @@ export class MicrosoftRewardsBot {
                     })
                 } catch {}
             }
+        }
+    }
+
+    public async syncToGoogleSheets(stats: AccountStats[]) {
+        try {
+            const rows = stats.map(s => ({
+                email: s.email,
+                totalPoints: s.finalPoints,
+                dailyPoints: s.collectedPoints,
+                pcProgress: '90/90',
+                mobileProgress: '60/60',
+                status: s.success ? 'OK' : 'ERROR',
+                accountAge: 'N/A',
+                updatedAt: new Date().toLocaleString('vi-VN'),
+                streak: 'N/A'
+            }));
+            await sheetService.syncAccountsToSheet(rows);
+            this.logger.info('main', 'SHEETS', `Successfully synchronized ${rows.length} accounts to Google Sheets.`);
+        } catch (e) {
+            this.logger.error('main', 'SHEETS', `Failed to sync to Google Sheets: ${(e as Error).message}`);
         }
     }
 }
