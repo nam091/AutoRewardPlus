@@ -14,6 +14,7 @@ import { QueryCore } from '../../QueryEngine'
 
 import type { BasePromotion } from '../../../interface/DashboardData'
 import { errMsg } from '../../../util/Utils'
+import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
 
 export class SearchOnBing extends Workers {
     private bingHome = 'https://bing.com'
@@ -124,14 +125,16 @@ export class SearchOnBing extends Workers {
                 const searchBox = page.locator(searchBar)
                 await searchBox.waitFor({ state: 'attached', timeout: 15000 })
 
-                await this.bot.utils.wait(500)
+                await HumanizeEngine.gaussianSleep(600, 200)
                 await this.bot.browser.utils.ghostClick(page, searchBar, { clickCount: 3 })
                 await searchBox.fill('')
 
-                await page.keyboard.type(query, { delay: 50 })
+                await HumanizeEngine.typeHumanlike(page, searchBar, query)
+                await HumanizeEngine.gaussianSleep(300, 100)
                 await page.keyboard.press('Enter')
 
-                await this.bot.utils.wait(this.bot.utils.randomDelay(5000, 7000))
+                await HumanizeEngine.gaussianSleep(6000, 1500)
+                await HumanizeEngine.naturalScroll(page)
 
                 // Check for point updates
                 const newBalance = await this.bot.browser.func.getCurrentPoints()

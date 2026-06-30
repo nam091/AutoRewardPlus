@@ -19,6 +19,7 @@ export interface AccountStatus {
     accountAge: string;
     streak: string;
     updatedAt: string;
+    onlineStatus?: string;
 }
 
 export class DashboardServer {
@@ -46,7 +47,8 @@ export class DashboardServer {
                 status: s.status,
                 accountAge: s.accountAge,
                 streak: s.streak,
-                updatedAt: s.updatedAt
+                updatedAt: s.updatedAt,
+                onlineStatus: s.status === 'RUNNING' ? 'ONLINE' : 'OFFLINE'
             }));
         } catch (e) {
             this.broadcastLog('Error loading accounts: ' + e);
@@ -84,7 +86,11 @@ export class DashboardServer {
                 return { success: false, message: 'Bot đang chạy rồi.' };
             }
             this.broadcastLog('Khởi động tiến trình bot...');
-            this.accounts.forEach(a => a.status = 'RUNNING');
+            this.accounts.forEach(a => {
+                a.status = 'RUNNING';
+                a.onlineStatus = 'ONLINE';
+            });
+            this.syncToSheets();
             
             // Spawn background process
             const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -101,7 +107,10 @@ export class DashboardServer {
             this.workerProcess.on('close', (code) => {
                 this.broadcastLog(`Tiến trình bot kết thúc với mã lỗi: ${code}`);
                 this.workerProcess = null;
-                this.accounts.forEach(a => a.status = code === 0 ? 'OK' : 'ERROR');
+                this.accounts.forEach(a => {
+                    a.status = code === 0 ? 'OK' : 'ERROR';
+                    a.onlineStatus = 'OFFLINE';
+                });
                 this.syncToSheets();
             });
 
@@ -115,7 +124,11 @@ export class DashboardServer {
             this.broadcastLog('Dừng tiến trình bot...');
             this.workerProcess.kill('SIGINT');
             this.workerProcess = null;
-            this.accounts.forEach(a => a.status = 'STOPPED');
+            this.accounts.forEach(a => {
+                a.status = 'STOPPED';
+                a.onlineStatus = 'OFFLINE';
+            });
+            await this.syncToSheets();
             return { success: true, message: 'Đã dừng bot.' };
         });
 
@@ -145,7 +158,8 @@ export class DashboardServer {
             status: a.status,
             accountAge: a.accountAge,
             updatedAt: a.updatedAt,
-            streak: a.streak
+            streak: a.streak,
+            onlineStatus: a.onlineStatus || (this.workerProcess ? 'ONLINE' : 'OFFLINE')
         }));
         await sheetService.syncAccountsToSheet(rows);
     }

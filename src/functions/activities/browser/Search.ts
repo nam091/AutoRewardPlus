@@ -8,6 +8,7 @@ import { QueryCore } from '../../QueryEngine.js'
 
 import { Workers } from '../../Workers.js'
 import { errMsg } from '../../../util/Utils.js'
+import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine.js'
 
 export class Search extends Workers {
     private bingHome = 'https://bing.com'
@@ -295,10 +296,8 @@ export class Search extends Workers {
                 await this.bot.browser.utils.ghostClick(searchPage, searchBar, { clickCount: 3 })
                 await searchBox.fill('')
 
-                // Human-like typing: variable per-character delay instead of fixed 50ms
-                for (const char of query) {
-                    await searchPage.keyboard.type(char, { delay: this.bot.utils.humanTypingDelay() })
-                }
+                // Human-like typing with occasional typos and corrections
+                await HumanizeEngine.typeHumanlike(searchPage, searchBar, query)
 
                 // Brief pause before pressing Enter (humans don't hit enter instantly)
                 await this.bot.utils.wait(this.bot.utils.exponentialDelay(200, 800))
@@ -386,9 +385,7 @@ export class Search extends Workers {
                 `Random scroll | viewportHeight=${viewportHeight} | totalHeight=${totalHeight} | scrollPos=${randomScrollPosition}`
             )
 
-            await page.evaluate((scrollPos: number) => {
-                window.scrollTo({ left: 0, top: scrollPos, behavior: 'auto' })
-            }, randomScrollPosition)
+            await HumanizeEngine.naturalScroll(page)
         } catch (error) {
             this.bot.logger.error(
                 isMobile,

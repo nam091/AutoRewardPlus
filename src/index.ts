@@ -556,7 +556,8 @@ export class MicrosoftRewardsBot {
                 status: s.success ? 'OK' : 'ERROR',
                 accountAge: 'N/A',
                 updatedAt: new Date().toLocaleString('vi-VN'),
-                streak: 'N/A'
+                streak: 'N/A',
+                onlineStatus: s.success ? 'ONLINE' : 'OFFLINE'
             }));
             await sheetService.syncAccountsToSheet(rows);
             this.logger.info('main', 'SHEETS', `Successfully synchronized ${rows.length} accounts to Google Sheets.`);

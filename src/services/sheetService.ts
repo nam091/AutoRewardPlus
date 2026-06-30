@@ -12,6 +12,7 @@ export interface SheetAccountRow {
     accountAge: string;
     updatedAt: string;
     streak?: string;
+    onlineStatus?: string;
 }
 
 export class SheetService {
@@ -54,7 +55,7 @@ export class SheetService {
 
         try {
             const values = [
-                ['Email', 'Điểm', 'Điểm ngày', 'PC', 'Mobile', 'Trạng thái', 'Tuổi acc', 'Cập nhật', 'Chuỗi']
+                ['Email', 'Điểm', 'Điểm ngày', 'PC', 'Mobile', 'Trạng thái', 'Tuổi acc', 'Cập nhật', 'Chuỗi', 'Trạng thái Online']
             ];
 
             for (const row of rows) {
@@ -67,13 +68,14 @@ export class SheetService {
                     row.status || 'OK',
                     row.accountAge || 'N/A',
                     row.updatedAt || new Date().toLocaleString('vi-VN'),
-                    row.streak || '0'
+                    row.streak || '0',
+                    row.onlineStatus || 'OFFLINE'
                 ]);
             }
 
             await this.sheets.spreadsheets.values.update({
                 spreadsheetId: this.spreadsheetId,
-                range: `${this.sheetName}!A1:I${values.length}`,
+                range: `${this.sheetName}!A1:J${values.length}`,
                 valueInputOption: 'USER_ENTERED',
                 requestBody: { values }
             });
@@ -91,15 +93,16 @@ export class SheetService {
         try {
             const res = await this.sheets.spreadsheets.values.get({
                 spreadsheetId: this.spreadsheetId,
-                range: `${this.sheetName}!A2:J`,
+                range: `${this.sheetName}!A2:K`,
             });
 
             const rows = res.data.values || [];
             return rows.map(row => ({
                 email: row[0] || '',
-                password: row[9] || '', // Optional password column
+                password: row[10] || '', // Optional password column (column K)
                 totalPoints: row[1] || 0,
-                status: row[5] || 'UNKNOWN'
+                status: row[5] || 'UNKNOWN',
+                onlineStatus: row[9] || 'OFFLINE'
             }));
         } catch (error) {
             console.error('[SheetService] Error reading sheet:', error);
