@@ -26,6 +26,7 @@ import { sendNtfy, sendNtfyAccountNotification, flushNtfyQueue } from './logging
 import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
 import { sheetService } from './services/sheetService'
+import { stateService } from './services/stateService'
 
 interface ExecutionContext {
     isMobile: boolean
@@ -304,6 +305,7 @@ export class MicrosoftRewardsBot {
                     'ACCOUNT-START',
                     `Starting account: ${accountEmail} | geoLocale: ${account.geoLocale}`
                 )
+                stateService.updateAccountState(accountEmail, { status: 'RUNNING' });
 
                 this.axios = new AxiosClient(account.proxy)
 
@@ -332,6 +334,14 @@ export class MicrosoftRewardsBot {
                         success: true
                     })
 
+                    stateService.updateAccountState(accountEmail, {
+                        status: 'OK',
+                        totalPoints: accountFinalPoints,
+                        dailyPoints: collectedPoints,
+                        pcProgress: '90/90',
+                        mobileProgress: '60/60'
+                    });
+
                     this.logger.info(
                         'main',
                         'ACCOUNT-END',
@@ -349,6 +359,7 @@ export class MicrosoftRewardsBot {
                         success: false,
                         error: 'Flow failed'
                     })
+                    stateService.updateAccountState(accountEmail, { status: 'ERROR' });
                 }
             } catch (error) {
                 const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
@@ -364,6 +375,7 @@ export class MicrosoftRewardsBot {
                     success: false,
                     error: errMsg(error)
                 })
+                stateService.updateAccountState(accountEmail, { status: 'ERROR' });
             }
 
             // Send per-account webhook notification

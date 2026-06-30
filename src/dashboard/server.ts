@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import fs from 'fs';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import { stateService } from '../services/stateService';
 import { sheetService } from '../services/sheetService';
 
 export interface AccountStatus {
@@ -34,21 +35,18 @@ export class DashboardServer {
 
     private loadAccounts() {
         try {
-            const accPath = fs.existsSync(path.resolve('src/accounts.json')) 
-                ? path.resolve('src/accounts.json') 
-                : path.resolve('src/accounts.example.json');
-            const data = JSON.parse(fs.readFileSync(accPath, 'utf-8'));
-            this.accounts = data.map((acc: any, index: number) => ({
+            const states = stateService.getStates();
+            this.accounts = states.map((s, index) => ({
                 id: index + 1,
-                email: acc.email,
-                totalPoints: Math.floor(Math.random() * 5000) + 1000,
-                dailyPoints: 230,
-                pcProgress: '90/90',
-                mobileProgress: '60/60',
-                status: 'IDLE',
-                accountAge: `${Math.floor(Math.random() * 60) + 10}d`,
-                streak: `${Math.floor(Math.random() * 15) + 1}`,
-                updatedAt: new Date().toLocaleString('vi-VN')
+                email: s.email,
+                totalPoints: s.totalPoints,
+                dailyPoints: s.dailyPoints,
+                pcProgress: s.pcProgress,
+                mobileProgress: s.mobileProgress,
+                status: s.status,
+                accountAge: s.accountAge,
+                streak: s.streak,
+                updatedAt: s.updatedAt
             }));
         } catch (e) {
             this.broadcastLog('Error loading accounts: ' + e);
@@ -76,7 +74,10 @@ export class DashboardServer {
             });
         }
 
-        this.app.get('/api/accounts', async () => ({ success: true, data: this.accounts }));
+        this.app.get('/api/accounts', async () => {
+            this.loadAccounts();
+            return { success: true, data: this.accounts };
+        });
 
         this.app.post('/api/start', async () => {
             if (this.workerProcess) {
