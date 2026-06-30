@@ -4,11 +4,10 @@ import { randomBytes } from 'crypto'
 
 import type { Counters, DashboardData } from '../../../interface/DashboardData'
 
-import { QueryCore } from '../../QueryEngine.js'
-
-import { Workers } from '../../Workers.js'
-import { errMsg } from '../../../util/Utils.js'
-import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine.js'
+import { QueryCore } from '../../QueryEngine'
+import { Workers } from '../../Workers'
+import { errMsg } from '../../../util/Utils'
+import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
 
 export class Search extends Workers {
     private bingHome = 'https://bing.com'
