@@ -537,32 +537,37 @@ export class ModernUIWorkers {
                 href: string
             }[] = []
 
-            // Quest cards use href="/earn/quest/..." WITHOUT target="_blank"
-            // They live inside the "Quests" section on /earn
-            const questCards = document.querySelectorAll('a[href*="/earn/quest/"]')
+            // Find quest/mission cards flexibly (any anchor or card element inside Quests or with X/Y tasks)
+            const elements = document.querySelectorAll('a[href], [role="link"], div[class*="Card"], li')
+            const seen = new Set<string>()
 
-            questCards.forEach((card, i) => {
-                const anchor = card as HTMLAnchorElement
-                const fullText = anchor.textContent?.trim() || ''
+            elements.forEach((el, i) => {
+                const fullText = el.textContent?.trim() || ''
 
-                // Already fully completed - has green success badge with bg-statusSuccessRewardsBg class
-                // Completed quest HTML: <div class="... bg-statusSuccessRewardsBg ..."><svg>checkmark</svg><p>100</p></div>
-                if (anchor.querySelector('[class*="bg-statusSuccessRewardsBg"]')) return
+                // Skip if completed badge present
+                if (el.querySelector('[class*="bg-statusSuccessRewardsBg"]') || el.querySelector('[class*="statusSuccess"]')) return
 
-                // Detect mission/quest cards by "X/Y tasks" pattern
-                const taskMatch = fullText.match(/(\d+)\/(\d+)\s+tasks?/i)
+                const taskMatch = fullText.match(/(\d+)\/(\d+)\s+(?:tasks?|nhiệm\s+vụ)/i)
                 if (!taskMatch) return
 
                 const completedTasks = parseInt(taskMatch[1] ?? '0')
                 const totalTasks = parseInt(taskMatch[2] ?? '0')
 
-                // Skip already completed missions
-                if (completedTasks >= totalTasks) return
+                if (completedTasks >= totalTasks || totalTasks === 0) return
 
-                // Extract points from badge: "+50", "+100", etc.
+                const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
+                if (!anchor && el.getAttribute('role') !== 'link') return
+
+                const rawHref = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
+                const href = rawHref.startsWith('http')
+                    ? rawHref
+                    : rawHref
+                    ? `${window.location.origin}${rawHref}`
+                    : ''
+
                 let pointsText = ''
-                anchor.querySelectorAll('span, div, p').forEach(el => {
-                    const text = el.textContent?.trim() || ''
+                el.querySelectorAll('span, div, p').forEach(sub => {
+                    const text = sub.textContent?.trim() || ''
                     if (/^\+\d+$/.test(text)) pointsText = text
                 })
 
@@ -573,25 +578,24 @@ export class ModernUIWorkers {
                     }
                 }
 
-                // Extract title from p.text-globalBody2Strong
-                const titleEl = anchor.querySelector('p[class*="Body2Strong"], p[class*="body2Strong"]')
+                const titleEl = el.querySelector('p[class*="Body2Strong"], p[class*="body2Strong"], h3, h4')
                 const title =
                     titleEl?.textContent?.trim()?.substring(0, 60) ||
                     fullText
-                        .replace(/\d+\/\d+\s+tasks?/i, '')
+                        .replace(/\d+\/\d+\s+(?:tasks?|nhiệm\s+vụ)/i, '')
                         .replace(/\+\d+/, '')
                         .replace(/Expires in.*?$/i, '')
                         .trim()
-                        .substring(0, 60)
+                        .substring(0, 60) ||
+                    `Quest_${i}`
 
-                // Build absolute URL from href (may be relative: /earn/quest/...)
-                const href = anchor.href.startsWith('http')
-                    ? anchor.href
-                    : `${window.location.origin}${anchor.href}`
+                const dedupeKey = href || title
+                if (seen.has(dedupeKey)) return
+                seen.add(dedupeKey)
 
                 result.push({
-                    index: i,
-                    title: title || 'Unknown Quest',
+                    index: result.length,
+                    title,
                     points: pointsText || '+0',
                     totalTasks,
                     completedTasks,
@@ -606,33 +610,27 @@ export class ModernUIWorkers {
     private async completeMission(page: Page, mission: MissionInfo): Promise<void> {
         await this.closeAllExtraTabs(page)
 
-        // Quest cards use href="/earn/quest/..." WITHOUT target="_blank"
-        // They navigate in the same tab
-        const clicked = await page.evaluate((missionHref: string) => {
-            // Try matching by full href first
-            const allLinks = document.querySelectorAll('a[href*="/earn/quest/"]')
-            for (const link of allLinks) {
-                if ((link as HTMLAnchorElement).href === missionHref) {
-                    ;(link as HTMLElement).click()
-                    return true
-                }
-            }
-            // Fallback: match by quest path segment
-            const hrefPath = missionHref.replace(window.location.origin, '')
-            for (const link of allLinks) {
-                const anchor = link as HTMLAnchorElement
-                if (anchor.getAttribute('href') === hrefPath || anchor.href === missionHref) {
-                    ;(link as HTMLElement).click()
-                    return true
+        const clicked = await page.evaluate((m: MissionInfo) => {
+            const elements = document.querySelectorAll('a[href], [role="link"], div[class*="Card"], li')
+            for (const el of elements) {
+                const fullText = el.textContent?.trim() || ''
+                if (/\d+\/\d+\s+(?:tasks?|nhiệm\s+vụ)/i.test(fullText)) {
+                    const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
+                    const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
+                    if ((m.href && href === m.href) || fullText.includes(m.title)) {
+                        const target = (anchor || el) as HTMLElement
+                        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        target.click()
+                        return true
+                    }
                 }
             }
             return false
-        }, mission.href)
+        }, mission)
 
         if (!clicked) {
-            // Fallback: click by index among quest cards
             await page.evaluate((idx: number) => {
-                const cards = document.querySelectorAll('a[href*="/earn/quest/"]')
+                const cards = document.querySelectorAll('a[href*="/earn/quest/"], a[href*="/quest"], [role="link"]')
                 const target = cards[idx] as HTMLElement
                 if (target) target.click()
             }, mission.index)
@@ -640,23 +638,22 @@ export class ModernUIWorkers {
 
         await this.bot.utils.wait(3000)
 
-        // Quest cards navigate in the same tab to /earn/quest/...
-        // Check if a new tab opened (unlikely) or if same-tab navigation occurred
         const latestPage = await this.bot.browser.utils.getLatestTab(page)
 
         if (latestPage !== page) {
-            // Unlikely: opened in new tab
             await latestPage.waitForLoadState('domcontentloaded').catch(() => {})
             await this.bot.utils.wait(3000)
             await this.completeMissionTasks(latestPage, mission.title)
             await this.closeAllExtraTabs(page)
         } else {
-            // Same-tab navigation: URL should now be /earn/quest/...
             await page.waitForLoadState('domcontentloaded').catch(() => {})
             await this.bot.utils.wait(2000)
             const currentUrl = page.url()
+            const hasSubTasks = await page.evaluate(() => {
+                return document.querySelectorAll('a[target="_blank"], a[href*="http"], [role="link"], button').length > 5
+            })
 
-            if (currentUrl.includes('/quest/') || currentUrl.includes('/missions') || currentUrl.includes('/challenges')) {
+            if (currentUrl !== 'https://rewards.bing.com/earn' || currentUrl.includes('/quest') || currentUrl.includes('/mission') || hasSubTasks) {
                 this.bot.logger.info(
                     this.bot.isMobile,
                     'MODERN-MISSIONS',
@@ -665,7 +662,6 @@ export class ModernUIWorkers {
 
                 await this.completeMissionTasks(page, mission.title)
 
-                // Navigate back to /earn
                 await page.goto('https://rewards.bing.com/earn', {
                     waitUntil: 'domcontentloaded',
                     timeout: 30000
@@ -744,84 +740,63 @@ export class ModernUIWorkers {
         return await page.evaluate(() => {
             const result: { index: number; title: string; points: string; completed: boolean }[] = []
 
-            // Quest detail page subtask detection (June 2026):
-            //   Active subtask: <a target="_blank" tabindex="0" href="..."> WITHOUT aria-disabled
-            //   Locked subtask: <span aria-disabled="true" data-disabled="true" role="link"> (NOT an <a> tag)
-            //   Completed: has SVG checkmark + bg-statusSuccessRewardsBg class
-            //   Checkbox indicators:
-            //     Unlocked: <div class="... border-ctrlChoiceBaseStrokeRest"></div> (empty checkbox)
-            //     Locked: <svg>...</svg> (lock icon)
-
-            // Find all <a target="_blank"> elements — locked tasks are <span>, so they won't match
-            const allLinks = document.querySelectorAll('a[target="_blank"]')
+            // Find all potential subtask links or buttons
+            const allLinks = document.querySelectorAll('a[href], button, [role="link"], div[class*="cursor-pointer"]')
             const seen = new Set<string>()
             let logicalIndex = 0
 
             allLinks.forEach((link) => {
-                const anchor = link as HTMLAnchorElement
-                const fullText = anchor.textContent?.trim() || ''
+                const el = link as HTMLElement
+                const fullText = el.textContent?.trim() || ''
 
-                // Must NOT be disabled (element or ancestor)
-                if (anchor.getAttribute('aria-disabled') === 'true') return
-                if (anchor.getAttribute('data-disabled') === 'true') return
-                if (anchor.closest('[aria-disabled="true"], [data-disabled="true"]')) return
+                if (el.getAttribute('aria-disabled') === 'true') return
+                if (el.getAttribute('data-disabled') === 'true') return
+                if (el.closest('[aria-disabled="true"], [data-disabled="true"]')) return
 
-                // Skip completed tasks (text or completed badge in parent row)
-                if (fullText.includes('Completed')) return
-                const parentRow = anchor.closest('div, li, article')
+                if (fullText.includes('Completed') || fullText.includes('Hoàn thành')) return
+                const parentRow = el.closest('div, li, article')
                 if (parentRow?.querySelector('[class*="bg-statusSuccessRewardsBg"]')) return
 
-                // Skip navigation/header/footer links
-                if (anchor.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return
+                if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return
 
-                // Skip internal navigation links (but allow search/external URLs)
-                const href = anchor.href
+                const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
                 if (href.includes('/earn') && !href.includes('form=') && !href.includes('search')) return
                 if (href.includes('/dashboard') && !href.includes('form=')) return
 
-                // Skip very short text (less than 2 chars)
                 if (fullText.length < 2) return
 
-                // Deduplicate by href
-                if (seen.has(href)) return
-                seen.add(href)
+                const dedupeKey = href || fullText.substring(0, 40)
+                if (seen.has(dedupeKey)) return
+                seen.add(dedupeKey)
 
-                // Walk up the DOM to find the parent task container (which holds title + checkbox)
-                let taskContainer: Element | null = anchor.parentElement
+                let taskContainer: Element | null = el.parentElement
                 for (let depth = 0; depth < 6 && taskContainer; depth++) {
                     if (taskContainer.querySelector('h3, h4, p[class*="Body2Strong"]')) break
                     taskContainer = taskContainer.parentElement
                 }
 
-                // Check for empty checkbox indicator (confirms unlocked/active task)
                 const hasEmptyCheckbox = taskContainer
                     ? !!taskContainer.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
                     : false
 
-                // If no empty checkbox and there is a lock icon, this task is locked — skip
                 if (!hasEmptyCheckbox && taskContainer) {
                     const svgs = taskContainer.querySelectorAll('svg')
                     for (const svg of svgs) {
-                        // Lock icons are SVGs without checkmark paths; if we see an SVG
-                        // alongside no empty checkbox, treat as locked
                         const parentHasCheckbox = svg.parentElement?.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
                         if (!parentHasCheckbox && svgs.length > 0) {
-                            // Could be a lock icon — but be conservative, only skip if
-                            // we also don't have tabindex="0" on the anchor (which signals active)
-                            if (anchor.getAttribute('tabindex') !== '0') return
+                            if (el.getAttribute('tabindex') !== '0') return
                             break
                         }
                     }
                 }
 
-                // Extract title from the task container (preferred) or from inside the anchor
                 let title = ''
                 if (taskContainer) {
                     const titleEl = taskContainer.querySelector('h3, h4, p[class*="Body2Strong"], p[class*="body2Strong"]')
                     title = titleEl?.textContent?.trim()?.substring(0, 60) || ''
                 }
                 if (!title) {
-                    const innerEl = anchor.querySelector('span, h3, h4')
+                    const innerEl = el.querySelector('span, h3, h4')
                     title = innerEl?.textContent?.trim()?.substring(0, 60) || fullText.substring(0, 60)
                 }
 
@@ -841,68 +816,58 @@ export class ModernUIWorkers {
     private async clickMissionSubTask(page: Page, task: CardInfo): Promise<void> {
         await this.closeAllExtraTabs(page)
 
-        // Click active task link (must match findMissionSubTasks logic exactly)
         await page.evaluate((taskIndex: number) => {
-            // Find all <a target="_blank"> elements — locked tasks are <span>, so they won't match
-            const allLinks = document.querySelectorAll('a[target="_blank"]')
+            const allLinks = document.querySelectorAll('a[href], button, [role="link"], div[class*="cursor-pointer"]')
             const seen = new Set<string>()
             let logicalIndex = 0
 
             for (const link of allLinks) {
-                const anchor = link as HTMLAnchorElement
-                const fullText = anchor.textContent?.trim() || ''
+                const el = link as HTMLElement
+                const fullText = el.textContent?.trim() || ''
 
-                // Must NOT be disabled (element or ancestor)
-                if (anchor.getAttribute('aria-disabled') === 'true') continue
-                if (anchor.getAttribute('data-disabled') === 'true') continue
-                if (anchor.closest('[aria-disabled="true"], [data-disabled="true"]')) continue
+                if (el.getAttribute('aria-disabled') === 'true') continue
+                if (el.getAttribute('data-disabled') === 'true') continue
+                if (el.closest('[aria-disabled="true"], [data-disabled="true"]')) continue
 
-                // Skip completed tasks (text or completed badge in parent row)
-                if (fullText.includes('Completed')) continue
-                const parentRow = anchor.closest('div, li, article')
+                if (fullText.includes('Completed') || fullText.includes('Hoàn thành')) continue
+                const parentRow = el.closest('div, li, article')
                 if (parentRow?.querySelector('[class*="bg-statusSuccessRewardsBg"]')) continue
 
-                // Skip navigation/header/footer links
-                if (anchor.closest('header, footer, nav, [role="banner"], [role="navigation"]')) continue
+                if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) continue
 
-                // Skip internal navigation links (but allow search/external URLs)
-                const href = anchor.href
+                const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
                 if (href.includes('/earn') && !href.includes('form=') && !href.includes('search')) continue
                 if (href.includes('/dashboard') && !href.includes('form=')) continue
 
-                // Skip very short text (less than 2 chars)
                 if (fullText.length < 2) continue
 
-                // Deduplicate by href
-                if (seen.has(href)) continue
-                seen.add(href)
+                const dedupeKey = href || fullText.substring(0, 40)
+                if (seen.has(dedupeKey)) continue
+                seen.add(dedupeKey)
 
-                // Walk up the DOM to find the parent task container (which holds title + checkbox)
-                let taskContainer: Element | null = anchor.parentElement
+                let taskContainer: Element | null = el.parentElement
                 for (let depth = 0; depth < 6 && taskContainer; depth++) {
                     if (taskContainer.querySelector('h3, h4, p[class*="Body2Strong"]')) break
                     taskContainer = taskContainer.parentElement
                 }
 
-                // Check for empty checkbox indicator (confirms unlocked/active task)
                 const hasEmptyCheckbox = taskContainer
                     ? !!taskContainer.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
                     : false
 
-                // If no empty checkbox and there is a lock icon, this task is locked — skip
                 if (!hasEmptyCheckbox && taskContainer) {
                     const svgs = taskContainer.querySelectorAll('svg')
                     for (const svg of svgs) {
                         const parentHasCheckbox = svg.parentElement?.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
                         if (!parentHasCheckbox && svgs.length > 0) {
-                            if (anchor.getAttribute('tabindex') !== '0') break
+                            if (el.getAttribute('tabindex') !== '0') break
                         }
                     }
                 }
 
                 if (logicalIndex === taskIndex) {
-                    anchor.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    anchor.click()
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    el.click()
                     return
                 }
                 logicalIndex++

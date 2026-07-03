@@ -193,7 +193,16 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Mobile session closed (no mobile search)')
             }
 
-            if (shouldDoDesktop) {
+            const needModernTasks =
+                this.bot.rewardsVersion === 'modern' &&
+                (this.bot.config.workers.doDailySet ||
+                    this.bot.config.workers.doMorePromotions ||
+                    this.bot.config.workers.doMissions ||
+                    this.bot.config.workers.doClaimPoints)
+
+            const runDesktop = shouldDoDesktop || needModernTasks
+
+            if (runDesktop) {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Desktop login start')
                 this.bot.logger.debug(
                     'main',
@@ -209,25 +218,42 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', `Skip desktop login (${reason})`)
             }
 
-            if (shouldDoDesktop && desktopSession) {
-                this.bot.logger.debug(
-                    'main',
-                    'SEARCH-MANAGER',
-                    `Schedule desktop | target=${missingSearchPoints.desktopPoints}`
-                )
-                searchTypes.push('Desktop')
-                promises.push(
-                    this.doDesktopSearch(
-                        data,
-                        missingSearchPoints,
-                        desktopSession,
-                        accountEmail,
-                        executionContext
-                    ).then(points => {
-                        this.bot.logger.info('main', 'SEARCH-MANAGER', `Desktop done | earned=${points}`)
-                        return points
-                    })
-                )
+            if (runDesktop && desktopSession) {
+                if (shouldDoDesktop) {
+                    this.bot.logger.debug(
+                        'main',
+                        'SEARCH-MANAGER',
+                        `Schedule desktop | target=${missingSearchPoints.desktopPoints}`
+                    )
+                    searchTypes.push('Desktop')
+                    promises.push(
+                        this.doDesktopSearch(
+                            data,
+                            missingSearchPoints,
+                            desktopSession,
+                            accountEmail,
+                            executionContext
+                        ).then(points => {
+                            this.bot.logger.info('main', 'SEARCH-MANAGER', `Desktop done | earned=${points}`)
+                            return points
+                        })
+                    )
+                } else {
+                    promises.push(
+                        executionContext.run({ isMobile: false, accountEmail }, async () => {
+                            try {
+                                if (this.bot.rewardsVersion === 'modern') {
+                                    await this.runModernUITasks(data)
+                                }
+                            } finally {
+                                if (desktopSession) {
+                                    await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
+                                }
+                            }
+                            return 0
+                        })
+                    )
+                }
             }
 
             this.bot.logger.info('main', 'SEARCH-MANAGER', `Running parallel: ${searchTypes.join(' + ') || 'none'}`)
@@ -583,13 +609,19 @@ export class SearchManager {
         )
 
         return await executionContext.run({ isMobile: false, accountEmail }, async () => {
-            if (!this.bot.config.workers.doDesktopSearch) {
-                this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', 'Skip: worker disabled in config')
-                return 0
-            }
+            const needModernTasks =
+                this.bot.rewardsVersion === 'modern' &&
+                (this.bot.config.workers.doDailySet ||
+                    this.bot.config.workers.doMorePromotions ||
+                    this.bot.config.workers.doMissions ||
+                    this.bot.config.workers.doClaimPoints)
 
-            if (missingSearchPoints.desktopPoints === 0) {
-                this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', 'Skip: no points left')
+            const shouldSearchDesktop =
+                this.bot.config.workers.doDesktopSearch && missingSearchPoints.desktopPoints > 0
+
+            if (!shouldSearchDesktop && !needModernTasks) {
+                const reason = !this.bot.config.workers.doDesktopSearch ? 'worker disabled' : 'no points left'
+                this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', `Skip: ${reason}`)
                 return 0
             }
 
@@ -598,9 +630,13 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', 'Init desktop session')
                 desktopSession = await this.createDesktopSession(account, accountEmail)
 
-                // Run Modern UI tasks on desktop (Daily Set + Keep Earning)
+                // Run Modern UI tasks on desktop (Daily Set + Keep Earning + Missions)
                 if (this.bot.rewardsVersion === 'modern') {
                     await this.runModernUITasks(data)
+                }
+
+                if (!shouldSearchDesktop) {
+                    return 0
                 }
 
                 this.bot.logger.info(
