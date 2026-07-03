@@ -9,6 +9,7 @@ import type { MicrosoftRewardsBot } from '../index'
 import { loadSessionData, saveFingerprintData } from '../util/Load'
 
 import { UserAgentManager } from './UserAgent'
+import { AntiDetectionEngine } from './humanize/AntiDetectionEngine'
 
 import type { Account, AccountProxy } from '../interface/Account'
 import { errMsg } from '../util/Utils'
@@ -100,6 +101,10 @@ class Browser {
                 })
             })
 
+            // Apply anti-detection patches
+            await AntiDetectionEngine.applyAll(context)
+            this.bot.logger.debug(this.bot.isMobile, 'BROWSER', 'Anti-detection patches applied')
+
             context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))
 
             await context.addCookies(sessionData.cookies)
@@ -117,6 +122,7 @@ class Browser {
                 `Created browser with User-Agent: "${fingerprint.fingerprint.navigator.userAgent}"`
             )
             this.bot.logger.debug(this.bot.isMobile, 'BROWSER-FINGERPRINT', JSON.stringify(fingerprint))
+            this.bot.logger.info(this.bot.isMobile, 'BROWSER', 'Enhanced anti-detection active (canvas, WebGL, audio noise)')
 
             return { context: context as unknown as BrowserContext, fingerprint }
         } catch (error) {

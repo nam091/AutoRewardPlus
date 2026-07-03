@@ -6,8 +6,31 @@ import type { MicrosoftRewardsBot } from '../index'
 import { QueryEngine } from '../interface/Config'
 import { errDetail, errMsg } from '../util/Utils'
 
+interface AiEndpoint {
+    baseUrl: string
+    model: string
+    apiKey: string
+    priority: number
+    lastFailure?: number
+    failureCount: number
+}
+
+interface CachedQueries {
+    queries: string[]
+    timestamp: number
+    langCode: string
+}
+
 export class QueryCore {
-    constructor(private bot: MicrosoftRewardsBot) {}
+    private aiEndpoints: AiEndpoint[] = []
+    private queryCache: CachedQueries | null = null
+    private static readonly CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
+    private static readonly MAX_RETRIES = 3
+    private static readonly RETRY_DELAY_MS = 2000
+
+    constructor(private bot: MicrosoftRewardsBot) {
+        this.initializeAiEndpoints()
+    }
 
     async queryManager(
         options: {
@@ -469,16 +492,96 @@ export class QueryCore {
     }
 
     /**
-     * Default AI API configuration (used when config.json has no ai section)
+     * Initialize AI endpoints with fallback support
      */
-    private readonly defaultAiConfig = {
-        baseUrl: 'https://9router.qwen2api.pp.ua/v1',
-        model: 'reward_bing',
-        apiKey: 'sk-d8d38c4dbe7182c6-5wpch9-c84f2f0a'
+    private initializeAiEndpoints(): void {
+        const config = this.bot.config.ai
+        if (!config) {
+            this.bot.logger.debug(false, 'AI-INIT', 'No AI config found, using defaults')
+            return
+        }
+
+        // Primary endpoint
+        this.aiEndpoints.push({
+            baseUrl: config.baseUrl,
+            model: config.model,
+            apiKey: config.apiKey,
+            priority: 1,
+            failureCount: 0
+        })
+
+        // Fallback providers from config
+        if (config.fallbackProviders) {
+            for (const provider of config.fallbackProviders) {
+                if (provider.enabled && provider.apiKey) {
+                    this.aiEndpoints.push({
+                        baseUrl: provider.baseUrl,
+                        model: provider.model,
+                        apiKey: provider.apiKey,
+                        priority: provider.priority,
+                        failureCount: 0
+                    })
+                }
+            }
+        }
+
+        // Update settings from config
+        if (config.maxRetries) {
+            (this as any).MAX_RETRIES = config.maxRetries
+        }
+        if (config.retryDelayMs) {
+            (this as any).RETRY_DELAY_MS = config.retryDelayMs
+        }
+        if (config.cacheTtlMs) {
+            (this as any).CACHE_TTL_MS = config.cacheTtlMs
+        }
+
+        // Sort by priority
+        this.aiEndpoints.sort((a, b) => a.priority - b.priority)
+
+        this.bot.logger.debug(
+            false,
+            'AI-INIT',
+            `Initialized ${this.aiEndpoints.length} AI endpoint(s): ${this.aiEndpoints.map(e => e.baseUrl).join(', ')}`
+        )
     }
 
-    private get aiConfig() {
-        return this.bot.config.ai ?? this.defaultAiConfig
+    /**
+     * Mark endpoint as failed
+     */
+    private markEndpointFailed(endpoint: AiEndpoint): void {
+        endpoint.lastFailure = Date.now()
+        endpoint.failureCount++
+    }
+
+    /**
+     * Check if cached queries are still valid
+     */
+    private getCachedQueries(langCode: string): string[] | null {
+        if (!this.queryCache) return null
+
+        const now = Date.now()
+        if (now - this.queryCache.timestamp > QueryCore.CACHE_TTL_MS) {
+            this.queryCache = null
+            return null
+        }
+
+        if (this.queryCache.langCode !== langCode) {
+            return null
+        }
+
+        return this.queryCache.queries
+    }
+
+    /**
+     * Cache queries for reuse
+     */
+    private cacheQueries(queries: string[], langCode: string): void {
+        this.queryCache = {
+            queries,
+            timestamp: Date.now(),
+            langCode
+        }
     }
 
     /**
@@ -554,84 +657,122 @@ thay keo tản nhiệt laptop giá bao nhiêu`
 
         this.bot.logger.info(false, 'AI-SESSION', `[AI] Requesting ${sessionCount} search sessions from AI API...`)
 
-        try {
-            const response = await fetch(`${this.aiConfig.baseUrl}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.aiConfig.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: this.aiConfig.model,
-                    messages: [
-                        { role: 'user', content: prompt }
-                    ],
-                    stream: false
-                })
-            })
+        // Try each endpoint with retry logic
+        for (const endpoint of this.aiEndpoints) {
+            for (let retry = 0; retry < QueryCore.MAX_RETRIES; retry++) {
+                try {
+                    const controller = new AbortController()
+                    const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
 
-            if (!response.ok) {
-                this.bot.logger.warn(false, 'AI-SESSION', `[AI] Session generation FAILED: HTTP ${response.status}`)
-                return []
-            }
+                    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${endpoint.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: endpoint.model,
+                            messages: [
+                                { role: 'user', content: prompt }
+                            ],
+                            stream: false
+                        }),
+                        signal: controller.signal
+                    })
 
-            const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
-            const content = data.choices?.[0]?.message?.content || ''
+                    clearTimeout(timeout)
 
-            this.bot.logger.info(false, 'AI-SESSION', `[AI] Raw response length: ${content.length} chars`)
+                    if (!response.ok) {
+                        this.bot.logger.warn(
+                            false,
+                            'AI-SESSION',
+                            `[AI] Endpoint ${endpoint.baseUrl} failed: HTTP ${response.status} (retry ${retry + 1}/${QueryCore.MAX_RETRIES})`
+                        )
+                        if (retry < QueryCore.MAX_RETRIES - 1) {
+                            await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                            continue
+                        }
+                        this.markEndpointFailed(endpoint)
+                        break
+                    }
 
-            // Parse sessions: split by double newline, then each session by single newline
-            const rawSessions = content.split(/\n\s*\n/)
-            const sessions: string[][] = []
+                    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> }
+                    const content = data.choices?.[0]?.message?.content || ''
 
-            for (const rawSession of rawSessions) {
-                const queries = rawSession
-                    .split('\n')
-                    .map((line: string) => line.trim())
-                    .filter((line: string) =>
-                        line.length > 3 &&
-                        line.length < 200 &&
-                        !/^\d+[.)]/.test(line) &&
-                        !/^-/.test(line) &&
-                        !/^\*/.test(line)
+                    this.bot.logger.info(false, 'AI-SESSION', `[AI] Raw response length: ${content.length} chars`)
+
+                    // Parse sessions: split by double newline, then each session by single newline
+                    const rawSessions = content.split(/\n\s*\n/)
+                    const sessions: string[][] = []
+
+                    for (const rawSession of rawSessions) {
+                        const queries = rawSession
+                            .split('\n')
+                            .map((line: string) => line.trim())
+                            .filter((line: string) =>
+                                line.length > 3 &&
+                                line.length < 200 &&
+                                !/^\d+[.)]/.test(line) &&
+                                !/^-/.test(line) &&
+                                !/^\*/.test(line)
+                            )
+
+                        if (queries.length >= 3) {
+                            sessions.push(queries)
+                        }
+                    }
+
+                    if (sessions.length > 0) {
+                        const totalQueries = sessions.reduce((sum, s) => sum + s.length, 0)
+                        this.bot.logger.info(
+                            false,
+                            'AI-SESSION',
+                            `[AI] ✅ Generated ${sessions.length} sessions (${totalQueries} total queries) from ${endpoint.baseUrl}`
+                        )
+                        this.bot.logger.info(
+                            false,
+                            'AI-SESSION',
+                            `[AI] Sample session: ${sessions[0]?.slice(0, 3).map(q => `"${q}"`).join(' → ')}`
+                        )
+                        return sessions
+                    } else {
+                        this.bot.logger.warn(false, 'AI-SESSION', `[AI] ⚠️ No valid sessions parsed from response`)
+                        break // No point retrying if parsing failed
+                    }
+                } catch (error) {
+                    this.bot.logger.warn(
+                        false,
+                        'AI-SESSION',
+                        `[AI] ❌ Endpoint ${endpoint.baseUrl} error (retry ${retry + 1}/${QueryCore.MAX_RETRIES}): ${errMsg(error)}`
                     )
-
-                if (queries.length >= 3) {
-                    sessions.push(queries)
+                    if (retry < QueryCore.MAX_RETRIES - 1) {
+                        await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                    } else {
+                        this.markEndpointFailed(endpoint)
+                    }
                 }
             }
-
-            if (sessions.length > 0) {
-                const totalQueries = sessions.reduce((sum, s) => sum + s.length, 0)
-                this.bot.logger.info(
-                    false,
-                    'AI-SESSION',
-                    `[AI] ✅ Generated ${sessions.length} sessions (${totalQueries} total queries)`
-                )
-                this.bot.logger.info(
-                    false,
-                    'AI-SESSION',
-                    `[AI] Sample session: ${sessions[0]?.slice(0, 3).map(q => `"${q}"`).join(' → ')}`
-                )
-            } else {
-                this.bot.logger.warn(false, 'AI-SESSION', `[AI] ⚠��� No valid sessions parsed from response`)
-            }
-
-            return sessions
-        } catch (error) {
-            this.bot.logger.warn(false, 'AI-SESSION', `[AI] ❌ Session generation ERROR: ${errMsg(error)}`)
-            return []
         }
+
+        this.bot.logger.warn(false, 'AI-SESSION', `[AI] ❌ All AI endpoints failed`)
+        return []
     }
 
     /**
      * Generate search queries using AI API with session-based prompting and hybrid trending sources.
      * Generates natural search sessions instead of flat random queries.
      * Applies diversity enforcement to prevent repetitive patterns.
-     * Falls back to local query list if API fails.
+     * Falls back to cached queries, then trending-enhanced local queries if API fails.
      */
     async generateAIQueries(count: number, langCode: string = 'vi'): Promise<string[]> {
         this.bot.logger.info(false, 'AI-QUERY', `[AI] Requesting ${count} queries via session-based generation...`)
+
+        // Check cache first
+        const cached = this.getCachedQueries(langCode)
+        if (cached && cached.length >= count) {
+            this.bot.logger.info(false, 'AI-QUERY', `[AI] Using ${count} cached queries`)
+            return cached.slice(0, count)
+        }
 
         try {
             // Calculate how many sessions we need (aim for ~8 queries per session)
@@ -639,8 +780,8 @@ thay keo tản nhiệt laptop giá bao nhiêu`
             const sessions = await this.generateAISessionQueries(sessionCount, langCode)
 
             if (sessions.length === 0) {
-                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ No sessions generated, falling back to local`)
-                return this.getLocalQueryList().slice(0, count)
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ No sessions generated, falling back to trending-enhanced local`)
+                return this.getEnhancedLocalQueries(count, langCode)
             }
 
             // Flatten sessions into single array, preserving session order
@@ -664,15 +805,70 @@ thay keo tản nhiệt laptop giá bao nhiêu`
             if (queries.length > 0) {
                 this.bot.logger.info(false, 'AI-QUERY', `[AI] ✅ Generated ${queries.length} queries from ${sessions.length} sessions`)
                 this.bot.logger.info(false, 'AI-QUERY', `[AI] Sample queries: ${queries.slice(0, 3).map(q => `"${q}"`).join(', ')}`)
+
+                // Cache for future use
+                this.cacheQueries(queries, langCode)
             } else {
-                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ���️ All queries filtered out, falling back to local`)
-                return this.getLocalQueryList().slice(0, count)
+                this.bot.logger.warn(false, 'AI-QUERY', `[AI] ⚠️ All queries filtered out, falling back to trending-enhanced local`)
+                return this.getEnhancedLocalQueries(count, langCode)
             }
 
             return queries
         } catch (error) {
-            this.bot.logger.warn(false, 'AI-QUERY', `[AI] ❌ Query generation ERROR: ${errMsg(error)}, falling back to local`)
-            return this.getLocalQueryList().slice(0, count)
+            this.bot.logger.warn(false, 'AI-QUERY', `[AI] ❌ Query generation ERROR: ${errMsg(error)}, falling back to trending-enhanced local`)
+            return this.getEnhancedLocalQueries(count, langCode)
         }
+    }
+
+    /**
+     * Get enhanced local queries combined with trending topics.
+     * This provides better fallback than just local queries alone.
+     */
+    private async getEnhancedLocalQueries(count: number, langCode: string): Promise<string[]> {
+        this.bot.logger.info(false, 'AI-FALLBACK', `Generating enhanced local queries...`)
+
+        // Get trending topics
+        const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
+            this.getGoogleTrends('US').catch(() => []),
+            this.getWikipediaTrending(langCode).catch(() => []),
+            this.getRedditTopics().catch(() => [])
+        ])
+
+        // Get local queries
+        const localQueries = this.getLocalQueryList()
+
+        // Combine trending topics with local queries
+        const trendingQueries = [
+            ...googleTrends.slice(0, 10),
+            ...wikiTrends.slice(0, 10),
+            ...redditTopics.slice(0, 10)
+        ]
+
+        // Mix: 60% local, 40% trending
+        const mixedQueries: string[] = []
+        const localCount = Math.floor(count * 0.6)
+        const trendingCount = count - localCount
+
+        // Add shuffled local queries
+        const shuffledLocal = [...localQueries]
+        this.bot.utils.shuffleArray(shuffledLocal)
+        mixedQueries.push(...shuffledLocal.slice(0, localCount))
+
+        // Add shuffled trending queries
+        const shuffledTrending = [...trendingQueries]
+        this.bot.utils.shuffleArray(shuffledTrending)
+        mixedQueries.push(...shuffledTrending.slice(0, trendingCount))
+
+        // Final shuffle
+        this.bot.utils.shuffleArray(mixedQueries)
+
+        const result = mixedQueries.slice(0, count)
+        this.bot.logger.info(
+            false,
+            'AI-FALLBACK',
+            `Generated ${result.length} enhanced queries (local: ${Math.min(localCount, shuffledLocal.length)}, trending: ${Math.min(trendingCount, shuffledTrending.length)})`
+        )
+
+        return result
     }
 }

@@ -13,12 +13,33 @@ export interface Config {
     consoleLogFilter: LogFilter
     webhook: ConfigWebhook
     ai?: ConfigAI
+    googleSheets?: ConfigGoogleSheets
 }
 
 export interface ConfigAI {
     baseUrl: string
     model: string
     apiKey: string
+    fallbackProviders?: ConfigAIProvider[]
+    maxRetries?: number
+    retryDelayMs?: number
+    cacheTtlMs?: number
+}
+
+export interface ConfigAIProvider {
+    name: string
+    baseUrl: string
+    model: string
+    apiKey: string
+    priority: number
+    enabled: boolean
+}
+
+export interface ConfigGoogleSheets {
+    enabled: boolean
+    spreadsheetId: string
+    sheetName: string
+    keyFilePath: string
 }
 
 export type QueryEngine = 'google' | 'wikipedia' | 'reddit' | 'local'

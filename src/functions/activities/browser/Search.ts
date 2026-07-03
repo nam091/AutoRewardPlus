@@ -291,8 +291,15 @@ export class Search extends Workers {
                 await searchBox.waitFor({ state: 'visible', timeout: 15000 })
 
                 // Human-like pre-typing pause: variable wait before starting to type
-                await this.bot.utils.wait(this.bot.utils.exponentialDelay(500, 2000))
-                await this.bot.browser.utils.ghostClick(searchPage, searchBar, { clickCount: 3 })
+                // Apply time-of-day multiplier for realistic behavior
+                const timeMultiplier = HumanizeEngine.getTimeOfDayMultiplier()
+                await this.bot.utils.wait(this.bot.utils.exponentialDelay(
+                    Math.floor(500 * timeMultiplier),
+                    Math.floor(2000 * timeMultiplier)
+                ))
+
+                // Use human-like click with Bezier movement instead of ghostClick
+                await HumanizeEngine.humanClick(searchPage, searchBar)
                 await searchBox.fill('')
 
                 // Human-like typing with occasional typos and corrections
@@ -311,6 +318,9 @@ export class Search extends Workers {
                 // Variable post-search wait instead of fixed 3000ms
                 await this.bot.utils.wait(this.bot.utils.exponentialDelay(2000, 5000))
 
+                // Simulate reading search results page
+                await this.simulateReadingResults(searchPage, isMobile)
+
                 if (this.bot.config.searchSettings.scrollRandomResults) {
                     await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
                     await this.randomScroll(searchPage, isMobile)
@@ -321,19 +331,20 @@ export class Search extends Workers {
                     await this.clickRandomLink(searchPage, isMobile)
                 }
 
-                // Exponential inter-query delay: mostly short, occasionally long pauses
-                const delayMs = this.bot.utils.exponentialDelay(
+                // Exponential inter-query delay with time-of-day adjustment
+                const baseDelay = this.bot.utils.exponentialDelay(
                     this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.min),
                     this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.max)
                 )
-                await this.bot.utils.wait(delayMs)
+                const adjustedDelay = Math.floor(baseDelay * timeMultiplier)
+                await this.bot.utils.wait(adjustedDelay)
 
                 const counters = await this.bot.browser.func.getSearchPoints()
 
                 this.bot.logger.debug(
                     isMobile,
                     'SEARCH-BING',
-                    `Search counters after query | attempt=${i + 1}/${maxAttempts} | query="${query}" | delayMs=${delayMs}`
+                    `Search counters after query | attempt=${i + 1}/${maxAttempts} | query="${query}" | delayMs=${adjustedDelay}`
                 )
 
                 return counters
@@ -372,6 +383,42 @@ export class Search extends Workers {
         return await this.bot.browser.func.getSearchPoints()
     }
 
+    /**
+     * Simulate reading search results page.
+     * Extracts visible text length and pauses proportionally.
+     */
+    private async simulateReadingResults(page: Page, isMobile: boolean): Promise<void> {
+        try {
+            // Get visible text content length from search results
+            const textLength = await page.evaluate(() => {
+                const results = document.querySelectorAll('#b_results .b_algo')
+                let totalLength = 0
+                results.forEach(r => {
+                    totalLength += (r.textContent?.length ?? 0)
+                })
+                return totalLength
+            })
+
+            // Calculate reading time based on content
+            const readingTime = HumanizeEngine.estimateReadingTime(textLength)
+
+            this.bot.logger.debug(
+                isMobile,
+                'SEARCH-READING',
+                `Simulating reading | textLength=${textLength} | readingTimeMs=${readingTime}`
+            )
+
+            // Only pause if there's substantial content
+            if (readingTime > 1000) {
+                // Don't read the full time - just a portion (humans scan)
+                const partialRead = Math.floor(readingTime * (0.3 + Math.random() * 0.4))
+                await this.bot.utils.wait(partialRead)
+            }
+        } catch {
+            // Silently fail - reading simulation is optional
+        }
+    }
+
     private async randomScroll(page: Page, isMobile: boolean) {
         try {
             const viewportHeight = await page.evaluate(() => window.innerHeight)
@@ -400,7 +447,8 @@ export class Search extends Workers {
 
             const searchPageUrl = page.url()
 
-            await this.bot.browser.utils.ghostClick(page, '#b_results .b_algo h2')
+            // Use human-like click with Bezier mouse movement
+            await HumanizeEngine.humanClick(page, '#b_results .b_algo h2')
             await this.bot.utils.wait(this.bot.config.searchSettings.searchResultVisitTime)
 
             if (isMobile) {

@@ -1,5 +1,6 @@
 [
     {
+        "_pwMigrated": true,
         "email": "email_1",
         "password": "password_1",
         "totpSecret": "",
@@ -19,6 +20,7 @@
         }
     },
     {
+        "_pwMigrated": true,
         "email": "email_2",
         "password": "password_2",
         "totpSecret": "",

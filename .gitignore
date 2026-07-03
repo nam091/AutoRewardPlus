@@ -12,6 +12,6 @@ accounts.main.json
 .DS_Store
 .playwright-chromium-installed
 bun.lock
-logs/
-.stfolder/
 .env
+erudite-realm-*.json
+service-account.json
