@@ -200,7 +200,7 @@ export class HumanizeEngine {
                  // Fat-finger error: ~5% chance of hitting adjacent key
                 if (Math.random() < 0.05 && i > 0) {
                     const adjacentKey = this.getAdjacentKey(char)
-                    if (adjacentKey) {
+                    if (adjacentKey && adjacentKey.charCodeAt(0) < 128) {
                         await page.keyboard.down(adjacentKey)
                         await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(45, 15)))
                         await page.keyboard.up(adjacentKey)
@@ -215,9 +215,14 @@ export class HumanizeEngine {
                     await this.gaussianSleep(60, 20)
                 }
 
-                await page.keyboard.down(char)
-                await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(45, 15)))
-                await page.keyboard.up(char)
+                const isStandardKey = char.charCodeAt(0) < 128
+                if (isStandardKey) {
+                    await page.keyboard.down(char)
+                    await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(45, 15)))
+                    await page.keyboard.up(char)
+                } else {
+                    await page.keyboard.type(char)
+                }
 
                 // Variable typing speed with Gaussian distribution
                 const jitter = this.gaussianRandom(0, 15)
