@@ -537,17 +537,39 @@ export class ModernUIWorkers {
                 href: string
             }[] = []
 
-            // Find quest/mission cards flexibly (any anchor or card element inside Quests or with X/Y tasks)
-            const elements = document.querySelectorAll('a[href], [role="link"], div[class*="Card"], li')
+            // Find all elements containing the task pattern (X/Y tasks/nhiệm vụ)
+            const allElements = Array.from(document.querySelectorAll('*'))
+            const taskElements = allElements.filter(el => {
+                const childNodes = Array.from(el.childNodes)
+                return childNodes.some(node => 
+                    node.nodeType === 3 && // Node.TEXT_NODE
+                    /(\d+)\/(\d+)\s*(?:tasks?|nhiệm\s*vụ|nv)/i.test(node.textContent || '')
+                )
+            })
+
             const seen = new Set<string>()
 
-            elements.forEach((el, i) => {
+            taskElements.forEach((taskEl, i) => {
+                const el = taskEl as HTMLElement
                 const fullText = el.textContent?.trim() || ''
 
-                // Skip if completed badge present
-                if (el.querySelector('[class*="bg-statusSuccessRewardsBg"]') || el.querySelector('[class*="statusSuccess"]')) return
+                // Skip if completed badge present in parent elements
+                let temp: HTMLElement | null = el
+                let isCompleted = false
+                while (temp && temp.tagName !== 'BODY') {
+                    if (
+                        temp.querySelector('[class*="bg-statusSuccessRewardsBg"]') || 
+                        temp.querySelector('[class*="statusSuccess"]') || 
+                        temp.className.toLowerCase().includes('success')
+                    ) {
+                        isCompleted = true
+                        break
+                    }
+                    temp = temp.parentElement
+                }
+                if (isCompleted) return
 
-                const taskMatch = fullText.match(/(\d+)\/(\d+)\s+(?:tasks?|nhiệm\s+vụ)/i)
+                const taskMatch = fullText.match(/(\d+)\/(\d+)\s*(?:tasks?|nhiệm\s*vụ|nv)/i)
                 if (!taskMatch) return
 
                 const completedTasks = parseInt(taskMatch[1] ?? '0')
@@ -555,10 +577,24 @@ export class ModernUIWorkers {
 
                 if (completedTasks >= totalTasks || totalTasks === 0) return
 
-                const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
-                if (!anchor && el.getAttribute('role') !== 'link') return
+                // Traverse up to find the container card/link
+                let card: HTMLElement | null = el
+                while (card && card.tagName !== 'BODY') {
+                    if (
+                        card.tagName === 'A' || 
+                        card.getAttribute('role') === 'link' || 
+                        card.tagName === 'LI' ||
+                        card.className.toLowerCase().includes('card') ||
+                        card.className.toLowerCase().includes('item')
+                    ) {
+                        break
+                    }
+                    card = card.parentElement
+                }
+                if (!card) card = el.parentElement || el
 
-                const rawHref = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
+                const anchor = card.tagName === 'A' ? (card as HTMLAnchorElement) : card.querySelector('a[href]')
+                const rawHref = anchor ? (anchor as HTMLAnchorElement).href : card.getAttribute('href') || ''
                 const href = rawHref.startsWith('http')
                     ? rawHref
                     : rawHref
@@ -566,23 +602,24 @@ export class ModernUIWorkers {
                     : ''
 
                 let pointsText = ''
-                el.querySelectorAll('span, div, p').forEach(sub => {
+                card.querySelectorAll('span, div, p').forEach(sub => {
                     const text = sub.textContent?.trim() || ''
                     if (/^\+\d+$/.test(text)) pointsText = text
                 })
 
                 if (!pointsText) {
-                    const match = fullText.match(/(\d+)\s+points?\b/i)
+                    const cardText = card.textContent || ''
+                    const match = cardText.match(/(\d+)\s+points?\b/i)
                     if (match && match[1] && parseInt(match[1]) > 0) {
                         pointsText = `+${match[1]}`
                     }
                 }
 
-                const titleEl = el.querySelector('p[class*="Body2Strong"], p[class*="body2Strong"], h3, h4')
+                const titleEl = card.querySelector('p[class*="Body2Strong"], p[class*="body2Strong"], h3, h4')
                 const title =
                     titleEl?.textContent?.trim()?.substring(0, 60) ||
-                    fullText
-                        .replace(/\d+\/\d+\s+(?:tasks?|nhiệm\s+vụ)/i, '')
+                    card.textContent
+                        ?.replace(/\d+\/\d+\s*(?:tasks?|nhiệm\s*vụ|nv)/i, '')
                         .replace(/\+\d+/, '')
                         .replace(/Expires in.*?$/i, '')
                         .trim()
@@ -614,7 +651,7 @@ export class ModernUIWorkers {
             const elements = document.querySelectorAll('a[href], [role="link"], div[class*="Card"], li')
             for (const el of elements) {
                 const fullText = el.textContent?.trim() || ''
-                if (/\d+\/\d+\s+(?:tasks?|nhiệm\s+vụ)/i.test(fullText)) {
+                if (/\d+\/\d+\s*(?:tasks?|nhiệm\s*vụ|nv)/i.test(fullText)) {
                     const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
                     const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
                     if ((m.href && href === m.href) || fullText.includes(m.title)) {
@@ -649,11 +686,10 @@ export class ModernUIWorkers {
             await page.waitForLoadState('domcontentloaded').catch(() => {})
             await this.bot.utils.wait(2000)
             const currentUrl = page.url()
-            const hasSubTasks = await page.evaluate(() => {
-                return document.querySelectorAll('a[target="_blank"], a[href*="http"], [role="link"], button').length > 5
-            })
+            const hasNavigated = !currentUrl.endsWith('/earn') && !currentUrl.endsWith('/earn/')
+            const isQuestPage = currentUrl.includes('/quest') || currentUrl.includes('/mission') || currentUrl.includes('/challenge')
 
-            if (currentUrl !== 'https://rewards.bing.com/earn' || currentUrl.includes('/quest') || currentUrl.includes('/mission') || hasSubTasks) {
+            if (hasNavigated || isQuestPage) {
                 this.bot.logger.info(
                     this.bot.isMobile,
                     'MODERN-MISSIONS',
@@ -760,8 +796,12 @@ export class ModernUIWorkers {
                 if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return
 
                 const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
-                if (href.includes('/earn') && !href.includes('form=') && !href.includes('search')) return
-                if (href.includes('/dashboard') && !href.includes('form=')) return
+                if (href) {
+                    try {
+                        const path = new URL(href, window.location.origin).pathname
+                        if (path === '/earn' || path === '/earn/' || path === '/dashboard' || path === '/dashboard/') return
+                    } catch {}
+                }
 
                 if (fullText.length < 2) return
 
@@ -775,20 +815,7 @@ export class ModernUIWorkers {
                     taskContainer = taskContainer.parentElement
                 }
 
-                const hasEmptyCheckbox = taskContainer
-                    ? !!taskContainer.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
-                    : false
 
-                if (!hasEmptyCheckbox && taskContainer) {
-                    const svgs = taskContainer.querySelectorAll('svg')
-                    for (const svg of svgs) {
-                        const parentHasCheckbox = svg.parentElement?.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
-                        if (!parentHasCheckbox && svgs.length > 0) {
-                            if (el.getAttribute('tabindex') !== '0') return
-                            break
-                        }
-                    }
-                }
 
                 let title = ''
                 if (taskContainer) {
@@ -836,8 +863,12 @@ export class ModernUIWorkers {
                 if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) continue
 
                 const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
-                if (href.includes('/earn') && !href.includes('form=') && !href.includes('search')) continue
-                if (href.includes('/dashboard') && !href.includes('form=')) continue
+                if (href) {
+                    try {
+                        const path = new URL(href, window.location.origin).pathname
+                        if (path === '/earn' || path === '/earn/' || path === '/dashboard' || path === '/dashboard/') continue
+                    } catch {}
+                }
 
                 if (fullText.length < 2) continue
 
@@ -851,19 +882,7 @@ export class ModernUIWorkers {
                     taskContainer = taskContainer.parentElement
                 }
 
-                const hasEmptyCheckbox = taskContainer
-                    ? !!taskContainer.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
-                    : false
 
-                if (!hasEmptyCheckbox && taskContainer) {
-                    const svgs = taskContainer.querySelectorAll('svg')
-                    for (const svg of svgs) {
-                        const parentHasCheckbox = svg.parentElement?.querySelector('div[class*="border-ctrlChoiceBaseStrokeRest"]')
-                        if (!parentHasCheckbox && svgs.length > 0) {
-                            if (el.getAttribute('tabindex') !== '0') break
-                        }
-                    }
-                }
 
                 if (logicalIndex === taskIndex) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
