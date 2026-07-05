@@ -45,6 +45,14 @@ export class HumanizeEngine {
         const start = await page.evaluate(() => ({ x: (window as any).__lastMouseX ?? 0, y: (window as any).__lastMouseY ?? 0 }))
         const end: Point = { x: targetX, y: targetY }
 
+        // Skip movement if very close (within 5px)
+        const dx = end.x - start.x
+        const dy = end.y - start.y
+        if (Math.sqrt(dx * dx + dy * dy) < 5) {
+            await page.mouse.move(end.x, end.y)
+            return
+        }
+
         // Generate natural control points with some randomness
         const curve = this.generateBezierCurve(start, end)
         const steps = this.gaussianRandom(25, 8)
@@ -55,9 +63,9 @@ export class HumanizeEngine {
             const easedT = this.easeInOutCubic(t)
             const point = this.evaluateBezier(curve, easedT)
 
-            // Add micro-jitter (hand tremor)
-            const jitterX = (Math.random() - 0.5) * 2
-            const jitterY = (Math.random() - 0.5) * 2
+            // Add micro-jitter (hand tremor) - gaussian for more natural tremor
+            const jitterX = this.gaussianRandom(0, 0.5)
+            const jitterY = this.gaussianRandom(0, 0.5)
 
             await page.mouse.move(point.x + jitterX, point.y + jitterY)
 
@@ -156,6 +164,94 @@ export class HumanizeEngine {
 
         // Post-click micro-pause
         await this.gaussianSleep(50, 20)
+    }
+
+    /**
+     * Human-like double-click with natural timing between clicks.
+     */
+    public static async humanDoubleClick(page: Page, selector: string): Promise<void> {
+        const element = await page.$(selector)
+        if (!element) return
+
+        const box = await element.boundingBox()
+        if (!box) return
+
+        // Click target: random point within element
+        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
+        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+
+        // Move mouse naturally to target
+        await this.moveMouseBezier(page, targetX, targetY)
+
+        // Hover pause
+        await this.gaussianSleep(100, 40)
+
+        // First click
+        await page.mouse.down()
+        await this.gaussianSleep(70, 20)
+        await page.mouse.up()
+
+        // Inter-click interval (humans double-click with 50-150ms between clicks)
+        await this.gaussianSleep(100, 30)
+
+        // Second click
+        await page.mouse.down()
+        await this.gaussianSleep(70, 20)
+        await page.mouse.up()
+
+        // Post-click pause
+        await this.gaussianSleep(80, 30)
+    }
+
+    /**
+     * Human-like right-click (context menu).
+     */
+    public static async humanRightClick(page: Page, selector: string): Promise<void> {
+        const element = await page.$(selector)
+        if (!element) return
+
+        const box = await element.boundingBox()
+        if (!box) return
+
+        // Click target: random point within element
+        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
+        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+
+        // Move mouse naturally to target
+        await this.moveMouseBezier(page, targetX, targetY)
+
+        // Hover pause
+        await this.gaussianSleep(200, 80)
+
+        // Right-click with variable press duration
+        await page.mouse.down({ button: 'right' })
+        await this.gaussianSleep(90, 30)
+        await page.mouse.up({ button: 'right' })
+
+        // Post-click pause
+        await this.gaussianSleep(100, 40)
+    }
+
+    /**
+     * Human-like hover with natural mouse movement.
+     */
+    public static async humanHover(page: Page, selector: string, durationMs?: number): Promise<void> {
+        const element = await page.$(selector)
+        if (!element) return
+
+        const box = await element.boundingBox()
+        if (!box) return
+
+        // Hover target: random point within element
+        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
+        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+
+        // Move mouse naturally to target
+        await this.moveMouseBezier(page, targetX, targetY)
+
+        // Hover for specified duration or random
+        const hoverTime = durationMs ?? this.gaussianRandom(500, 200)
+        await this.gaussianSleep(hoverTime, hoverTime * 0.2)
     }
 
     // ─── Typing Patterns ──────────────────────────────────────────────
@@ -281,6 +377,7 @@ export class HumanizeEngine {
      * - Reading (slow scroll with pauses)
      * - Backtracking (occasional scroll up to re-read)
      * - Fixation pauses (stopping to read content)
+     * - Momentum scrolling (acceleration/deceleration)
      */
     public static async naturalScroll(page: Page): Promise<void> {
         const viewportHeight = await page.evaluate(() => window.innerHeight)
@@ -301,7 +398,9 @@ export class HumanizeEngine {
                 for (let r = 0; r < readSteps; r++) {
                     const deltaY = this.gaussianRandom(120, 40)
                     currentScroll = Math.min(currentScroll + deltaY, scrollableHeight)
-                    await page.mouse.wheel(0, deltaY)
+
+                    // Momentum scroll: split into smaller increments with acceleration
+                    await this.momentumScroll(page, deltaY)
 
                     // Fixation pause (simulates reading time)
                     const fixationTime = this.gaussianRandom(800, 300)
@@ -319,9 +418,31 @@ export class HumanizeEngine {
                 // Scanning mode: faster, larger scrolls
                 const deltaY = this.gaussianRandom(350, 100)
                 currentScroll = Math.min(currentScroll + deltaY, scrollableHeight)
-                await page.mouse.wheel(0, deltaY)
+
+                // Momentum scroll for scanning too
+                await this.momentumScroll(page, deltaY)
+
                 await this.gaussianSleep(400, 150)
             }
+        }
+    }
+
+    /**
+     * Momentum scroll with acceleration and deceleration.
+     * Simulates finger flick on trackpad/touchscreen.
+     */
+    private static async momentumScroll(page: Page, totalDeltaY: number): Promise<void> {
+        const steps = Math.max(3, Math.floor(Math.abs(totalDeltaY) / 50))
+        const direction = totalDeltaY > 0 ? 1 : -1
+
+        for (let i = 0; i < steps; i++) {
+            const t = i / (steps - 1)
+            // Ease-out: fast start, slow end
+            const easedT = 1 - Math.pow(1 - t, 2)
+            const deltaY = Math.round(totalDeltaY / steps * (1 + easedT * 0.5))
+
+            await page.mouse.wheel(0, deltaY * direction)
+            await new Promise(resolve => setTimeout(resolve, 5 + Math.random() * 10))
         }
     }
 
@@ -358,9 +479,9 @@ export class HumanizeEngine {
     public static getTimeOfDayMultiplier(): number {
         const hour = new Date().getHours()
 
-        if (hour >= 9 && hour <= 23) return 1.0      // Normal hours
-        if (hour >= 23 || hour < 1) return 1.3       // Late night
-        if (hour >= 1 && hour < 5) return 2.0        // Quiet hours
+        if (hour >= 9 && hour < 23) return 1.0      // Normal hours (9am-11pm)
+        if (hour >= 23 || hour < 1) return 1.3       // Late night (11pm-1am)
+        if (hour >= 1 && hour < 5) return 2.0        // Quiet hours (1am-5am)
         return 1.2                                    // Early morning (5-9am)
     }
 
