@@ -95,6 +95,7 @@ export class MicrosoftRewardsBot {
     public requestToken = ''
     public cookies: { mobile: Cookie[]; desktop: Cookie[] }
     public fingerprint!: BrowserFingerprintWithHeaders
+    public mobileFingerprint?: BrowserFingerprintWithHeaders
     public desktopFingerprint?: BrowserFingerprintWithHeaders
 
     private pointsCanCollect = 0
@@ -512,6 +513,7 @@ export class MicrosoftRewardsBot {
                 }
 
                 this.cookies.mobile = await initialContext.cookies()
+                this.mobileFingerprint = mobileSession.fingerprint
                 this.fingerprint = mobileSession.fingerprint
 
                 // Detect UI version
@@ -684,5 +686,12 @@ const isDirectRun =
     typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module
 
 if (isDirectRun) {
-    void main()
+    main().catch(async error => {
+        try {
+            const tmpBot = new MicrosoftRewardsBot()
+            tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
+        } catch {}
+        await flushAllWebhooks()
+        process.exit(1)
+    })
 }

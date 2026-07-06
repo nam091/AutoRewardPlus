@@ -28,6 +28,31 @@ interface SearchResults {
 export class SearchManager {
     constructor(private bot: MicrosoftRewardsBot) {}
 
+    private needsModernTasks(): boolean {
+        return (
+            this.bot.rewardsVersion === 'modern' &&
+            (this.bot.config.workers.doDailySet ||
+                this.bot.config.workers.doMorePromotions ||
+                this.bot.config.workers.doMissions ||
+                this.bot.config.workers.doClaimPoints)
+        )
+    }
+
+    private needsDesktopSession(shouldDoDesktop: boolean): boolean {
+        return shouldDoDesktop || this.bot.config.workers.doStarSearch || this.needsModernTasks()
+    }
+
+    private async runWithDesktopFingerprint<T>(session: BrowserSession, fn: () => Promise<T>): Promise<T> {
+        const savedFingerprint = this.bot.fingerprint
+        this.bot.desktopFingerprint = session.fingerprint
+        this.bot.fingerprint = session.fingerprint
+        try {
+            return await fn()
+        } finally {
+            this.bot.fingerprint = this.bot.mobileFingerprint ?? savedFingerprint
+        }
+    }
+
     async doSearches(
         data: DashboardData,
         missingSearchPoints: MissingSearchPoints,
@@ -93,17 +118,26 @@ export class SearchManager {
                 }
             }
 
-            // Even if no searches, run Modern UI tasks on desktop
-            if (this.bot.rewardsVersion === 'modern') {
-                this.bot.logger.info('main', 'SEARCH-MANAGER', 'Creating desktop session for: Modern UI tasks')
+            const shouldDoStar = this.bot.config.workers.doStarSearch
+            const needModernTasks = this.needsModernTasks()
+            if (this.needsDesktopSession(false)) {
+                this.bot.logger.info(
+                    'main',
+                    'SEARCH-MANAGER',
+                    `Creating desktop session | star=${shouldDoStar} | modern=${needModernTasks}`
+                )
                 try {
                     const desktopSession = await executionContext.run({ isMobile: false, account }, async () =>
                         this.createDesktopSession(account, accountEmail)
                     )
                     await executionContext.run({ isMobile: false, account }, async () => {
-                        const freshData = await this.bot.browser.func.getDashboardData()
-                        await this.runModernUITasks(freshData)
-                        await this.runStarSearchIfEnabled(account, accountEmail)
+                        await this.runWithDesktopFingerprint(desktopSession, async () => {
+                            if (needModernTasks) {
+                                const freshData = await this.bot.browser.func.getDashboardData()
+                                await this.runModernUITasks(freshData)
+                            }
+                            await this.runStarSearchIfEnabled(account, accountEmail)
+                        })
                         await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
                     })
                 } catch (error) {
@@ -157,10 +191,13 @@ export class SearchManager {
         const shouldDoMobile = this.bot.config.workers.doMobileSearch && missingSearchPoints.mobilePoints > 0
         const shouldDoDesktop = this.bot.config.workers.doDesktopSearch && missingSearchPoints.desktopPoints > 0
 
+        const shouldDoStar = this.bot.config.workers.doStarSearch
+        const needModernTasks = this.needsModernTasks()
+
         this.bot.logger.debug(
             'main',
             'SEARCH-MANAGER',
-            `Parallel flags | mobile=${shouldDoMobile} | desktop=${shouldDoDesktop}`
+            `Parallel flags | mobile=${shouldDoMobile} | desktop=${shouldDoDesktop} | star=${shouldDoStar} | modern=${needModernTasks}`
         )
 
         let desktopSession: BrowserSession | null = null
@@ -194,14 +231,7 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Mobile session closed (no mobile search)')
             }
 
-            const needModernTasks =
-                this.bot.rewardsVersion === 'modern' &&
-                (this.bot.config.workers.doDailySet ||
-                    this.bot.config.workers.doMorePromotions ||
-                    this.bot.config.workers.doMissions ||
-                    this.bot.config.workers.doClaimPoints)
-
-            const runDesktop = shouldDoDesktop || needModernTasks
+            const runDesktop = this.needsDesktopSession(shouldDoDesktop)
 
             if (runDesktop) {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Desktop login start')
@@ -215,8 +245,11 @@ export class SearchManager {
                 )
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Desktop login done')
             } else {
-                const reason = !this.bot.config.workers.doDesktopSearch ? 'disabled' : 'no-points'
-                this.bot.logger.info('main', 'SEARCH-MANAGER', `Skip desktop login (${reason})`)
+                this.bot.logger.info(
+                    'main',
+                    'SEARCH-MANAGER',
+                    `Skip desktop login (search=${shouldDoDesktop}, star=${shouldDoStar}, modern=${needModernTasks})`
+                )
             }
 
             if (runDesktop && desktopSession) {
@@ -244,16 +277,18 @@ export class SearchManager {
                     promises.push(
                         executionContext.run({ isMobile: false, accountEmail }, async () => {
                             try {
-                                if (this.bot.rewardsVersion === 'modern') {
-                                    await this.runModernUITasks(data)
-                                }
-                                await this.runStarSearchIfEnabled(account, accountEmail)
+                                return await this.runWithDesktopFingerprint(desktopSession!, async () => {
+                                    if (needModernTasks) {
+                                        await this.runModernUITasks(data)
+                                    }
+                                    await this.runStarSearchIfEnabled(account, accountEmail)
+                                    return 0
+                                })
                             } finally {
                                 if (desktopSession) {
                                     await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
                                 }
                             }
-                            return 0
                         })
                     )
                 }
@@ -324,13 +359,8 @@ export class SearchManager {
         const shouldDoMobile = this.bot.config.workers.doMobileSearch && missingSearchPoints.mobilePoints > 0
         const shouldDoDesktop = this.bot.config.workers.doDesktopSearch && missingSearchPoints.desktopPoints > 0
         const shouldDoStar = this.bot.config.workers.doStarSearch
-        const needModernTasks =
-            this.bot.rewardsVersion === 'modern' &&
-            (this.bot.config.workers.doDailySet ||
-                this.bot.config.workers.doMorePromotions ||
-                this.bot.config.workers.doMissions ||
-                this.bot.config.workers.doClaimPoints)
-        const needDesktopSession = shouldDoDesktop || shouldDoStar || needModernTasks
+        const needModernTasks = this.needsModernTasks()
+        const needDesktopSession = this.needsDesktopSession(shouldDoDesktop)
 
         this.bot.logger.debug(
             'main',
@@ -414,39 +444,44 @@ export class SearchManager {
 
         const session = await this.bot['browserFactory'].createBrowser(account)
         this.bot.desktopFingerprint = session.fingerprint
-        this.bot.fingerprint = session.fingerprint
         this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Browser created, new page')
 
-        this.bot.mainDesktopPage = await session.context.newPage()
+        return await this.runWithDesktopFingerprint(session, async () => {
+            this.bot.mainDesktopPage = await session.context.newPage()
 
-        this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', `Browser ready | account=${accountEmail}`)
+            this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', `Browser ready | account=${accountEmail}`)
 
-        await this.bot.mainDesktopPage.goto('https://www.bing.com', { waitUntil: 'domcontentloaded' }).catch(() => {})
-        await this.bot.utils.wait(2000)
+            await this.bot.mainDesktopPage.goto('https://www.bing.com', { waitUntil: 'domcontentloaded' }).catch(() => {})
+            await this.bot.utils.wait(2000)
 
-        const profileVisible = await this.bot.mainDesktopPage
-            .locator('#id_n')
-            .isVisible()
-            .catch(() => false)
+            const profileVisible = await this.bot.mainDesktopPage
+                .locator('#id_n')
+                .isVisible()
+                .catch(() => false)
 
-        if (profileVisible) {
-            this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Desktop session reused from saved cookies, skipping login')
-        } else {
-            this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Login start')
-            this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Calling login handler')
-            await this.bot['login'].login(this.bot.mainDesktopPage, account)
-        }
+            if (profileVisible) {
+                this.bot.logger.info(
+                    'main',
+                    'SEARCH-DESKTOP-LOGIN',
+                    'Desktop session reused from saved cookies, skipping login'
+                )
+            } else {
+                this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Login start')
+                this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Calling login handler')
+                await this.bot['login'].login(this.bot.mainDesktopPage, account)
+            }
 
-        this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Login passed, verifying')
-        this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'verifyBingSession')
+            this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Login passed, verifying')
+            this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'verifyBingSession')
 
-        await this.bot['login'].verifyBingSession(this.bot.mainDesktopPage)
-        this.bot.cookies.desktop = await session.context.cookies()
+            await this.bot['login'].verifyBingSession(this.bot.mainDesktopPage)
+            this.bot.cookies.desktop = await session.context.cookies()
 
-        this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Cookies stored')
-        this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Desktop session ready')
+            this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Cookies stored')
+            this.bot.logger.info('main', 'SEARCH-DESKTOP-LOGIN', 'Desktop session ready')
 
-        return session
+            return session
+        })
     }
 
     private async runStarSearchIfEnabled(account: Account, accountEmail: string): Promise<void> {
@@ -587,32 +622,33 @@ export class SearchManager {
 
         return await executionContext.run({ isMobile: false, accountEmail }, async () => {
             try {
-                // Run Modern UI tasks on desktop (Daily Set + Keep Earning)
-                if (this.bot.rewardsVersion === 'modern') {
-                    await this.runModernUITasks(data)
-                }
+                return await this.runWithDesktopFingerprint(desktopSession, async () => {
+                    if (this.needsModernTasks()) {
+                        await this.runModernUITasks(data)
+                    }
 
-                this.bot.logger.info(
-                    'main',
-                    'SEARCH-DESKTOP-PARALLEL',
-                    `Search start | target=${missingSearchPoints.desktopPoints}`
-                )
-                const pointsEarned = await this.bot.activities.doSearch(data, this.bot.mainDesktopPage, false)
+                    this.bot.logger.info(
+                        'main',
+                        'SEARCH-DESKTOP-PARALLEL',
+                        `Search start | target=${missingSearchPoints.desktopPoints}`
+                    )
+                    const pointsEarned = await this.bot.activities.doSearch(data, this.bot.mainDesktopPage, false)
 
-                await this.runStarSearchIfEnabled(account, accountEmail)
+                    await this.runStarSearchIfEnabled(account, accountEmail)
 
-                this.bot.logger.info(
-                    'main',
-                    'SEARCH-DESKTOP-PARALLEL',
-                    `Search done | earned=${pointsEarned}/${missingSearchPoints.desktopPoints}`
-                )
-                this.bot.logger.debug(
-                    'main',
-                    'SEARCH-DESKTOP-PARALLEL',
-                    `Result | account=${accountEmail} | earned=${pointsEarned}`
-                )
+                    this.bot.logger.info(
+                        'main',
+                        'SEARCH-DESKTOP-PARALLEL',
+                        `Search done | earned=${pointsEarned}/${missingSearchPoints.desktopPoints}`
+                    )
+                    this.bot.logger.debug(
+                        'main',
+                        'SEARCH-DESKTOP-PARALLEL',
+                        `Result | account=${accountEmail} | earned=${pointsEarned}`
+                    )
 
-                return pointsEarned
+                    return pointsEarned
+                })
             } catch (error) {
                 this.bot.logger.error('main', 'SEARCH-DESKTOP-PARALLEL', `Failed: ${errMsg(error)}`)
                 if (error instanceof Error && error.stack) {
@@ -670,37 +706,38 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', 'Init desktop session')
                 desktopSession = await this.createDesktopSession(account, accountEmail)
 
-                // Run Modern UI tasks on desktop (Daily Set + Keep Earning + Missions)
-                if (this.bot.rewardsVersion === 'modern') {
-                    await this.runModernUITasks(data)
-                }
+                return await this.runWithDesktopFingerprint(desktopSession, async () => {
+                    if (this.needsModernTasks()) {
+                        await this.runModernUITasks(data)
+                    }
 
-                let pointsEarned = 0
+                    let pointsEarned = 0
 
-                if (shouldSearchDesktop) {
-                    this.bot.logger.info(
-                        'main',
-                        'SEARCH-DESKTOP-SEQUENTIAL',
-                        `Search start | target=${missingSearchPoints.desktopPoints}`
-                    )
+                    if (shouldSearchDesktop) {
+                        this.bot.logger.info(
+                            'main',
+                            'SEARCH-DESKTOP-SEQUENTIAL',
+                            `Search start | target=${missingSearchPoints.desktopPoints}`
+                        )
 
-                    pointsEarned = await this.bot.activities.doSearch(data, this.bot.mainDesktopPage, false)
+                        pointsEarned = await this.bot.activities.doSearch(data, this.bot.mainDesktopPage, false)
 
-                    this.bot.logger.info(
-                        'main',
-                        'SEARCH-DESKTOP-SEQUENTIAL',
-                        `Search done | earned=${pointsEarned}/${missingSearchPoints.desktopPoints}`
-                    )
-                    this.bot.logger.debug(
-                        'main',
-                        'SEARCH-DESKTOP-SEQUENTIAL',
-                        `Result | account=${accountEmail} | earned=${pointsEarned}`
-                    )
-                }
+                        this.bot.logger.info(
+                            'main',
+                            'SEARCH-DESKTOP-SEQUENTIAL',
+                            `Search done | earned=${pointsEarned}/${missingSearchPoints.desktopPoints}`
+                        )
+                        this.bot.logger.debug(
+                            'main',
+                            'SEARCH-DESKTOP-SEQUENTIAL',
+                            `Result | account=${accountEmail} | earned=${pointsEarned}`
+                        )
+                    }
 
-                await this.runStarSearchIfEnabled(account, accountEmail)
+                    await this.runStarSearchIfEnabled(account, accountEmail)
 
-                return pointsEarned
+                    return pointsEarned
+                })
             } catch (error) {
                 this.bot.logger.error('main', 'SEARCH-DESKTOP-SEQUENTIAL', `Failed: ${errMsg(error)}`)
                 if (error instanceof Error && error.stack) {

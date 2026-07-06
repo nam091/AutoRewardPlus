@@ -47,7 +47,9 @@ function main(): void {
         mustInclude('src/functions/activities/browser/SearchOnBing.ts', 'SessionRiskController', 'SearchOnBing risk')
         mustInclude('src/browser/auth/Login.ts', 'SessionRiskController', 'Login risk')
         mustInclude('src/functions/SearchManager.ts', 'runStarSearchIfEnabled', 'Star Search wiring')
-        mustInclude('src/functions/SearchManager.ts', 'needDesktopSession', 'Sequential star desktop path')
+        mustInclude('src/functions/SearchManager.ts', 'needsDesktopSession', 'Desktop session gate')
+        mustInclude('src/functions/SearchManager.ts', 'runWithDesktopFingerprint', 'Desktop fingerprint swap')
+        mustInclude('src/functions/SearchManager.ts', 'needsModernTasks', 'Modern tasks gate')
         mustInclude('src/functions/SearchManager.ts', 'desktopFingerprint', 'Desktop fingerprint stored')
         mustInclude('src/index.ts', 'AccountJob', 'In-run retry queue')
         mustInclude('src/functions/QueryEngine.ts', 'generateStarSearchKeywords', 'Star keyword pool')
@@ -136,6 +138,7 @@ function main(): void {
         const indexSrc = read('src/index.ts')
         assert(indexSrc.includes('process.exit(1)'), 'main must exit non-zero on failure')
         assert(indexSrc.includes('desktopFingerprint'), 'bot stores desktop fingerprint')
+        assert(indexSrc.includes('mobileFingerprint'), 'bot stores mobile fingerprint')
     }, 'index-error-handling')
 
     if (failures.length > 0) {
