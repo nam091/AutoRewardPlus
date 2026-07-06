@@ -8,6 +8,9 @@ import { QueryCore } from '../../QueryEngine'
 import { Workers } from '../../Workers'
 import { errMsg } from '../../../util/Utils'
 import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
+import { notifyChallengeDetected } from '../../../browser/humanize/ChallengeNotifier'
+import { SessionRiskController } from '../../../browser/humanize/SessionRiskController'
+import { getCurrentContext } from '../../../index'
 
 export class Search extends Workers {
     private bingHome = 'https://bing.com'
@@ -86,6 +89,17 @@ export class Search extends Workers {
             await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
             await this.bot.browser.utils.tryDismissAllMessages(page)
 
+            const riskController = new SessionRiskController()
+            const accountEmail = getCurrentContext().account.email
+            riskController.setChallengeHandler(async reason => {
+                await notifyChallengeDetected(this.bot, 'SEARCH', accountEmail, reason)
+            })
+            const initialRisk = await riskController.evaluatePage(page)
+            if (initialRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+                this.bot.logger.warn(isMobile, 'SEARCH-BING', `Challenge detected before search: ${initialRisk.reason}`)
+                return totalGainedPoints
+            }
+
             const runSearchLoop = async (
                 queryPool: string[],
                 tag: string,
@@ -96,6 +110,22 @@ export class Search extends Workers {
                 let lastQuery = ''
 
                 for (let i = 0; i < queryPool.length; i++) {
+                    const pageRisk = await riskController.evaluatePage(page)
+                    if (pageRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+                        this.bot.logger.warn(isMobile, tag, `Stopping search: ${pageRisk.reason}`)
+                        return { stagnant: true }
+                    }
+                    if (pageRisk.action !== 'continue') {
+                        const riskOutcome = await riskController.applyDecision(
+                            pageRisk,
+                            ms => this.bot.utils.wait(ms),
+                            msg => this.bot.logger.info(isMobile, tag, msg)
+                        )
+                        if (riskOutcome === 'stop') {
+                            return { stagnant: true }
+                        }
+                    }
+
                     // Time-of-day awareness: reduce frequency during quiet hours
                     if (this.bot.utils.isQuietHours()) {
                         const quietDelay = this.bot.utils.exponentialDelay(60000, 180000)
@@ -129,6 +159,19 @@ export class Search extends Workers {
 
                     // Record feedback for pattern analysis
                     this.recordFeedback(query, gainedPoints > 0)
+
+                    const searchRisk = riskController.evaluateSearchOutcome(gainedPoints > 0)
+                    if (searchRisk.action === 'stop') {
+                        this.bot.logger.warn(isMobile, tag, `Risk stop after query: ${searchRisk.reason}`)
+                        return { stagnant: true }
+                    }
+                    if (searchRisk.action !== 'continue') {
+                        await riskController.applyDecision(
+                            searchRisk,
+                            ms => this.bot.utils.wait(ms),
+                            msg => this.bot.logger.debug(isMobile, tag, msg)
+                        )
+                    }
 
                     if (gainedPoints === 0) {
                         stagnantLoop++

@@ -101,8 +101,13 @@ class Browser {
                 })
             })
 
-            // Apply anti-detection patches
-            await AntiDetectionEngine.applyAll(context)
+            // Apply anti-detection patches (automation signals only when fingerprint is injected)
+            await AntiDetectionEngine.applyAll(context, {
+                isMobile: this.bot.isMobile,
+                langCode: account.langCode,
+                sessionSeed: account.email,
+                trustInjectedFingerprint: true
+            })
             this.bot.logger.debug(this.bot.isMobile, 'BROWSER', 'Anti-detection patches applied')
 
             context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))

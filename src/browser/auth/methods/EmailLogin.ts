@@ -1,6 +1,7 @@
 import type { Page } from 'patchright'
 
 import type { MicrosoftRewardsBot } from '../../../index'
+import { HumanizeEngine } from '../../humanize/HumanizeEngine'
 import { errMsg } from '../../../util/Utils'
 
 export class EmailLogin {
@@ -25,9 +26,10 @@ export class EmailLogin {
                 .waitForSelector('#userDisplayName', { state: 'visible', timeout: 1000 })
                 .catch(() => {})
             if (!prefilledEmail) {
+                await HumanizeEngine.humanClick(page, emailInputSelector)
                 await page.fill(emailInputSelector, '').catch(() => {})
                 await this.bot.utils.wait(500)
-                await page.fill(emailInputSelector, email).catch(() => {})
+                await HumanizeEngine.typeHumanlike(page, emailInputSelector, email)
                 await this.bot.utils.wait(1000)
             } else {
                 this.bot.logger.info(this.bot.isMobile, 'LOGIN-ENTER-EMAIL', 'Email prefilled')
@@ -57,9 +59,10 @@ export class EmailLogin {
             }
 
             await this.bot.utils.wait(1000)
+            await HumanizeEngine.humanClick(page, passwordInputSelector)
             await page.fill(passwordInputSelector, '').catch(() => {})
             await this.bot.utils.wait(500)
-            await page.fill(passwordInputSelector, password).catch(() => {})
+            await HumanizeEngine.typeHumanlike(page, passwordInputSelector, password)
             await this.bot.utils.wait(1000)
 
             const submitButton = await page

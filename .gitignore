@@ -15,3 +15,5 @@ bun.lock
 .env
 erudite-realm-*.json
 service-account.json
+mcps/
+terminals/

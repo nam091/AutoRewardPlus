@@ -3,6 +3,7 @@ export interface Config {
     sessionPath: string
     headless: boolean
     clusters: number
+    maxAccountRetries?: number
     errorDiagnostics: boolean
     workers: ConfigWorkers
     searchOnBingLocalQueries: boolean
@@ -14,6 +15,17 @@ export interface Config {
     webhook: ConfigWebhook
     ai?: ConfigAI
     googleSheets?: ConfigGoogleSheets
+    starSearchSettings?: ConfigStarSearchSettings
+}
+
+export interface ConfigStarSearchSettings {
+    searchCount: number
+    keywordPoolSize: number
+    minWordCount: number
+    maxWordCount: number
+    useInPrivate: boolean
+    popupClicksPerSearch: ConfigDelay
+    searchDelay: ConfigDelay
 }
 
 export interface ConfigAI {
@@ -75,6 +87,7 @@ export interface ConfigWorkers {
     doReadToEarn: boolean
     doMissions: boolean
     doClaimPoints: boolean
+    doStarSearch: boolean
 }
 
 // Webhooks

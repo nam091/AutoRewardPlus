@@ -219,6 +219,18 @@ export default class BrowserFunc {
         return { mobilePoints, desktopPoints, edgePoints, totalPoints }
     }
 
+    formatSearchProgress(counters: Counters): { pcProgress: string; mobileProgress: string } {
+        const pcDone = counters.pcSearch?.reduce((sum, entry) => sum + (entry.pointProgress ?? 0), 0) ?? 0
+        const pcMax = counters.pcSearch?.reduce((sum, entry) => sum + (entry.pointProgressMax ?? 0), 0) ?? 0
+        const mobileDone = counters.mobileSearch?.reduce((sum, entry) => sum + (entry.pointProgress ?? 0), 0) ?? 0
+        const mobileMax = counters.mobileSearch?.reduce((sum, entry) => sum + (entry.pointProgressMax ?? 0), 0) ?? 0
+
+        return {
+            pcProgress: `${pcDone}/${pcMax || 90}`,
+            mobileProgress: `${mobileDone}/${mobileMax || 60}`
+        }
+    }
+
     /**
      * Get total earnable points with web browser
      */

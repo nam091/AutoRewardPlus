@@ -15,6 +15,8 @@ import { DoubleSearchPoints } from './activities/api/DoubleSearchPoints'
 // Browser
 import { SearchOnBing } from './activities/browser/SearchOnBing'
 import { Search } from './activities/browser/Search'
+import { StarSearch } from './activities/browser/StarSearch'
+import type { Account } from '../interface/Account'
 
 import type {
     BasePromotion,
@@ -29,6 +31,7 @@ export default class Activities {
 
     private _search?: Search
     private _searchOnBing?: SearchOnBing
+    private _starSearch?: StarSearch
     private _urlReward?: UrlReward
     private _quiz?: Quiz
     private _findClippy?: FindClippy
@@ -50,6 +53,11 @@ export default class Activities {
     doSearchOnBing = async (promotion: BasePromotion, page: Page): Promise<void> => {
         this._searchOnBing ??= new SearchOnBing(this.bot)
         await this._searchOnBing.doSearchOnBing(promotion, page)
+    }
+
+    doStarSearch = async (page: Page, isMobile: boolean, account: Account): Promise<void> => {
+        this._starSearch ??= new StarSearch(this.bot)
+        await this._starSearch.doStarSearch(page, isMobile, account)
     }
 
     /*

@@ -7,7 +7,8 @@ export interface AccountState {
     dailyPoints: number;
     pcProgress: string;
     mobileProgress: string;
-    status: 'IDLE' | 'RUNNING' | 'OK' | 'ERROR' | 'STOPPED';
+    status: 'IDLE' | 'RUNNING' | 'OK' | 'ERROR' | 'RETRY' | 'STOPPED';
+    retryCount?: number;
     accountAge: string;
     streak: string;
     updatedAt: string;
@@ -54,6 +55,7 @@ export class StateService {
                 pcProgress: update.pcProgress || '0/90',
                 mobileProgress: update.mobileProgress || '0/60',
                 status: update.status || 'IDLE',
+                retryCount: update.retryCount ?? 0,
                 accountAge: update.accountAge || 'N/A',
                 streak: update.streak || '0',
                 updatedAt: new Date().toLocaleString('vi-VN')
@@ -77,6 +79,7 @@ export class StateService {
                     pcProgress: '0/90',
                     mobileProgress: '0/60',
                     status: 'IDLE',
+                    retryCount: 0,
                     accountAge: 'N/A',
                     streak: '0',
                     updatedAt: new Date().toLocaleString('vi-VN')

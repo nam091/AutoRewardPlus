@@ -1,8 +1,9 @@
 {
     "baseURL": "https://rewards.bing.com",
     "sessionPath": "sessions",
-    "headless": false,
-    "clusters": 3,
+    "headless": true,
+    "clusters": 1,
+    "maxAccountRetries": 2,
     "errorDiagnostics": false,
     "workers": {
         "doDailySet": true,
@@ -16,15 +17,29 @@
         "doReadToEarn": true,
         "doMissions": true,
         "doClaimPoints": true,
-        "doStarSearch": true,
-        "starSearchCount": 5
+        "doStarSearch": true
+    },
+    "starSearchSettings": {
+        "searchCount": 25,
+        "keywordPoolSize": 700,
+        "minWordCount": 5,
+        "maxWordCount": 15,
+        "useInPrivate": true,
+        "popupClicksPerSearch": {
+            "min": 1,
+            "max": 3
+        },
+        "searchDelay": {
+            "min": "30sec",
+            "max": "1min"
+        }
     },
     "searchOnBingLocalQueries": false,
     "globalTimeout": "30sec",
     "searchSettings": {
-        "scrollRandomResults": false,
-        "clickRandomResults": false,
-        "parallelSearching": true,
+        "scrollRandomResults": true,
+        "clickRandomResults": true,
+        "parallelSearching": false,
         "queryEngines": ["google", "wikipedia", "reddit", "local"],
         "searchResultVisitTime": "10sec",
         "searchDelay": {

@@ -17,6 +17,7 @@
         "create-docker": "docker build -t microsoft-rewards-script-docker .",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
+        "stealth-check": "ts-node ./scripts/stealth-check.ts",
         "clear-diagnostics": "rimraf diagnostics",
         "clear-sessions": "node ./scripts/main/clearSessions.js",
         "open-session": "node ./scripts/main/browserSession.js -email",

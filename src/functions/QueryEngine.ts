@@ -21,6 +21,12 @@ interface CachedQueries {
     langCode: string
 }
 
+interface StarKeywordCache {
+    keywords: string[]
+    timestamp: number
+    langCode: string
+}
+
 export class QueryCore {
     private aiEndpoints: AiEndpoint[] = []
     private queryCache: CachedQueries | null = null
@@ -870,5 +876,246 @@ thay keo tản nhiệt laptop giá bao nhiêu`
         )
 
         return result
+    }
+
+    private getStarKeywordCachePath(langCode: string): string {
+        return path.join(this.bot.config.sessionPath, `star-keywords-${langCode.toLowerCase()}.json`)
+    }
+
+    private loadStarKeywordCache(langCode: string, minPoolSize: number): string[] | null {
+        try {
+            const cachePath = this.getStarKeywordCachePath(langCode)
+            if (!fs.existsSync(cachePath)) return null
+
+            const raw = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as StarKeywordCache
+            const maxAge = 7 * 24 * 60 * 60 * 1000
+            if (Date.now() - raw.timestamp > maxAge) return null
+            if (raw.langCode !== langCode.toLowerCase()) return null
+            if (raw.keywords.length < minPoolSize) return null
+
+            return raw.keywords
+        } catch {
+            return null
+        }
+    }
+
+    private saveStarKeywordCache(keywords: string[], langCode: string): void {
+        try {
+            const cachePath = this.getStarKeywordCachePath(langCode)
+            const dir = path.dirname(cachePath)
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+
+            const payload: StarKeywordCache = {
+                keywords,
+                timestamp: Date.now(),
+                langCode: langCode.toLowerCase()
+            }
+            fs.writeFileSync(cachePath, JSON.stringify(payload, null, 2), 'utf-8')
+        } catch (error) {
+            this.bot.logger.warn(false, 'STAR-KEYWORDS', `Failed to save keyword cache: ${errMsg(error)}`)
+        }
+    }
+
+    private countWords(text: string): number {
+        return text.trim().split(/\s+/).filter(Boolean).length
+    }
+
+    private isValidStarKeyword(query: string, minWords: number, maxWords: number): boolean {
+        const trimmed = query.trim()
+        if (!trimmed || trimmed.length < 15 || trimmed.length > 250) return false
+        const words = this.countWords(trimmed)
+        if (words < minWords || words > maxWords) return false
+        if (/^\d+[.)]/.test(trimmed) || /^[-*]/.test(trimmed)) return false
+        return true
+    }
+
+    private buildStarKeywordFallback(poolSize: number, langCode: string, minWords: number, maxWords: number): string[] {
+        const prefixes =
+            langCode === 'vi'
+                ? [
+                      'làm thế nào để',
+                      'tại sao',
+                      'có nên',
+                      'khi nào nên',
+                      'điều gì xảy ra khi',
+                      'cách tốt nhất để',
+                      'ai là người',
+                      'ở đâu có thể tìm',
+                      'bao nhiêu tiền cần để',
+                      'tại sao nhiều người'
+                  ]
+                : [
+                      'how do I',
+                      'what is the best way to',
+                      'why does',
+                      'when should I',
+                      'where can I find',
+                      'how much does it cost to',
+                      'what happens when you',
+                      'is it safe to',
+                      'who invented the',
+                      'what are the benefits of'
+                  ]
+
+        const topics = this.getLocalQueryList()
+        const out: string[] = []
+
+        for (const topic of topics) {
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)] ?? prefixes[0]!
+            const query = `${prefix} ${topic}`.replace(/\s+/g, ' ').trim()
+            if (this.isValidStarKeyword(query, minWords, maxWords)) {
+                out.push(query)
+            }
+            if (out.length >= poolSize) break
+        }
+
+        return this.normalizeAndDedupe(out).slice(0, poolSize)
+    }
+
+    private async requestStarKeywordsBatch(
+        batchSize: number,
+        langCode: string,
+        minWords: number,
+        maxWords: number,
+        domainHint: string
+    ): Promise<string[]> {
+        const langName = langCode === 'vi' ? 'Vietnamese' : langCode === 'en' ? 'English' : langCode
+        const prompt = `Generate exactly ${batchSize} unique Bing search queries in ${langName}.
+
+Requirements:
+- Each query must be ${minWords}-${maxWords} words long
+- Each query must be a natural question (use ?, or question words like how/what/why/when/where/làm sao/tại sao/có nên)
+- Cover diverse topics: ${domainHint}
+- No numbering, bullets, quotes, or explanations
+- One query per line
+- No duplicate or near-duplicate queries`
+
+        for (const endpoint of this.aiEndpoints) {
+            for (let retry = 0; retry < QueryCore.MAX_RETRIES; retry++) {
+                try {
+                    const controller = new AbortController()
+                    const timeout = setTimeout(() => controller.abort(), 45000)
+
+                    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${endpoint.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: endpoint.model,
+                            messages: [{ role: 'user', content: prompt }],
+                            stream: false
+                        }),
+                        signal: controller.signal
+                    })
+
+                    clearTimeout(timeout)
+
+                    if (!response.ok) {
+                        if (retry < QueryCore.MAX_RETRIES - 1) {
+                            await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                            continue
+                        }
+                        this.markEndpointFailed(endpoint)
+                        break
+                    }
+
+                    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+                    const content = data.choices?.[0]?.message?.content ?? ''
+                    const parsed = content
+                        .split('\n')
+                        .map(line => line.replace(/^[\d.)\-*\s]+/, '').replace(/^["']|["']$/g, '').trim())
+                        .filter(line => this.isValidStarKeyword(line, minWords, maxWords))
+
+                    if (parsed.length > 0) return parsed
+                    break
+                } catch (error) {
+                    if (retry < QueryCore.MAX_RETRIES - 1) {
+                        await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                    } else {
+                        this.markEndpointFailed(endpoint)
+                    }
+                }
+            }
+        }
+
+        return []
+    }
+
+    /**
+     * Build a large pool of long question-style keywords for Star Search.
+     * Cached on disk for 7 days; falls back to local question templates if AI fails.
+     */
+    async generateStarSearchKeywords(
+        poolSize: number,
+        langCode: string = 'vi',
+        minWords: number = 5,
+        maxWords: number = 15
+    ): Promise<string[]> {
+        const cached = this.loadStarKeywordCache(langCode, Math.min(poolSize, 100))
+        if (cached && cached.length >= poolSize) {
+            this.bot.logger.info(false, 'STAR-KEYWORDS', `Using cached pool | count=${cached.length}`)
+            return cached.slice(0, poolSize)
+        }
+
+        const domainHints = [
+            'work and career, entertainment, food and cooking, travel, law, healthcare, education, technology, finance, sports, home improvement, parenting',
+            'science, history, relationships, fitness, pets, gardening, automotive, real estate, fashion, music, movies, gaming, environment',
+            'local services, government, taxes, insurance, mental health, productivity, startups, remote work, scholarships, language learning',
+            'recipes, restaurants, hotels, flights, visas, legal rights, medical symptoms, university admissions, investing, side hustles'
+        ]
+
+        const batchSize = 50
+        const batches = Math.ceil(poolSize / batchSize)
+        const collected: string[] = cached ? [...cached] : []
+
+        this.bot.logger.info(
+            false,
+            'STAR-KEYWORDS',
+            `Generating keyword pool | target=${poolSize} | batches=${batches} | lang=${langCode}`
+        )
+
+        for (let i = 0; i < batches && collected.length < poolSize; i++) {
+            const remaining = poolSize - collected.length
+            const size = Math.min(batchSize, remaining)
+            const hint = domainHints[i % domainHints.length] ?? domainHints[0]!
+
+            const batch = await this.requestStarKeywordsBatch(size, langCode, minWords, maxWords, hint)
+            collected.push(...batch)
+            const unique = this.normalizeAndDedupe(collected)
+            collected.length = 0
+            collected.push(...unique)
+
+            this.bot.logger.debug(
+                false,
+                'STAR-KEYWORDS',
+                `Batch ${i + 1}/${batches} | batch=${batch.length} | pool=${collected.length}`
+            )
+
+            if (i < batches - 1 && collected.length < poolSize) {
+                await new Promise(r => setTimeout(r, 800))
+            }
+        }
+
+        let keywords = this.normalizeAndDedupe(collected)
+
+        if (keywords.length < Math.min(poolSize, 50)) {
+            this.bot.logger.warn(
+                false,
+                'STAR-KEYWORDS',
+                `AI pool too small (${keywords.length}), using fallback templates`
+            )
+            keywords = this.buildStarKeywordFallback(poolSize, langCode, minWords, maxWords)
+        }
+
+        keywords = this.bot.utils.shuffleArray(keywords).slice(0, poolSize)
+
+        if (keywords.length > 0) {
+            this.saveStarKeywordCache(keywords, langCode)
+            this.bot.logger.info(false, 'STAR-KEYWORDS', `Pool ready | count=${keywords.length}`)
+        }
+
+        return keywords
     }
 }

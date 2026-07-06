@@ -1,4 +1,4 @@
-import { Page } from 'patchright';
+import { type Locator, Page } from 'patchright';
 
 interface Point {
     x: number
@@ -140,6 +140,32 @@ export class HumanizeEngine {
      * Human-like click: move to element, hover briefly, then click.
      * Variable click duration simulates real mouse button press.
      */
+    public static async humanClickAt(page: Page, x: number, y: number): Promise<void> {
+        await this.moveMouseBezier(page, x, y)
+        await this.gaussianSleep(150, 60)
+        await page.mouse.down()
+        await this.gaussianSleep(80, 25)
+        await page.mouse.up()
+        await this.gaussianSleep(50, 20)
+    }
+
+    public static async humanClickBox(
+        page: Page,
+        box: { x: number; y: number; width: number; height: number }
+    ): Promise<void> {
+        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
+        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+        await this.humanClickAt(page, targetX, targetY)
+    }
+
+    public static async humanClickLocator(page: Page, locator: Locator): Promise<void> {
+        const element = await locator.elementHandle()
+        if (!element) return
+        const box = await element.boundingBox()
+        if (!box) return
+        await this.humanClickBox(page, box)
+    }
+
     public static async humanClick(page: Page, selector: string): Promise<void> {
         const element = await page.$(selector)
         if (!element) return
@@ -147,23 +173,7 @@ export class HumanizeEngine {
         const box = await element.boundingBox()
         if (!box) return
 
-        // Click target: random point within element (not exact center)
-        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
-        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
-
-        // Move mouse naturally to target
-        await this.moveMouseBezier(page, targetX, targetY)
-
-        // Hover pause (humans pause before clicking)
-        await this.gaussianSleep(150, 60)
-
-        // Click with variable press duration
-        await page.mouse.down()
-        await this.gaussianSleep(80, 25)
-        await page.mouse.up()
-
-        // Post-click micro-pause
-        await this.gaussianSleep(50, 20)
+        await this.humanClickBox(page, box)
     }
 
     /**

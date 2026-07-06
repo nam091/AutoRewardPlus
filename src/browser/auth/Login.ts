@@ -17,6 +17,8 @@ import { CodeLogin } from './methods/GetACodeLogin'
 import { RecoveryLogin } from './methods/RecoveryEmailLogin'
 
 import type { Account } from '../../interface/Account'
+import { detectChallenge } from '../humanize/ChallengeDetector'
+import { notifyChallengeDetected } from '../humanize/ChallengeNotifier'
 import { errMsg } from '../../util/Utils'
 
 type LoginState =
@@ -105,6 +107,12 @@ export class Login {
 
                 iteration++
                 this.bot.logger.debug(this.bot.isMobile, 'LOGIN', `State check iteration ${iteration}/${maxIterations}`)
+
+                const challenge = await detectChallenge(page)
+                if (challenge.detected) {
+                    await notifyChallengeDetected(this.bot, 'LOGIN', account.email, challenge.reason)
+                    throw new Error(`Login blocked by challenge: ${challenge.reason ?? 'unknown'}`)
+                }
 
                 const state = await this.detectCurrentState(page, account)
                 this.bot.logger.debug(this.bot.isMobile, 'LOGIN', `Current state: ${state}`)

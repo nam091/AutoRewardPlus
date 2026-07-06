@@ -27,6 +27,8 @@ import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
 import { sheetService } from './services/sheetService'
 import { stateService } from './services/stateService'
+import { HumanizeEngine } from './browser/humanize/HumanizeEngine'
+import { validateProxyGeoAlignment } from './util/GeoValidator'
 
 interface ExecutionContext {
     isMobile: boolean
@@ -47,6 +49,8 @@ interface AccountStats {
     duration: number
     success: boolean
     error?: string
+    pcProgress?: string
+    mobileProgress?: string
 }
 
 const executionContext = new AsyncLocalStorage<ExecutionContext>()
@@ -292,100 +296,64 @@ export class MicrosoftRewardsBot {
 
     private async runTasks(accounts: Account[], runStartTime: number): Promise<AccountStats[]> {
         const accountStats: AccountStats[] = []
+        const maxRetries = this.config.maxAccountRetries ?? 2
 
-        for (const account of accounts) {
-            const accountStartTime = Date.now()
-            const accountEmail = account.email
-            this.userData.userName = this.utils.getEmailUsername(accountEmail)
-            this.userData.claimedPoints = 0 // Reset for each account
+        interface AccountJob {
+            account: Account
+            attempt: number
+            isRetry: boolean
+        }
 
-            try {
+        const queue: AccountJob[] = accounts.map(account => ({ account, attempt: 1, isRetry: false }))
+        let processedFirstPass = 0
+
+        for (let jobIndex = 0; jobIndex < queue.length; jobIndex++) {
+            const job = queue[jobIndex]!
+            const { account, attempt, isRetry } = job
+
+            if (!isRetry && processedFirstPass > 0) {
+                const staggerMs = HumanizeEngine.getRandomScheduleOffset(2, 15)
                 this.logger.info(
                     'main',
-                    'ACCOUNT-START',
-                    `Starting account: ${accountEmail} | geoLocale: ${account.geoLocale}`
+                    'ACCOUNT-STAGGER',
+                    `Waiting ${Math.round(staggerMs / 60000)}min before next account`
                 )
-                stateService.updateAccountState(accountEmail, { status: 'RUNNING' });
-
-                this.axios = new AxiosClient(account.proxy)
-
-                const result: { initialPoints: number; collectedPoints: number } | undefined = await this.Main(
-                    account
-                ).catch(error => {
-                    void this.logger.error(true, 'FLOW', `Mobile flow failed for ${accountEmail}: ${errMsg(error)}`)
-                    return undefined
-                })
-
-                const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
-
-                if (result) {
-                    const collectedPoints = result.collectedPoints ?? 0
-                    const accountInitialPoints = result.initialPoints ?? 0
-                    const accountFinalPoints = accountInitialPoints + collectedPoints
-                    const accountClaimedPoints = this.userData.claimedPoints ?? 0
-
-                    accountStats.push({
-                        email: accountEmail,
-                        initialPoints: accountInitialPoints,
-                        finalPoints: accountFinalPoints,
-                        collectedPoints: collectedPoints,
-                        claimedPoints: accountClaimedPoints,
-                        duration: parseFloat(durationSeconds),
-                        success: true
-                    })
-
-                    stateService.updateAccountState(accountEmail, {
-                        status: 'OK',
-                        totalPoints: accountFinalPoints,
-                        dailyPoints: collectedPoints,
-                        pcProgress: '90/90',
-                        mobileProgress: '60/60'
-                    });
-
-                    this.logger.info(
-                        'main',
-                        'ACCOUNT-END',
-                        `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | Duration: ${durationSeconds}s`,
-                        'green'
-                    )
-                } else {
-                    accountStats.push({
-                        email: accountEmail,
-                        initialPoints: 0,
-                        finalPoints: 0,
-                        collectedPoints: 0,
-                        claimedPoints: 0,
-                        duration: parseFloat(durationSeconds),
-                        success: false,
-                        error: 'Flow failed'
-                    })
-                    stateService.updateAccountState(accountEmail, { status: 'ERROR' });
-                }
-            } catch (error) {
-                const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
-                this.logger.error('main', 'ACCOUNT-ERROR', `${accountEmail}: ${errMsg(error)}`)
-
-                accountStats.push({
-                    email: accountEmail,
-                    initialPoints: 0,
-                    finalPoints: 0,
-                    collectedPoints: 0,
-                    claimedPoints: 0,
-                    duration: parseFloat(durationSeconds),
-                    success: false,
-                    error: errMsg(error)
-                })
-                stateService.updateAccountState(accountEmail, { status: 'ERROR' });
+                await this.utils.wait(staggerMs)
             }
 
-            // Send per-account webhook notification
-            const lastStat = accountStats[accountStats.length - 1]
-            if (lastStat && cluster.isPrimary) {
+            if (isRetry) {
+                const retryDelayMs = HumanizeEngine.getRandomScheduleOffset(1, 5)
+                this.logger.info(
+                    'main',
+                    'ACCOUNT-RETRY',
+                    `Retry ${attempt}/${maxRetries} for ${account.email} in ${Math.round(retryDelayMs / 60000)}min`
+                )
+                stateService.updateAccountState(account.email, { status: 'RETRY', retryCount: attempt - 1 })
+                await this.utils.wait(retryDelayMs)
+            }
+
+            if (!isRetry) {
+                processedFirstPass++
+            }
+
+            const stat = await this.processAccount(account, attempt, maxRetries)
+            accountStats.push(stat)
+
+            if (!stat.success && attempt < maxRetries) {
+                queue.push({ account, attempt: attempt + 1, isRetry: true })
+                this.logger.warn(
+                    'main',
+                    'ACCOUNT-RETRY',
+                    `Queued in-run retry for ${account.email} | nextAttempt=${attempt + 1}/${maxRetries}`
+                )
+            }
+
+            if (cluster.isPrimary) {
                 if (this.config.webhook.discord?.enabled && this.config.webhook.discord.url) {
-                    await sendDiscordAccountNotification(this.config.webhook.discord.url, lastStat)
+                    await sendDiscordAccountNotification(this.config.webhook.discord.url, stat)
                 }
                 if (this.config.webhook.ntfy?.enabled && this.config.webhook.ntfy.url) {
-                    await sendNtfyAccountNotification(this.config.webhook.ntfy, lastStat)
+                    await sendNtfyAccountNotification(this.config.webhook.ntfy, stat)
                 }
             }
         }
@@ -422,7 +390,104 @@ export class MicrosoftRewardsBot {
         return accountStats
     }
 
-    async Main(account: Account): Promise<{ initialPoints: number; collectedPoints: number }> {
+    private async processAccount(account: Account, attempt: number, maxRetries: number): Promise<AccountStats> {
+        const accountStartTime = Date.now()
+        const accountEmail = account.email
+        this.userData.userName = this.utils.getEmailUsername(accountEmail)
+        this.userData.claimedPoints = 0
+
+        try {
+            this.logger.info(
+                'main',
+                'ACCOUNT-START',
+                `Starting account: ${accountEmail} | geoLocale: ${account.geoLocale} | attempt=${attempt}/${maxRetries}`
+            )
+            stateService.updateAccountState(accountEmail, { status: 'RUNNING' })
+
+            this.axios = new AxiosClient(account.proxy)
+
+            const result:
+                | { initialPoints: number; collectedPoints: number; pcProgress: string; mobileProgress: string }
+                | undefined = await this.Main(account).catch(error => {
+                void this.logger.error(true, 'FLOW', `Mobile flow failed for ${accountEmail}: ${errMsg(error)}`)
+                return undefined
+            })
+
+            const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
+
+            if (result) {
+                const collectedPoints = result.collectedPoints ?? 0
+                const accountInitialPoints = result.initialPoints ?? 0
+                const accountFinalPoints = accountInitialPoints + collectedPoints
+                const accountClaimedPoints = this.userData.claimedPoints ?? 0
+
+                stateService.updateAccountState(accountEmail, {
+                    status: 'OK',
+                    totalPoints: accountFinalPoints,
+                    dailyPoints: collectedPoints,
+                    pcProgress: result.pcProgress,
+                    mobileProgress: result.mobileProgress,
+                    retryCount: 0
+                })
+
+                this.logger.info(
+                    'main',
+                    'ACCOUNT-END',
+                    `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | Duration: ${durationSeconds}s`,
+                    'green'
+                )
+
+                return {
+                    email: accountEmail,
+                    initialPoints: accountInitialPoints,
+                    finalPoints: accountFinalPoints,
+                    collectedPoints,
+                    claimedPoints: accountClaimedPoints,
+                    duration: parseFloat(durationSeconds),
+                    success: true,
+                    pcProgress: result.pcProgress,
+                    mobileProgress: result.mobileProgress
+                }
+            }
+
+            const retryCount = attempt
+            const nextStatus = retryCount < maxRetries ? 'RETRY' : 'ERROR'
+            stateService.updateAccountState(accountEmail, { status: nextStatus, retryCount })
+
+            return {
+                email: accountEmail,
+                initialPoints: 0,
+                finalPoints: 0,
+                collectedPoints: 0,
+                claimedPoints: 0,
+                duration: parseFloat(durationSeconds),
+                success: false,
+                error: 'Flow failed'
+            }
+        } catch (error) {
+            const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
+            this.logger.error('main', 'ACCOUNT-ERROR', `${accountEmail}: ${errMsg(error)}`)
+
+            const retryCount = attempt
+            const nextStatus = retryCount < maxRetries ? 'RETRY' : 'ERROR'
+            stateService.updateAccountState(accountEmail, { status: nextStatus, retryCount })
+
+            return {
+                email: accountEmail,
+                initialPoints: 0,
+                finalPoints: 0,
+                collectedPoints: 0,
+                claimedPoints: 0,
+                duration: parseFloat(durationSeconds),
+                success: false,
+                error: errMsg(error)
+            }
+        }
+    }
+
+    async Main(
+        account: Account
+    ): Promise<{ initialPoints: number; collectedPoints: number; pcProgress: string; mobileProgress: string }> {
         const accountEmail = account.email
         this.logger.info('main', 'FLOW', `Starting session for ${accountEmail}`)
 
@@ -470,6 +535,8 @@ export class MicrosoftRewardsBot {
                         `The provided geoLocale is longer than 2 (${this.userData.geoLocale} | auto=${account.geoLocale === 'auto'}), this is likely invalid and can cause errors!`
                     )
                 }
+
+                validateProxyGeoAlignment(this, account)
 
                 this.userData.initialPoints = data.userStatus.availablePoints
                 this.userData.currentPoints = data.userStatus.availablePoints
@@ -522,16 +589,20 @@ export class MicrosoftRewardsBot {
 
                 const finalPoints = await this.browser.func.getCurrentPoints()
                 const collectedPoints = finalPoints - initialPoints
+                const finalSearchCounters = await this.browser.func.getSearchPoints()
+                const searchProgress = this.browser.func.formatSearchProgress(finalSearchCounters)
 
                 this.logger.info(
                     'main',
                     'FLOW',
-                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | ${accountEmail}`
+                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | PC: ${searchProgress.pcProgress} | Mobile: ${searchProgress.mobileProgress} | ${accountEmail}`
                 )
 
                 return {
                     initialPoints,
-                    collectedPoints: collectedPoints || 0
+                    collectedPoints: collectedPoints || 0,
+                    pcProgress: searchProgress.pcProgress,
+                    mobileProgress: searchProgress.mobileProgress
                 }
             })
         } finally {
@@ -551,8 +622,8 @@ export class MicrosoftRewardsBot {
                 email: s.email,
                 totalPoints: s.finalPoints,
                 dailyPoints: s.collectedPoints,
-                pcProgress: '90/90',
-                mobileProgress: '60/60',
+                pcProgress: s.pcProgress ?? '0/90',
+                mobileProgress: s.mobileProgress ?? '0/60',
                 status: s.success ? 'OK' : 'ERROR',
                 accountAge: 'N/A',
                 updatedAt: new Date().toLocaleString('vi-VN'),

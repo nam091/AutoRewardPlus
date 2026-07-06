@@ -45,10 +45,33 @@ const WebhookSchema = z.object({
 })
 
 // AI Config
+const AIProviderSchema = z.object({
+    name: z.string(),
+    baseUrl: z.string(),
+    model: z.string(),
+    apiKey: z.string(),
+    priority: z.number().int(),
+    enabled: z.boolean()
+})
+
 const AISchema = z.object({
     baseUrl: z.string(),
     model: z.string(),
-    apiKey: z.string()
+    apiKey: z.string(),
+    fallbackProviders: z.array(AIProviderSchema).optional(),
+    maxRetries: z.number().int().positive().optional(),
+    retryDelayMs: z.number().int().nonnegative().optional(),
+    cacheTtlMs: z.number().int().nonnegative().optional()
+})
+
+const StarSearchSettingsSchema = z.object({
+    searchCount: z.number().int().min(1).max(100).default(25),
+    keywordPoolSize: z.number().int().min(50).max(2000).default(700),
+    minWordCount: z.number().int().min(3).max(20).default(5),
+    maxWordCount: z.number().int().min(5).max(30).default(15),
+    useInPrivate: z.boolean().default(true),
+    popupClicksPerSearch: DelaySchema.default({ min: 1, max: 3 }),
+    searchDelay: DelaySchema.default({ min: '30sec', max: '1min' })
 })
 
 // Config
@@ -57,6 +80,7 @@ export const ConfigSchema = z.object({
     sessionPath: z.string(),
     headless: z.boolean(),
     clusters: z.number().int().nonnegative(),
+    maxAccountRetries: z.number().int().nonnegative().default(2),
     errorDiagnostics: z.boolean(),
     workers: z.object({
         doDailySet: z.boolean(),
@@ -69,7 +93,8 @@ export const ConfigSchema = z.object({
         doDailyCheckIn: z.boolean(),
         doReadToEarn: z.boolean(),
         doMissions: z.boolean().default(true),
-        doClaimPoints: z.boolean().default(true)
+        doClaimPoints: z.boolean().default(true),
+        doStarSearch: z.boolean().default(true)
     }),
     searchOnBingLocalQueries: z.boolean(),
     globalTimeout: NumberOrString,
@@ -88,7 +113,16 @@ export const ConfigSchema = z.object({
     }),
     consoleLogFilter: LogFilterSchema,
     webhook: WebhookSchema,
-    ai: AISchema.optional()
+    ai: AISchema.optional(),
+    googleSheets: z
+        .object({
+            enabled: z.boolean(),
+            spreadsheetId: z.string(),
+            sheetName: z.string(),
+            keyFilePath: z.string()
+        })
+        .optional(),
+    starSearchSettings: StarSearchSettingsSchema.optional()
 })
 
 // Account

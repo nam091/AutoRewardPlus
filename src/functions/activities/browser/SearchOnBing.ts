@@ -15,6 +15,9 @@ import { QueryCore } from '../../QueryEngine'
 import type { BasePromotion } from '../../../interface/DashboardData'
 import { errMsg } from '../../../util/Utils'
 import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
+import { notifyChallengeDetected } from '../../../browser/humanize/ChallengeNotifier'
+import { SessionRiskController } from '../../../browser/humanize/SessionRiskController'
+import { getCurrentContext } from '../../../index'
 
 export class SearchOnBing extends Workers {
     private bingHome = 'https://bing.com'
@@ -105,9 +108,43 @@ export class SearchOnBing extends Workers {
             `Starting search loop | queriesCount=${queries.length} | oldBalance=${this.oldBalance}`
         )
 
+        const riskController = new SessionRiskController()
+        const accountEmail = getCurrentContext().account.email
+        riskController.setChallengeHandler(async reason => {
+            await notifyChallengeDetected(this.bot, 'SEARCH-ON-BING', accountEmail, reason)
+        })
+
+        const initialRisk = await riskController.evaluatePage(page)
+        if (initialRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'SEARCH-ON-BING-SEARCH',
+                `Challenge detected before search: ${initialRisk.reason}`
+            )
+            return
+        }
+
         let i = 0
         for (const query of queries) {
             try {
+                const pageRisk = await riskController.evaluatePage(page)
+                if (pageRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'SEARCH-ON-BING-SEARCH',
+                        `Stopping search: ${pageRisk.reason}`
+                    )
+                    return
+                }
+                if (pageRisk.action !== 'continue') {
+                    const riskOutcome = await riskController.applyDecision(
+                        pageRisk,
+                        ms => this.bot.utils.wait(ms),
+                        msg => this.bot.logger.info(this.bot.isMobile, 'SEARCH-ON-BING-SEARCH', msg)
+                    )
+                    if (riskOutcome === 'stop') return
+                }
+
                 this.bot.logger.debug(this.bot.isMobile, 'SEARCH-ON-BING-SEARCH', `Processing query | query="${query}"`)
 
                 const cvid = randomBytes(16).toString('hex')
@@ -125,8 +162,9 @@ export class SearchOnBing extends Workers {
                 const searchBox = page.locator(searchBar)
                 await searchBox.waitFor({ state: 'attached', timeout: 15000 })
 
-                await HumanizeEngine.gaussianSleep(600, 200)
-                await this.bot.browser.utils.ghostClick(page, searchBar, { clickCount: 3 })
+                const timeMultiplier = HumanizeEngine.getTimeOfDayMultiplier()
+                await HumanizeEngine.gaussianSleep(Math.floor(600 * timeMultiplier), 200)
+                await HumanizeEngine.humanClick(page, searchBar)
                 await searchBox.fill('')
 
                 await HumanizeEngine.typeHumanlike(page, searchBar, query)
@@ -145,6 +183,23 @@ export class SearchOnBing extends Workers {
                     'SEARCH-ON-BING-SEARCH',
                     `Balance check after query | query="${query}" | oldBalance=${this.oldBalance} | newBalance=${newBalance} | gainedPoints=${this.gainedPoints}`
                 )
+
+                const searchRisk = riskController.evaluateSearchOutcome(this.gainedPoints > 0)
+                if (searchRisk.action === 'stop') {
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'SEARCH-ON-BING-SEARCH',
+                        `Risk stop after query: ${searchRisk.reason}`
+                    )
+                    return
+                }
+                if (searchRisk.action !== 'continue') {
+                    await riskController.applyDecision(
+                        searchRisk,
+                        ms => this.bot.utils.wait(ms),
+                        msg => this.bot.logger.debug(this.bot.isMobile, 'SEARCH-ON-BING-SEARCH', msg)
+                    )
+                }
 
                 if (this.gainedPoints > 0) {
                     this.bot.userData.currentPoints = newBalance
