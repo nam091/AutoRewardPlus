@@ -11,6 +11,8 @@ import { loadSessionData, saveFingerprintData } from '../util/Load'
 import { UserAgentManager } from './UserAgent'
 import { AntiDetectionEngine } from './humanize/AntiDetectionEngine'
 
+import type { Page } from 'patchright'
+
 import type { Account, AccountProxy } from '../interface/Account'
 import { errMsg } from '../util/Utils'
 
@@ -144,6 +146,63 @@ class Browser {
         } catch {
             return `${proxy.url}:${proxy.port}`
         }
+    }
+
+    /**
+     * Isolated InPrivate-style context reusing desktop fingerprint + anti-detection stack.
+     */
+    async createInPrivateContext(
+        parentPage: Page,
+        account: Account,
+        fingerprint: BrowserFingerprintWithHeaders
+    ): Promise<BrowserContext> {
+        const browser = parentPage.context().browser()
+        if (!browser) {
+            throw new Error('No browser attached to parent page')
+        }
+
+        const cookies = await parentPage.context().cookies()
+        const viewport = parentPage.viewportSize() ?? { width: 1280, height: 720 }
+
+        const context = await newInjectedContext(browser as any, {
+            fingerprint,
+            newContextOptions: {
+                viewport,
+                locale: account.langCode ?? 'vi-VN',
+                permissions: [],
+                ignoreHTTPSErrors: true
+            }
+        })
+
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'credentials', {
+                value: {
+                    create: () => Promise.reject(new Error('WebAuthn disabled')),
+                    get: () => Promise.reject(new Error('WebAuthn disabled'))
+                }
+            })
+            try {
+                localStorage.clear()
+                sessionStorage.clear()
+            } catch {}
+        })
+
+        await AntiDetectionEngine.applyAll(context, {
+            isMobile: false,
+            langCode: account.langCode,
+            sessionSeed: account.email,
+            trustInjectedFingerprint: true
+        })
+
+        context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))
+
+        if (cookies.length > 0) {
+            await context.addCookies(cookies)
+        }
+
+        this.bot.logger.debug(false, 'BROWSER', 'InPrivate context created with injected fingerprint + anti-detection')
+
+        return context as unknown as BrowserContext
     }
 
     async generateFingerprint(isMobile: boolean) {

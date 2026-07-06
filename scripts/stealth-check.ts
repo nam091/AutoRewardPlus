@@ -34,8 +34,8 @@ async function main(): Promise<void> {
 
     const touchPoints = await page.evaluate(() => navigator.maxTouchPoints)
     checks.push({
-        name: 'maxTouchPoints',
-        pass: typeof touchPoints === 'number',
+        name: 'maxTouchPoints-desktop',
+        pass: touchPoints === 0,
         detail: String(touchPoints)
     })
 

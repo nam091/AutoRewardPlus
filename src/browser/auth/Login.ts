@@ -17,8 +17,8 @@ import { CodeLogin } from './methods/GetACodeLogin'
 import { RecoveryLogin } from './methods/RecoveryEmailLogin'
 
 import type { Account } from '../../interface/Account'
-import { detectChallenge } from '../humanize/ChallengeDetector'
 import { notifyChallengeDetected } from '../humanize/ChallengeNotifier'
+import { SessionRiskController } from '../humanize/SessionRiskController'
 import { errMsg } from '../../util/Utils'
 
 type LoginState =
@@ -102,16 +102,35 @@ export class Login {
             let previousState: LoginState = 'UNKNOWN'
             let sameStateCount = 0
 
+            const riskController = new SessionRiskController()
+            riskController.setChallengeHandler(async reason => {
+                await notifyChallengeDetected(this.bot, 'LOGIN', account.email, reason)
+            })
+
+            const initialRisk = await riskController.evaluatePage(page)
+            if (initialRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+                throw new Error(`Login blocked before start: ${initialRisk.reason}`)
+            }
+
             while (iteration < maxIterations) {
                 if (page.isClosed()) throw new Error('Page closed unexpectedly')
 
                 iteration++
                 this.bot.logger.debug(this.bot.isMobile, 'LOGIN', `State check iteration ${iteration}/${maxIterations}`)
 
-                const challenge = await detectChallenge(page)
-                if (challenge.detected) {
-                    await notifyChallengeDetected(this.bot, 'LOGIN', account.email, challenge.reason)
-                    throw new Error(`Login blocked by challenge: ${challenge.reason ?? 'unknown'}`)
+                const pageRisk = await riskController.evaluatePage(page)
+                if (pageRisk.action === 'stop' || riskController.isCaptchaDetected()) {
+                    throw new Error(`Login blocked by challenge: ${pageRisk.reason}`)
+                }
+                if (pageRisk.action !== 'continue') {
+                    const riskOutcome = await riskController.applyDecision(
+                        pageRisk,
+                        ms => this.bot.utils.wait(ms),
+                        msg => this.bot.logger.info(this.bot.isMobile, 'LOGIN', msg)
+                    )
+                    if (riskOutcome === 'stop') {
+                        throw new Error(`Login risk stop: ${pageRisk.reason}`)
+                    }
                 }
 
                 const state = await this.detectCurrentState(page, account)

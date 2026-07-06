@@ -108,31 +108,21 @@ export class StarSearch extends Workers {
 
     private async createInPrivateContext(page: Page, account: Account): Promise<BrowserContext | null> {
         try {
-            const browser = page.context().browser()
-            if (!browser) return null
-
-            const cookies = await page.context().cookies()
-            const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
-
-            const isolatedContext = await browser.newContext({
-                viewport,
-                locale: account.langCode ?? 'vi-VN',
-                userAgent: this.bot.fingerprint?.fingerprint?.navigator?.userAgent,
-                extraHTTPHeaders: this.bot.fingerprint?.headers
-            })
-
-            if (cookies.length > 0) {
-                await isolatedContext.addCookies(cookies)
+            const fingerprint = this.bot.desktopFingerprint ?? this.bot.fingerprint
+            if (!fingerprint) {
+                this.bot.logger.warn(false, 'STAR-SEARCH', 'No desktop fingerprint available for InPrivate context')
+                return null
             }
 
-            await isolatedContext.addInitScript(() => {
-                try {
-                    localStorage.clear()
-                    sessionStorage.clear()
-                } catch {}
-            })
+            const browserFactory = this.bot['browserFactory'] as {
+                createInPrivateContext: (
+                    parentPage: Page,
+                    acc: Account,
+                    fp: typeof fingerprint
+                ) => Promise<BrowserContext>
+            }
 
-            return isolatedContext
+            return await browserFactory.createInPrivateContext(page, account, fingerprint)
         } catch (error) {
             this.bot.logger.warn(false, 'STAR-SEARCH', `InPrivate context failed: ${errMsg(error)}`)
             return null

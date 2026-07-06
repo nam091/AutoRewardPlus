@@ -1,5 +1,5 @@
 /**
- * Structural verification for v8 automation + Star Search wiring.
+ * Structural + behavioral verification for v8 automation + Star Search wiring.
  * Usage: npm run verify-v8
  */
 import fs from 'fs'
@@ -7,6 +7,7 @@ import path from 'path'
 
 import { validateConfig } from '../src/util/Validator'
 import { validateProxyGeoAlignment } from '../src/util/GeoValidator'
+import { SessionRiskController } from '../src/browser/humanize/SessionRiskController'
 import type { MicrosoftRewardsBot } from '../src/index'
 import type { Account } from '../src/interface/Account'
 
@@ -44,10 +45,23 @@ function main(): void {
     check(() => {
         mustInclude('src/functions/activities/browser/Search.ts', 'SessionRiskController', 'Search risk')
         mustInclude('src/functions/activities/browser/SearchOnBing.ts', 'SessionRiskController', 'SearchOnBing risk')
+        mustInclude('src/browser/auth/Login.ts', 'SessionRiskController', 'Login risk')
         mustInclude('src/functions/SearchManager.ts', 'runStarSearchIfEnabled', 'Star Search wiring')
+        mustInclude('src/functions/SearchManager.ts', 'needDesktopSession', 'Sequential star desktop path')
+        mustInclude('src/functions/SearchManager.ts', 'desktopFingerprint', 'Desktop fingerprint stored')
         mustInclude('src/index.ts', 'AccountJob', 'In-run retry queue')
         mustInclude('src/functions/QueryEngine.ts', 'generateStarSearchKeywords', 'Star keyword pool')
     }, 'source-wiring')
+
+    check(() => {
+        mustInclude('src/browser/Browser.ts', 'createInPrivateContext', 'Browser InPrivate helper')
+        mustInclude('src/browser/Browser.ts', 'newInjectedContext', 'Browser fingerprint injection')
+        mustInclude('src/browser/Browser.ts', 'AntiDetectionEngine.applyAll', 'Browser anti-detection')
+        mustInclude('src/functions/activities/browser/StarSearch.ts', 'desktopFingerprint', 'Star uses desktop fingerprint')
+        mustInclude('src/functions/activities/browser/StarSearch.ts', 'createInPrivateContext', 'Star calls Browser InPrivate')
+        const starSrc = read('src/functions/activities/browser/StarSearch.ts')
+        assert(!starSrc.includes('browser.newContext('), 'StarSearch must not use raw browser.newContext')
+    }, 'star-inprivate-stack')
 
     check(() => {
         const required = [
@@ -90,6 +104,39 @@ function main(): void {
         } as Account
         validateProxyGeoAlignment(bot, account)
     }, 'geo-validator-runs')
+
+    check(() => {
+        const risk = new SessionRiskController()
+        const afterSuccess = risk.evaluateSearchOutcome(true)
+        assert(afterSuccess.action !== 'stop', 'risk should not stop after successful search')
+
+        let switchStrategySeen = false
+        for (let i = 0; i < 10; i++) {
+            const decision = risk.evaluateSearchOutcome(false)
+            if (decision.action === 'switch_strategy') {
+                switchStrategySeen = true
+                break
+            }
+        }
+        assert(switchStrategySeen, 'risk engine should switch strategy after repeated no-point searches')
+
+        let breakSeen = false
+        for (let i = 0; i < 6; i++) {
+            const decision = risk.recordFailure()
+            if (decision.action === 'take_break') {
+                breakSeen = true
+                break
+            }
+        }
+        assert(breakSeen, 'risk engine should take break after repeated failures')
+        assert(risk.isCaptchaDetected() === false, 'no captcha without page evaluation')
+    }, 'session-risk-engine')
+
+    check(() => {
+        const indexSrc = read('src/index.ts')
+        assert(indexSrc.includes('process.exit(1)'), 'main must exit non-zero on failure')
+        assert(indexSrc.includes('desktopFingerprint'), 'bot stores desktop fingerprint')
+    }, 'index-error-handling')
 
     if (failures.length > 0) {
         console.error(`[verify-v8] ${failures.length} check(s) failed`)

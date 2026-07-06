@@ -323,11 +323,19 @@ export class SearchManager {
 
         const shouldDoMobile = this.bot.config.workers.doMobileSearch && missingSearchPoints.mobilePoints > 0
         const shouldDoDesktop = this.bot.config.workers.doDesktopSearch && missingSearchPoints.desktopPoints > 0
+        const shouldDoStar = this.bot.config.workers.doStarSearch
+        const needModernTasks =
+            this.bot.rewardsVersion === 'modern' &&
+            (this.bot.config.workers.doDailySet ||
+                this.bot.config.workers.doMorePromotions ||
+                this.bot.config.workers.doMissions ||
+                this.bot.config.workers.doClaimPoints)
+        const needDesktopSession = shouldDoDesktop || shouldDoStar || needModernTasks
 
         this.bot.logger.debug(
             'main',
             'SEARCH-MANAGER',
-            `Sequential flags | mobile=${shouldDoMobile} | desktop=${shouldDoDesktop}`
+            `Sequential flags | mobile=${shouldDoMobile} | desktop=${shouldDoDesktop} | star=${shouldDoStar} | modern=${needModernTasks}`
         )
 
         let mobilePoints = 0
@@ -365,12 +373,12 @@ export class SearchManager {
             }
         }
 
-        if (shouldDoDesktop) {
+        if (needDesktopSession) {
             this.bot.logger.info('main', 'SEARCH-MANAGER', 'Step 2: desktop')
             this.bot.logger.debug(
                 'main',
                 'SEARCH-MANAGER',
-                `Sequential desktop | target=${missingSearchPoints.desktopPoints}`
+                `Sequential desktop | search=${shouldDoDesktop} | star=${shouldDoStar} | target=${missingSearchPoints.desktopPoints}`
             )
             desktopPoints = await this.doDesktopSearchSequential(
                 data,
@@ -381,8 +389,7 @@ export class SearchManager {
             )
             this.bot.logger.info('main', 'SEARCH-MANAGER', `Step 2: desktop done | earned=${desktopPoints}`)
         } else {
-            const reason = !this.bot.config.workers.doDesktopSearch ? 'disabled' : 'no-points'
-            this.bot.logger.info('main', 'SEARCH-MANAGER', `Step 2: skip desktop (${reason})`)
+            this.bot.logger.info('main', 'SEARCH-MANAGER', 'Step 2: skip desktop (no search, star, or modern tasks)')
         }
 
         this.bot.logger.info(
@@ -406,6 +413,8 @@ export class SearchManager {
         )
 
         const session = await this.bot['browserFactory'].createBrowser(account)
+        this.bot.desktopFingerprint = session.fingerprint
+        this.bot.fingerprint = session.fingerprint
         this.bot.logger.debug('main', 'SEARCH-DESKTOP-LOGIN', 'Browser created, new page')
 
         this.bot.mainDesktopPage = await session.context.newPage()
@@ -649,10 +658,10 @@ export class SearchManager {
 
             const shouldSearchDesktop =
                 this.bot.config.workers.doDesktopSearch && missingSearchPoints.desktopPoints > 0
+            const shouldDoStar = this.bot.config.workers.doStarSearch
 
-            if (!shouldSearchDesktop && !needModernTasks) {
-                const reason = !this.bot.config.workers.doDesktopSearch ? 'worker disabled' : 'no points left'
-                this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', `Skip: ${reason}`)
+            if (!shouldSearchDesktop && !needModernTasks && !shouldDoStar) {
+                this.bot.logger.info('main', 'SEARCH-DESKTOP-SEQUENTIAL', 'Skip: no desktop search, star, or modern tasks')
                 return 0
             }
 
