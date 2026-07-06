@@ -677,9 +677,14 @@ async function main(): Promise<void> {
     }
 }
 
-main().catch(async error => {
-    const tmpBot = new MicrosoftRewardsBot()
-    tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
-    await flushAllWebhooks()
-    process.exit(1)
-})
+const isDirectRun =
+    typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module
+
+if (isDirectRun) {
+    main().catch(async error => {
+        const tmpBot = new MicrosoftRewardsBot()
+        tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
+        await flushAllWebhooks()
+        process.exit(1)
+    })
+}

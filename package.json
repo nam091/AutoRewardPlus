@@ -18,6 +18,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "stealth-check": "ts-node ./scripts/stealth-check.ts",
+        "verify-v8": "ts-node ./scripts/verify-v8-wiring.ts",
         "clear-diagnostics": "rimraf diagnostics",
         "clear-sessions": "node ./scripts/main/clearSessions.js",
         "open-session": "node ./scripts/main/browserSession.js -email",

@@ -56,7 +56,9 @@ async function main(): Promise<void> {
         console.log(`[stealth-check] ${status} | ${check.name} | ${check.detail}`)
     }
 
+    const browser = context.browser()
     await context.close()
+    await browser?.close().catch(() => {})
     process.exit(failed > 0 ? 1 : 0)
 }
 
