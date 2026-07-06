@@ -687,10 +687,7 @@ const isDirectRun =
 
 if (isDirectRun) {
     main().catch(async error => {
-        try {
-            const tmpBot = new MicrosoftRewardsBot()
-            tmpBot.logger.error('main', 'MAIN-ERROR', error as Error)
-        } catch {}
+        console.error('[MAIN] Fatal error:', error)
         await flushAllWebhooks()
         process.exit(1)
     })
