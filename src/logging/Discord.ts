@@ -45,6 +45,9 @@ export interface AccountSummary {
     initialPoints: number
     finalPoints: number
     collectedPoints: number
+    pcPoints: number
+    mobilePoints: number
+    questPoints: number
     claimedPoints: number
     duration: number
     success: boolean
@@ -69,6 +72,9 @@ export async function sendDiscordSummary(
     const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
 
     const totalCollected = accounts.reduce((sum, a) => sum + a.collectedPoints, 0)
+    const totalPcPoints = accounts.reduce((sum, a) => sum + a.pcPoints, 0)
+    const totalMobilePoints = accounts.reduce((sum, a) => sum + a.mobilePoints, 0)
+    const totalQuestPoints = accounts.reduce((sum, a) => sum + a.questPoints, 0)
     const totalClaimed = accounts.reduce((sum, a) => sum + a.claimedPoints, 0)
     const totalFinal = accounts.reduce((sum, a) => sum + a.finalPoints, 0)
     const successCount = accounts.filter(a => a.success).length
@@ -81,7 +87,7 @@ export async function sendDiscordSummary(
 
         if (a.success) {
             const claimText = a.claimedPoints > 0 ? ` | Claimed: **${a.claimedPoints}**` : ''
-            return `✅ \`${emailShort}\` — **${pointsSign}${a.collectedPoints}** pts → Total: **${a.finalPoints.toLocaleString()}**${claimText} _(${a.duration}s)_`
+            return `✅ \`${emailShort}\` — **${pointsSign}${a.collectedPoints}** pts (PC: +${a.pcPoints} | Mobile: +${a.mobilePoints} | Quest: +${a.questPoints}) → Total: **${a.finalPoints.toLocaleString()}**${claimText} _(${a.duration}s)_`
         } else {
             return `❌ \`${emailShort}\` — **Failed** ${a.error ? `(${a.error.substring(0, 50)})` : ''}`
         }
@@ -101,6 +107,9 @@ export async function sendDiscordSummary(
                         name: '📊 Summary',
                         value: [
                             `**Total Earned:** +${totalCollected} pts`,
+                            `**PC Points:** +${totalPcPoints} pts`,
+                            `**Mobile Points:** +${totalMobilePoints} pts`,
+                            `**Quest Points:** +${totalQuestPoints} pts`,
                             `**Total Claimed:** ${totalClaimed} pts`,
                             `**All Points:** ${totalFinal.toLocaleString()} pts`,
                             `**Accounts:** ${successCount}/${accounts.length} success`
@@ -161,6 +170,9 @@ export async function sendDiscordAccountNotification(discordUrl: string, account
         `**Old point:** ${account.initialPoints.toLocaleString()}`,
         `**New point:** ${account.finalPoints.toLocaleString()}`,
         `**Earned:** ${diffStr} pts`,
+        `**PC:** +${account.pcPoints} pts`,
+        `**Mobile:** +${account.mobilePoints} pts`,
+        `**Quest:** +${account.questPoints} pts`,
         account.claimedPoints > 0 ? `**Claimed:** ${account.claimedPoints} pts` : ''
     ].filter(Boolean).join('\n')
 

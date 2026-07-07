@@ -53,7 +53,7 @@ export async function sendNtfy(config: WebhookNtfyConfig, content: string, level
 
 export async function sendNtfyAccountNotification(
     config: WebhookNtfyConfig,
-    account: { email: string; initialPoints: number; finalPoints: number; success: boolean }
+    account: { email: string; initialPoints: number; finalPoints: number; pcPoints: number; mobilePoints: number; questPoints: number; success: boolean }
 ): Promise<void> {
     if (!config?.url) return
 
@@ -65,7 +65,10 @@ export async function sendNtfyAccountNotification(
         `[${status}] Account: ${account.email}`,
         `Old point: ${account.initialPoints}`,
         `New point: ${account.finalPoints}`,
-        `Earned: ${diffStr} pts`
+        `Earned: ${diffStr} pts`,
+        `PC: +${account.pcPoints} pts`,
+        `Mobile: +${account.mobilePoints} pts`,
+        `Quest: +${account.questPoints} pts`
     ].join('\n')
 
     const headers: Record<string, string> = { 'Content-Type': 'text/plain' }

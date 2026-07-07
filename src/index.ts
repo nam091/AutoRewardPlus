@@ -43,6 +43,9 @@ interface AccountStats {
     initialPoints: number
     finalPoints: number
     collectedPoints: number
+    pcPoints: number
+    mobilePoints: number
+    questPoints: number
     claimedPoints: number
     duration: number
     success: boolean
@@ -309,7 +312,7 @@ export class MicrosoftRewardsBot {
 
                 this.axios = new AxiosClient(account.proxy)
 
-                const result: { initialPoints: number; collectedPoints: number } | undefined = await this.Main(
+                const result: { initialPoints: number; collectedPoints: number; pcPoints: number; mobilePoints: number; questPoints: number } | undefined = await this.Main(
                     account
                 ).catch(error => {
                     void this.logger.error(true, 'FLOW', `Mobile flow failed for ${accountEmail}: ${errMsg(error)}`)
@@ -323,12 +326,18 @@ export class MicrosoftRewardsBot {
                     const accountInitialPoints = result.initialPoints ?? 0
                     const accountFinalPoints = accountInitialPoints + collectedPoints
                     const accountClaimedPoints = this.userData.claimedPoints ?? 0
+                    const accountPcPoints = result.pcPoints ?? 0
+                    const accountMobilePoints = result.mobilePoints ?? 0
+                    const accountQuestPoints = result.questPoints ?? 0
 
                     accountStats.push({
                         email: accountEmail,
                         initialPoints: accountInitialPoints,
                         finalPoints: accountFinalPoints,
                         collectedPoints: collectedPoints,
+                        pcPoints: accountPcPoints,
+                        mobilePoints: accountMobilePoints,
+                        questPoints: accountQuestPoints,
                         claimedPoints: accountClaimedPoints,
                         duration: parseFloat(durationSeconds),
                         success: true
@@ -354,6 +363,9 @@ export class MicrosoftRewardsBot {
                         initialPoints: 0,
                         finalPoints: 0,
                         collectedPoints: 0,
+                        pcPoints: 0,
+                        mobilePoints: 0,
+                        questPoints: 0,
                         claimedPoints: 0,
                         duration: parseFloat(durationSeconds),
                         success: false,
@@ -370,6 +382,9 @@ export class MicrosoftRewardsBot {
                     initialPoints: 0,
                     finalPoints: 0,
                     collectedPoints: 0,
+                    pcPoints: 0,
+                    mobilePoints: 0,
+                    questPoints: 0,
                     claimedPoints: 0,
                     duration: parseFloat(durationSeconds),
                     success: false,
@@ -422,7 +437,7 @@ export class MicrosoftRewardsBot {
         return accountStats
     }
 
-    async Main(account: Account): Promise<{ initialPoints: number; collectedPoints: number }> {
+    async Main(account: Account): Promise<{ initialPoints: number; collectedPoints: number; pcPoints: number; mobilePoints: number; questPoints: number }> {
         const accountEmail = account.email
         this.logger.info('main', 'FLOW', `Starting session for ${accountEmail}`)
 
@@ -488,6 +503,10 @@ export class MicrosoftRewardsBot {
                     } | App: ${appEarnable?.totalEarnablePoints ?? 0} | ${accountEmail} | locale: ${this.userData.geoLocale}`
                 )
 
+                // Track points before quest activities
+                const pointsBeforeQuests = await this.browser.func.getCurrentPoints()
+                this.logger.info('main', 'QUEST-TRACK', `Points before quests: ${pointsBeforeQuests} | ${accountEmail}`)
+
                 if (this.config.workers.doAppPromotions) await this.workers.doAppPromotions(appData)
 
                 // Modern UI: Daily Set + Keep Earning run in desktop phase (mobile can't detect properly)
@@ -502,6 +521,11 @@ export class MicrosoftRewardsBot {
                 if (this.config.workers.doDailyCheckIn) await this.activities.doDailyCheckIn()
                 if (this.config.workers.doReadToEarn) await this.activities.doReadToEarn()
                 if (this.config.workers.doPunchCards) await this.workers.doPunchCards(data, this.mainMobilePage)
+
+                // Track points after quest activities
+                const pointsAfterQuests = await this.browser.func.getCurrentPoints()
+                const questPoints = pointsAfterQuests - pointsBeforeQuests
+                this.logger.info('main', 'QUEST-TRACK', `Points after quests: ${pointsAfterQuests} | Quest earned: +${questPoints} | ${accountEmail}`)
 
                 const searchPoints = await this.browser.func.getSearchPoints()
                 const missingSearchPoints = this.browser.func.missingSearchPoints(searchPoints, true)
@@ -526,12 +550,15 @@ export class MicrosoftRewardsBot {
                 this.logger.info(
                     'main',
                     'FLOW',
-                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | ${accountEmail}`
+                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | Quest: +${questPoints} | ${accountEmail}`
                 )
 
                 return {
                     initialPoints,
-                    collectedPoints: collectedPoints || 0
+                    collectedPoints: collectedPoints || 0,
+                    pcPoints: desktopPoints || 0,
+                    mobilePoints: mobilePoints || 0,
+                    questPoints: questPoints || 0
                 }
             })
         } finally {
