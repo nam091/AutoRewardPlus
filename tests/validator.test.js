@@ -78,7 +78,7 @@ test('config validation rejects invalid concurrency and delay ranges', () => {
     assert.throws(() => validateConfig(invalidDelay))
 })
 
-test('account validation rejects incomplete enabled proxy settings', () => {
+test('account validation keeps legacy empty proxy settings compatible', () => {
     const account = {
         email: 'account@example.com',
         password: 'secret',
@@ -88,6 +88,9 @@ test('account validation rejects incomplete enabled proxy settings', () => {
         proxy: { proxyAxios: true, url: '', port: 0, password: '', username: '' },
         saveFingerprint: { mobile: true, desktop: true }
     }
+    assert.doesNotThrow(() => validateAccounts([account]))
+
+    account.proxy.url = 'http://127.0.0.1'
     assert.throws(() => validateAccounts([account]))
 })
 

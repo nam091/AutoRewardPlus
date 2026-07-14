@@ -138,8 +138,8 @@ export const AccountSchema = z.object({
             password: z.string(),
             username: z.string()
         })
-        .refine(proxy => !proxy.proxyAxios || (proxy.url.length > 0 && proxy.port > 0), {
-            message: 'Enabled Axios proxy requires a URL and a port between 1 and 65535'
+        .refine(proxy => !proxy.proxyAxios || proxy.url.length === 0 || proxy.port > 0, {
+            message: 'Axios proxy with a URL requires a port between 1 and 65535'
         }),
     saveFingerprint: z.object({
         mobile: z.boolean(),

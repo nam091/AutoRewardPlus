@@ -9,7 +9,7 @@
 ## Configuration safety
 
 - Validate Google Sheets and all AI fallback-provider options exposed by `config.example.json`.
-- Reject invalid URLs, durations, delay ranges, cluster counts, and enabled proxy settings before a run starts.
+- Reject invalid URLs, durations, delay ranges, cluster counts, and configured proxy endpoints before a run starts while preserving legacy empty proxy settings.
 - Remove unsupported star-search options and the embedded API key-shaped value from the example configuration.
 
 ## Quality gates
