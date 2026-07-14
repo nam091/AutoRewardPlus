@@ -1,11 +1,15 @@
 import { z } from 'zod'
 import semver from 'semver'
+import ms, { StringValue } from 'ms'
 import pkg from '../../package.json'
 
 import { Config } from '../interface/Config'
 import { Account } from '../interface/Account'
 
-const NumberOrString = z.union([z.number(), z.string()])
+const Duration = z.union([
+    z.number().finite().nonnegative(),
+    z.string().refine(value => ms(value as StringValue) !== undefined, 'Invalid duration')
+])
 
 const LogFilterSchema = z.object({
     enabled: z.boolean(),
@@ -16,9 +20,15 @@ const LogFilterSchema = z.object({
 })
 
 const DelaySchema = z.object({
-    min: NumberOrString,
-    max: NumberOrString
-})
+    min: Duration,
+    max: Duration
+}).refine(
+    ({ min, max }) => {
+        const toMs = (value: number | string) => (typeof value === 'number' ? value : ms(value as StringValue)!)
+        return toMs(min) <= toMs(max)
+    },
+    { message: 'Minimum delay must not exceed maximum delay' }
+)
 
 const QueryEngineSchema = z.enum(['google', 'wikipedia', 'reddit', 'local'])
 
@@ -45,18 +55,38 @@ const WebhookSchema = z.object({
 })
 
 // AI Config
+const AIProviderSchema = z.object({
+    name: z.string().min(1),
+    baseUrl: z.url(),
+    model: z.string().min(1),
+    apiKey: z.string(),
+    priority: z.number().int().positive(),
+    enabled: z.boolean()
+})
+
 const AISchema = z.object({
-    baseUrl: z.string(),
+    baseUrl: z.url(),
     model: z.string(),
-    apiKey: z.string()
+    apiKey: z.string(),
+    fallbackProviders: z.array(AIProviderSchema).optional(),
+    maxRetries: z.number().int().min(1).max(10).optional(),
+    retryDelayMs: z.number().int().nonnegative().optional(),
+    cacheTtlMs: z.number().int().nonnegative().optional()
+})
+
+const GoogleSheetsSchema = z.object({
+    enabled: z.boolean(),
+    spreadsheetId: z.string(),
+    sheetName: z.string().min(1),
+    keyFilePath: z.string().min(1)
 })
 
 // Config
 export const ConfigSchema = z.object({
-    baseURL: z.string(),
-    sessionPath: z.string(),
+    baseURL: z.url(),
+    sessionPath: z.string().min(1),
     headless: z.boolean(),
-    clusters: z.number().int().nonnegative(),
+    clusters: z.number().int().positive(),
     errorDiagnostics: z.boolean(),
     workers: z.object({
         doDailySet: z.boolean(),
@@ -72,13 +102,13 @@ export const ConfigSchema = z.object({
         doClaimPoints: z.boolean().default(true)
     }),
     searchOnBingLocalQueries: z.boolean(),
-    globalTimeout: NumberOrString,
+    globalTimeout: Duration,
     searchSettings: z.object({
         scrollRandomResults: z.boolean(),
         clickRandomResults: z.boolean(),
         parallelSearching: z.boolean(),
         queryEngines: z.array(QueryEngineSchema),
-        searchResultVisitTime: NumberOrString,
+        searchResultVisitTime: Duration,
         searchDelay: DelaySchema,
         readDelay: DelaySchema
     }),
@@ -88,24 +118,29 @@ export const ConfigSchema = z.object({
     }),
     consoleLogFilter: LogFilterSchema,
     webhook: WebhookSchema,
-    ai: AISchema.optional()
+    ai: AISchema.optional(),
+    googleSheets: GoogleSheetsSchema.optional()
 })
 
 // Account
 export const AccountSchema = z.object({
-    email: z.string(),
+    email: z.string().min(1),
     password: z.string(),
     totpSecret: z.string().optional(),
     recoveryEmail: z.string(),
     geoLocale: z.string(),
     langCode: z.string(),
-    proxy: z.object({
-        proxyAxios: z.boolean(),
-        url: z.string(),
-        port: z.number(),
-        password: z.string(),
-        username: z.string()
-    }),
+    proxy: z
+        .object({
+            proxyAxios: z.boolean(),
+            url: z.string(),
+            port: z.number().int().min(0).max(65535),
+            password: z.string(),
+            username: z.string()
+        })
+        .refine(proxy => !proxy.proxyAxios || (proxy.url.length > 0 && proxy.port > 0), {
+            message: 'Enabled Axios proxy requires a URL and a port between 1 and 65535'
+        }),
     saveFingerprint: z.object({
         mobile: z.boolean(),
         desktop: z.boolean()

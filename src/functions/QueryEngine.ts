@@ -24,9 +24,9 @@ interface CachedQueries {
 export class QueryCore {
     private aiEndpoints: AiEndpoint[] = []
     private queryCache: CachedQueries | null = null
-    private static readonly CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
-    private static readonly MAX_RETRIES = 3
-    private static readonly RETRY_DELAY_MS = 2000
+    private cacheTtlMs = 30 * 60 * 1000 // 30 minutes
+    private maxRetries = 3
+    private retryDelayMs = 2000
 
     constructor(private bot: MicrosoftRewardsBot) {
         this.initializeAiEndpoints()
@@ -526,15 +526,9 @@ export class QueryCore {
         }
 
         // Update settings from config
-        if (config.maxRetries) {
-            (this as any).MAX_RETRIES = config.maxRetries
-        }
-        if (config.retryDelayMs) {
-            (this as any).RETRY_DELAY_MS = config.retryDelayMs
-        }
-        if (config.cacheTtlMs) {
-            (this as any).CACHE_TTL_MS = config.cacheTtlMs
-        }
+        this.maxRetries = config.maxRetries ?? this.maxRetries
+        this.retryDelayMs = config.retryDelayMs ?? this.retryDelayMs
+        this.cacheTtlMs = config.cacheTtlMs ?? this.cacheTtlMs
 
         // Sort by priority
         this.aiEndpoints.sort((a, b) => a.priority - b.priority)
@@ -561,7 +555,7 @@ export class QueryCore {
         if (!this.queryCache) return null
 
         const now = Date.now()
-        if (now - this.queryCache.timestamp > QueryCore.CACHE_TTL_MS) {
+        if (now - this.queryCache.timestamp > this.cacheTtlMs) {
             this.queryCache = null
             return null
         }
@@ -659,7 +653,7 @@ thay keo tản nhiệt laptop giá bao nhiêu`
 
         // Try each endpoint with retry logic
         for (const endpoint of this.aiEndpoints) {
-            for (let retry = 0; retry < QueryCore.MAX_RETRIES; retry++) {
+            for (let retry = 0; retry < this.maxRetries; retry++) {
                 try {
                     const controller = new AbortController()
                     const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
@@ -686,10 +680,10 @@ thay keo tản nhiệt laptop giá bao nhiêu`
                         this.bot.logger.warn(
                             false,
                             'AI-SESSION',
-                            `[AI] Endpoint ${endpoint.baseUrl} failed: HTTP ${response.status} (retry ${retry + 1}/${QueryCore.MAX_RETRIES})`
+                            `[AI] Endpoint ${endpoint.baseUrl} failed: HTTP ${response.status} (retry ${retry + 1}/${this.maxRetries})`
                         )
-                        if (retry < QueryCore.MAX_RETRIES - 1) {
-                            await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                        if (retry < this.maxRetries - 1) {
+                            await new Promise(r => setTimeout(r, this.retryDelayMs * (retry + 1)))
                             continue
                         }
                         this.markEndpointFailed(endpoint)
@@ -743,10 +737,10 @@ thay keo tản nhiệt laptop giá bao nhiêu`
                     this.bot.logger.warn(
                         false,
                         'AI-SESSION',
-                        `[AI] ❌ Endpoint ${endpoint.baseUrl} error (retry ${retry + 1}/${QueryCore.MAX_RETRIES}): ${errMsg(error)}`
+                        `[AI] ❌ Endpoint ${endpoint.baseUrl} error (retry ${retry + 1}/${this.maxRetries}): ${errMsg(error)}`
                     )
-                    if (retry < QueryCore.MAX_RETRIES - 1) {
-                        await new Promise(r => setTimeout(r, QueryCore.RETRY_DELAY_MS * (retry + 1)))
+                    if (retry < this.maxRetries - 1) {
+                        await new Promise(r => setTimeout(r, this.retryDelayMs * (retry + 1)))
                     } else {
                         this.markEndpointFailed(endpoint)
                     }

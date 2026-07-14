@@ -21,9 +21,7 @@ export function loadAccounts(): Account[] {
         const accounts = fs.readFileSync(accountDir, 'utf-8')
         const accountsData = JSON.parse(accounts)
 
-        validateAccounts(accountsData)
-
-        return accountsData
+        return validateAccounts(accountsData)
     } catch (error) {
         throw new Error(error as string)
     }
@@ -39,11 +37,9 @@ export function loadConfig(): Config {
         const config = fs.readFileSync(configDir, 'utf-8')
 
         const configData = JSON.parse(config)
-        validateConfig(configData)
+        configCache = validateConfig(configData)
 
-        configCache = configData
-
-        return configData
+        return configCache
     } catch (error) {
         throw new Error(error as string)
     }

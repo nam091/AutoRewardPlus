@@ -1,6 +1,6 @@
 {
     "name": "microsoft-rewards-script",
-    "version": "3.1.4",
+    "version": "7.1.0",
     "description": "Automatically do tasks for Microsoft Rewards but in TS!",
     "author": "Netsky",
     "license": "GPL-3.0-or-later",
@@ -10,6 +10,9 @@
     "scripts": {
         "pre-build": "npm i && rimraf dist && npx patchright install chromium",
         "build": "rimraf dist && tsc",
+        "lint": "eslint src --ext .ts",
+        "test": "npm run build && node --test tests/validator.test.js tests/utils.test.js",
+        "check": "npm run lint && npm test && npm audit --audit-level=high",
         "start": "node ./dist/index.js",
         "ts-start": "ts-node ./src/index.ts",
         "dev": "ts-node ./src/index.ts -dev",
@@ -49,7 +52,7 @@
         "@fastify/static": "^9.1.3",
         "@fastify/websocket": "^11.2.0",
         "@inquirer/prompts": "^8.5.2",
-        "axios": "^1.13.5",
+        "axios": "^1.18.1",
         "axios-retry": "^4.5.0",
         "chalk": "^4.1.2",
         "cheerio": "^1.0.0",
