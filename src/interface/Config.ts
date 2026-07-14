@@ -14,6 +14,13 @@ export interface Config {
     webhook: ConfigWebhook
     ai?: ConfigAI
     googleSheets?: ConfigGoogleSheets
+    behavior?: ConfigBehavior
+}
+
+export interface ConfigBehavior {
+    accountStartDelay: ConfigDelay
+    enableSessionBreaks: boolean
+    telemetry: boolean
 }
 
 export interface ConfigAI {

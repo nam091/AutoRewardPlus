@@ -1,6 +1,7 @@
-import rebrowser, { BrowserContext } from 'patchright'
+import { chromium as patchrightChromium, type BrowserContext } from 'patchright'
+import { chromium, type Browser as PlaywrightBrowser } from 'playwright-core'
 
-import { newInjectedContext } from 'fingerprint-injector'
+import { FingerprintInjector } from 'fingerprint-injector'
 
 import { BrowserFingerprintWithHeaders, FingerprintGenerator } from 'fingerprint-generator'
 
@@ -10,6 +11,7 @@ import { loadSessionData, saveFingerprintData } from '../util/Load'
 
 import { UserAgentManager } from './UserAgent'
 import { AntiDetectionEngine } from './humanize/AntiDetectionEngine'
+import { stableSeed } from './humanize/SeededRandom'
 
 import type { Account, AccountProxy } from '../interface/Account'
 import { errMsg } from '../util/Utils'
@@ -50,7 +52,7 @@ class Browser {
     }
 
     async createBrowser(account: Account): Promise<BrowserCreationResult> {
-        let browser: rebrowser.Browser
+        let browser: PlaywrightBrowser
         try {
             const proxyConfig = account.proxy.url
                 ? {
@@ -63,7 +65,8 @@ class Browser {
                   }
                 : undefined
 
-            browser = await rebrowser.chromium.launch({
+            browser = await chromium.launch({
+                executablePath: patchrightChromium.executablePath(),
                 headless: this.bot.config.headless,
                 ...(proxyConfig && { proxy: proxyConfig }),
                 args: [...Browser.BROWSER_ARGS]
@@ -84,12 +87,35 @@ class Browser {
 
             const fingerprint = sessionData.fingerprint ?? (await this.generateFingerprint(this.bot.isMobile))
 
-            const context = await newInjectedContext(browser as any, {
-                fingerprint,
-                newContextOptions: {
-                    permissions: [],
-                    ignoreHTTPSErrors: true
-                }
+            const injector = new FingerprintInjector()
+            const injectableHeaders = { ...fingerprint.headers }
+            for (const header of [
+                'accept-encoding',
+                'accept',
+                'cache-control',
+                'pragma',
+                'sec-fetch-dest',
+                'sec-fetch-mode',
+                'sec-fetch-site',
+                'sec-fetch-user',
+                'upgrade-insecure-requests',
+                'te'
+            ]) {
+                delete injectableHeaders[header]
+            }
+            const context = await browser.newContext({
+                userAgent: fingerprint.fingerprint.navigator.userAgent,
+                colorScheme: 'dark',
+                viewport: {
+                    width: fingerprint.fingerprint.screen.width,
+                    height: fingerprint.fingerprint.screen.height
+                },
+                deviceScaleFactor: fingerprint.fingerprint.screen.devicePixelRatio,
+                isMobile: this.bot.isMobile,
+                hasTouch: this.bot.isMobile,
+                permissions: [],
+                ignoreHTTPSErrors: true,
+                extraHTTPHeaders: injectableHeaders
             })
 
             await context.addInitScript(() => {
@@ -102,7 +128,16 @@ class Browser {
             })
 
             // Apply anti-detection patches
-            await AntiDetectionEngine.applyAll(context)
+            const antiDetectionProfile = {
+                seed: stableSeed(
+                    account.email.toLowerCase(),
+                    this.bot.isMobile,
+                    fingerprint.fingerprint.navigator.userAgent
+                ),
+                isMobile: this.bot.isMobile
+            }
+            const fingerprintScript = injector.getInjectableScript(fingerprint)
+            await AntiDetectionEngine.applyAll(context, antiDetectionProfile, fingerprintScript)
             this.bot.logger.debug(this.bot.isMobile, 'BROWSER', 'Anti-detection patches applied')
 
             context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))

@@ -81,6 +81,12 @@ const GoogleSheetsSchema = z.object({
     keyFilePath: z.string().min(1)
 })
 
+const BehaviorSchema = z.object({
+    accountStartDelay: DelaySchema.default({ min: '2sec', max: '10sec' }),
+    enableSessionBreaks: z.boolean().default(true),
+    telemetry: z.boolean().default(true)
+})
+
 // Config
 export const ConfigSchema = z.object({
     baseURL: z.url(),
@@ -119,7 +125,12 @@ export const ConfigSchema = z.object({
     consoleLogFilter: LogFilterSchema,
     webhook: WebhookSchema,
     ai: AISchema.optional(),
-    googleSheets: GoogleSheetsSchema.optional()
+    googleSheets: GoogleSheetsSchema.optional(),
+    behavior: BehaviorSchema.default({
+        accountStartDelay: { min: '2sec', max: '10sec' },
+        enableSessionBreaks: true,
+        telemetry: true
+    })
 })
 
 // Account

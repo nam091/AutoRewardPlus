@@ -27,6 +27,7 @@ import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
 import { sheetService } from './services/sheetService'
 import { stateService } from './services/stateService'
+import { getAccountStartDelayMs, maskAccount } from './browser/humanize/BehaviorPolicy'
 
 interface ExecutionContext {
     isMobile: boolean
@@ -303,6 +304,23 @@ export class MicrosoftRewardsBot {
             this.userData.claimedPoints = 0 // Reset for each account
 
             try {
+                const startDelay = this.config.behavior?.accountStartDelay
+                if (startDelay) {
+                    const delayMs = getAccountStartDelayMs(
+                        accountEmail,
+                        new Date(runStartTime).toISOString().slice(0, 10),
+                        this.utils.stringToNumber(startDelay.min),
+                        this.utils.stringToNumber(startDelay.max)
+                    )
+                    if (this.config.behavior?.telemetry) {
+                        this.logger.info(
+                            'main',
+                            'ACCOUNT-SCHEDULE',
+                            `account=${maskAccount(accountEmail)} | delayMs=${delayMs}`
+                        )
+                    }
+                    await this.utils.wait(delayMs)
+                }
                 this.logger.info(
                     'main',
                     'ACCOUNT-START',

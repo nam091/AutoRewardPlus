@@ -8,11 +8,16 @@ import { QueryCore } from '../../QueryEngine'
 import { Workers } from '../../Workers'
 import { errMsg } from '../../../util/Utils'
 import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
+import { chooseResultInteraction, getSessionBreakMs } from '../../../browser/humanize/BehaviorPolicy'
+import { SeededRandom } from '../../../browser/humanize/SeededRandom'
 
 export class Search extends Workers {
     private bingHome = 'https://bing.com'
     private searchPageURL = ''
     private searchCount = 0
+    private behaviorRandom = new SeededRandom('search-uninitialized')
+    private searchStartedAt = 0
+    private interactionStats: Record<'read' | 'scroll' | 'click', number> = { read: 0, scroll: 0, click: 0 }
 
     /** Lightweight feedback tracker: counts successful vs failed queries per prefix pattern */
     private queryFeedback: Map<string, { success: number; fail: number }> = new Map()
@@ -40,6 +45,10 @@ export class Search extends Workers {
 
     public async doSearch(data: DashboardData, page: Page, isMobile: boolean): Promise<number> {
         const startBalance = Number(this.bot.userData.currentPoints ?? 0)
+        const dayKey = new Date().toISOString().slice(0, 10)
+        this.behaviorRandom = SeededRandom.fromParts(this.bot.userData.userName, isMobile, dayKey, 'search')
+        this.searchStartedAt = Date.now()
+        this.interactionStats = { read: 0, scroll: 0, click: 0 }
 
         this.bot.logger.info(isMobile, 'SEARCH-BING', `Starting Bing searches | currentPoints=${startBalance}`)
 
@@ -110,7 +119,7 @@ export class Search extends Workers {
                     let query = queryPool[i] as string
 
                     // Query refinement: ~20% chance to refine previous query instead of using next one
-                    if (lastQuery && Math.random() < 0.2 && i > 0) {
+                    if (lastQuery && this.behaviorRandom.chance(0.2) && i > 0) {
                         const refined = this.refineQuery(lastQuery, query)
                         if (refined) {
                             this.bot.logger.debug(
@@ -161,6 +170,14 @@ export class Search extends Workers {
                     if (stagnantLoop > stagnantMax) {
                         this.bot.logger.warn(isMobile, tag, `No points for ${stagnantMax} iterations, aborting`)
                         return { stagnant: true }
+                    }
+
+                    if (this.bot.config.behavior?.enableSessionBreaks) {
+                        const breakMs = getSessionBreakMs(this.behaviorRandom, Date.now() - this.searchStartedAt)
+                        if (breakMs > 0) {
+                            this.bot.logger.info(isMobile, 'BEHAVIOR-BREAK', `Session pause | durationMs=${breakMs}`)
+                            await this.bot.utils.wait(breakMs)
+                        }
                     }
 
                     if (opts?.refillQueries) {
@@ -215,7 +232,7 @@ export class Search extends Workers {
             this.bot.logger.info(
                 isMobile,
                 'SEARCH-BING',
-                `Completed Bing searches | startBalance=${startBalance} | newBalance=${finalBalance} | feedback=[${this.getFeedbackSummary()}]`
+                `Completed Bing searches | startBalance=${startBalance} | newBalance=${finalBalance} | feedback=[${this.getFeedbackSummary()}] | interactions=${JSON.stringify(this.interactionStats)}`
             )
 
             return totalGainedPoints
@@ -321,12 +338,16 @@ export class Search extends Workers {
                 // Simulate reading search results page
                 await this.simulateReadingResults(searchPage, isMobile)
 
-                if (this.bot.config.searchSettings.scrollRandomResults) {
+                const interaction = chooseResultInteraction(this.behaviorRandom, {
+                    allowScroll: this.bot.config.searchSettings.scrollRandomResults,
+                    allowClick: this.bot.config.searchSettings.clickRandomResults
+                })
+                this.interactionStats[interaction]++
+
+                if (interaction === 'scroll') {
                     await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
                     await this.randomScroll(searchPage, isMobile)
-                }
-
-                if (this.bot.config.searchSettings.clickRandomResults) {
+                } else if (interaction === 'click') {
                     await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
                     await this.clickRandomLink(searchPage, isMobile)
                 }
@@ -446,9 +467,33 @@ export class Search extends Workers {
             this.bot.logger.debug(isMobile, 'SEARCH-RANDOM-CLICK', 'Attempting to click a random search result link')
 
             const searchPageUrl = page.url()
+            const candidates = page.locator('#b_results .b_algo h2 a')
+            const count = Math.min(await candidates.count(), 8)
+            const eligible: number[] = []
 
-            // Use human-like click with Bezier mouse movement
-            await HumanizeEngine.humanClick(page, '#b_results .b_algo h2')
+            for (let index = 0; index < count; index++) {
+                const candidate = candidates.nth(index)
+                const href = (await candidate.getAttribute('href')) ?? ''
+                const visible = await candidate.isVisible().catch(() => false)
+                if (visible && /^https?:\/\//i.test(href) && !/bing\.com\/(aclick|ck\/a)/i.test(href)) {
+                    eligible.push(index)
+                }
+            }
+
+            if (eligible.length === 0) {
+                this.bot.logger.debug(isMobile, 'SEARCH-RANDOM-CLICK', 'No eligible organic result found')
+                return
+            }
+
+            const selectedIndex =
+                this.behaviorRandom.weighted(
+                    eligible.map((index, rank) => ({ value: index, weight: Math.max(1, eligible.length - rank) }))
+                ) ?? eligible[0]!
+            const selected = candidates.nth(selectedIndex)
+
+            await HumanizeEngine.humanHoverLocator(page, selected, this.behaviorRandom.int(250, 700))
+            const clicked = await HumanizeEngine.humanClickLocator(page, selected)
+            if (!clicked) return
             await this.bot.utils.wait(this.bot.config.searchSettings.searchResultVisitTime)
 
             if (isMobile) {

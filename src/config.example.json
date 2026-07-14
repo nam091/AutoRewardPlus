@@ -98,5 +98,13 @@
         "spreadsheetId": "",
         "sheetName": "Sheet1",
         "keyFilePath": "service-account.json"
+    },
+    "behavior": {
+        "accountStartDelay": {
+            "min": "2sec",
+            "max": "10sec"
+        },
+        "enableSessionBreaks": true,
+        "telemetry": true
     }
 }

@@ -19,3 +19,14 @@
 - Upgrade vulnerable dependencies; `npm audit` reports zero known vulnerabilities at release time.
 
 The dashboard is intentionally unchanged in this release.
+
+## Seeded behavior and fingerprint consistency
+
+- Replace per-read Canvas randomness and conflicting CPU/RAM/WebGL overrides with a stable account/device seed.
+- Use Playwright Core with the Chromium binary managed by Patchright so pre-navigation fingerprint scripts are
+  actually executed; Patchright 1.57-1.61 custom init scripts were verified not to run in this environment.
+- Choose result behavior by weight and select among visible organic results instead of always clicking the first.
+- Add exact-locator hover, bounded long-session breaks, deterministic account start offsets, and hashed telemetry.
+- Honor HTTP `Retry-After` for rate limiting and temporary throttling.
+- Add deterministic policy tests and a real Chromium smoke test for mobile fingerprint values, stable Canvas reads,
+  `webdriver`, and browser-context cleanup.

@@ -1,4 +1,4 @@
-import { Page } from 'patchright';
+import type { Locator, Page } from 'patchright'
 
 interface Point {
     x: number
@@ -141,11 +141,12 @@ export class HumanizeEngine {
      * Variable click duration simulates real mouse button press.
      */
     public static async humanClick(page: Page, selector: string): Promise<void> {
-        const element = await page.$(selector)
-        if (!element) return
+        await this.humanClickLocator(page, page.locator(selector).first())
+    }
 
-        const box = await element.boundingBox()
-        if (!box) return
+    public static async humanClickLocator(page: Page, locator: Locator): Promise<boolean> {
+        const box = await locator.boundingBox()
+        if (!box) return false
 
         // Click target: random point within element (not exact center)
         const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
@@ -164,6 +165,7 @@ export class HumanizeEngine {
 
         // Post-click micro-pause
         await this.gaussianSleep(50, 20)
+        return true
     }
 
     /**
@@ -236,11 +238,12 @@ export class HumanizeEngine {
      * Human-like hover with natural mouse movement.
      */
     public static async humanHover(page: Page, selector: string, durationMs?: number): Promise<void> {
-        const element = await page.$(selector)
-        if (!element) return
+        await this.humanHoverLocator(page, page.locator(selector).first(), durationMs)
+    }
 
-        const box = await element.boundingBox()
-        if (!box) return
+    public static async humanHoverLocator(page: Page, locator: Locator, durationMs?: number): Promise<boolean> {
+        const box = await locator.boundingBox()
+        if (!box) return false
 
         // Hover target: random point within element
         const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
@@ -252,6 +255,7 @@ export class HumanizeEngine {
         // Hover for specified duration or random
         const hoverTime = durationMs ?? this.gaussianRandom(500, 200)
         await this.gaussianSleep(hoverTime, hoverTime * 0.2)
+        return true
     }
 
     // ─── Typing Patterns ──────────────────────────────────────────────

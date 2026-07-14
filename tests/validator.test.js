@@ -66,6 +66,8 @@ test('config validation applies worker defaults and preserves integrations', () 
     assert.equal(parsed.workers.doClaimPoints, true)
     assert.equal(parsed.ai.maxRetries, 4)
     assert.equal(parsed.googleSheets.sheetName, 'Rewards')
+    assert.deepEqual(parsed.behavior.accountStartDelay, { min: '2sec', max: '10sec' })
+    assert.equal(parsed.behavior.enableSessionBreaks, true)
 })
 
 test('config validation rejects invalid concurrency and delay ranges', () => {

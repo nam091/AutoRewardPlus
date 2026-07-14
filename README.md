@@ -132,6 +132,23 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 | `searchSettings.searchDelay.min`       | string   | `"30sec"`                                    | Minimum delay between searches      |
 | `searchSettings.searchDelay.max`       | string   | `"1min"`                                     | Maximum delay between searches      |
 
+### Behavior and consistency
+
+| Setting                          | Type    | Default   | Description                                      |
+| -------------------------------- | ------- | --------- | ------------------------------------------------ |
+| `behavior.accountStartDelay.min` | string  | `"2sec"`  | Minimum deterministic account startup offset     |
+| `behavior.accountStartDelay.max` | string  | `"10sec"` | Maximum deterministic account startup offset     |
+| `behavior.enableSessionBreaks`   | boolean | `true`    | Allow bounded pauses during long search sessions |
+| `behavior.telemetry`             | boolean | `true`    | Log behavior metrics using hashed account IDs     |
+
+Result-page behavior uses a seeded, weighted choice between reading, scrolling, and visiting an eligible
+organic result. The seed is stable for an account, device type, and day, so behavior varies without becoming
+internally contradictory. HTTP `429` responses honor `Retry-After` with a bounded fallback delay.
+
+Fingerprint and anti-detection scripts are installed as one pre-navigation script. Browser properties supplied
+by the fingerprint generator remain authoritative; the project no longer independently randomizes CPU, RAM,
+plugins, or WebGL values. Canvas noise is deterministic for the same account/device profile.
+
 ### Logging
 
 | Setting                          | Type     | Default                | Description                       |
