@@ -143,7 +143,12 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 
 Result-page behavior uses a seeded, weighted choice between reading, scrolling, and visiting an eligible
 organic result. The seed is stable for an account, device type, and day, so behavior varies without becoming
-internally contradictory. HTTP `429` responses honor `Retry-After` with a bounded fallback delay.
+internally contradictory. Mouse paths, typing rhythm, and dwell times share that same seed. HTTP `429`
+responses honor `Retry-After` with a bounded fallback delay.
+
+Accounts that fail on transient infrastructure errors (timeouts, dropped connections, `5xx`, `429`) are
+retried up to three times with increasing backoff. Credential, lockout, and configuration failures are not
+retried, since repeating them cannot succeed and adds account risk.
 
 Fingerprint and anti-detection scripts are installed as one pre-navigation script. Browser properties supplied
 by the fingerprint generator remain authoritative; the project no longer independently randomizes CPU, RAM,
@@ -247,6 +252,44 @@ Bot Start
 
 > [!TIP]
 > If Modern UI tasks aren't being detected, ensure `headless: false` for debugging, then switch back to `true` for production.
+
+### Modern UI selectors stopped matching
+
+Modern UI work is DOM scraping against markup Microsoft controls, so a redesign or an interface language
+change can break it. Two things help diagnose that:
+
+- **Automatic dumps.** When a section, card, or button cannot be found, the page HTML, a screenshot, and the
+  attempted selectors are written to `diagnostics/modern-ui/`.
+- **Selector audit.** Run the audit against a live session to see exactly which selectors still match:
+
+  ```bash
+  npm run audit-selectors -- you@example.com          # opens a visible browser
+  node ./scripts/main/auditSelectors.js -email you@example.com -headless
+  ```
+
+  It reports, per section, which heading alias matched and how many elements each selector in the fallback
+  chain resolves to (`[OK]` matched inside the section, `[PAGE]` only outside it, `[MISS]` no match), and
+  saves the markup to `diagnostics/selector-audit/`. A saved session is required, so run the bot once first.
+
+All selectors, section ids, heading aliases, and localized text markers live in
+[`src/functions/ModernUISelectors.ts`](src/functions/ModernUISelectors.ts) — adjust them there rather than in
+the worker code.
+
+Three properties of the live page that the workers have to account for, verified against
+`rewards.bing.com` on 2026-07-26:
+
+- **Sections are duplicated.** More than one element carries the same `section` id and heading (a visible copy
+  and a hidden one), and only one of them holds the cards. Every candidate is examined and the one with cards
+  is used; taking the first match found nothing.
+- **Sections load asynchronously.** Each renders skeleton placeholders first, sometimes for well over ten
+  seconds. Workers wait for real content rather than a fixed delay — reading too early makes a section look
+  empty and silently skips all of its tasks.
+- **Point values are not always prefixed.** `/earn` renders `+5`, while `/dashboard` renders a bare `10`.
+  Both forms are accepted.
+
+Sections resolve by `id` first (`dailyset`, `moreactivities`, `quests`, `levelup` — these are not localized)
+and fall back to heading text matched against per-language aliases. If a section is reported as not found on a
+non-English account, add your locale's wording to its `headings` list.
 
 ---
 

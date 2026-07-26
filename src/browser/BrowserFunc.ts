@@ -220,6 +220,29 @@ export default class BrowserFunc {
     }
 
     /**
+     * Renders real search progress as "earned/max" for the dashboard and sheet.
+     * `pcSearch` holds both the desktop and Edge-bonus counters, so they are summed.
+     */
+    formatSearchProgress(counters: Counters): { pcProgress: string; mobileProgress: string } {
+        const sum = (entries: Counters['pcSearch'] | undefined) =>
+            (entries ?? []).reduce(
+                (acc, x) => ({
+                    progress: acc.progress + (x.pointProgress ?? 0),
+                    max: acc.max + (x.pointProgressMax ?? 0)
+                }),
+                { progress: 0, max: 0 }
+            )
+
+        const pc = sum(counters.pcSearch)
+        const mobile = sum(counters.mobileSearch)
+
+        return {
+            pcProgress: `${pc.progress}/${pc.max}`,
+            mobileProgress: `${mobile.progress}/${mobile.max}`
+        }
+    }
+
+    /**
      * Get total earnable points with web browser
      */
     async getBrowserEarnablePoints(): Promise<BrowserEarnablePoints> {

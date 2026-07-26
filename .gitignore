@@ -4,6 +4,7 @@ dist/
 node_modules/
 src/accounts.json
 src/config.json
+src/dashboard/db.json
 /.vscode
 /diagnostics
 note

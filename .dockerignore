@@ -1,6 +1,11 @@
 node_modules
 dist
 .git
+src/accounts.json
+src/config.json
+src/dashboard/db.json
+service-account.json
+.env
 .gitignore
 .vscode
 .DS_Store

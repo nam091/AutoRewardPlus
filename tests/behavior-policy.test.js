@@ -43,3 +43,22 @@ test('429 retry delay honors Retry-After and caps excessive values', () => {
     const fallback = getRetryDelayMs(3, undefined)
     assert.ok(fallback >= 4000 && fallback < 4500)
 })
+
+test('humanize engine is deterministic once seeded', () => {
+    const { HumanizeEngine } = require('../dist/browser/humanize/HumanizeEngine')
+
+    const sample = () => {
+        HumanizeEngine.configureSeed('user@example.com', false, '2026-07-26')
+        return Array.from({ length: 8 }, () => HumanizeEngine.gaussianRandom(100, 25))
+    }
+
+    const first = sample()
+    const second = sample()
+    assert.deepEqual(first, second, 'same seed must reproduce the same behavior sequence')
+
+    HumanizeEngine.configureSeed('other@example.com', false, '2026-07-26')
+    const other = Array.from({ length: 8 }, () => HumanizeEngine.gaussianRandom(100, 25))
+    assert.notDeepEqual(first, other, 'a different account must not share a behavior sequence')
+
+    HumanizeEngine.resetSeed()
+})

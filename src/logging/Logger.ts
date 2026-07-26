@@ -48,6 +48,9 @@ export class Logger {
     public errorCount = 0
     public warningCount = 0
 
+    /** Invalid config regex patterns already reported, to warn only once each. */
+    private static readonly reportedBadPatterns = new Set<string>()
+
     constructor(private bot: MicrosoftRewardsBot) {}
 
     info(isMobile: Platform, title: string, message: string, color?: ColorKey) {
@@ -182,7 +185,17 @@ export class Logger {
                         isMatch = true
                         break
                     }
-                } catch {}
+                } catch {
+                    // An unparsable pattern silently disabled that filter rule.
+                    // Report it once so a typo in config.json is visible rather
+                    // than quietly changing which logs are emitted.
+                    if (!Logger.reportedBadPatterns.has(pattern)) {
+                        Logger.reportedBadPatterns.add(pattern)
+                        console.warn(
+                            `[LOG-FILTER] Ignoring invalid regexPattern in config: ${JSON.stringify(pattern)}`
+                        )
+                    }
+                }
             }
         }
 

@@ -17,7 +17,10 @@ function applyProfile({ seed, isMobile }: AntiDetectionProfile): void {
 
     try {
         Object.defineProperty(navigator, 'webdriver', { get: () => false, configurable: true })
-    } catch {}
+    } catch {
+        // Some builds define `webdriver` as non-configurable. Throwing here
+        // would abort the rest of the patches, which matter more.
+    }
     delete (window as unknown as Record<string, unknown>).__playwright
     delete (window as unknown as Record<string, unknown>).__pw_manual
     delete (window as unknown as Record<string, unknown>).__PW_inspect

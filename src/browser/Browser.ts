@@ -11,6 +11,7 @@ import { loadSessionData, saveFingerprintData } from '../util/Load'
 
 import { UserAgentManager } from './UserAgent'
 import { AntiDetectionEngine } from './humanize/AntiDetectionEngine'
+import { HumanizeEngine } from './humanize/HumanizeEngine'
 import { stableSeed } from './humanize/SeededRandom'
 
 import type { Account, AccountProxy } from '../interface/Account'
@@ -138,6 +139,15 @@ class Browser {
             }
             const fingerprintScript = injector.getInjectableScript(fingerprint)
             await AntiDetectionEngine.applyAll(context, antiDetectionProfile, fingerprintScript)
+
+            // Bind mouse paths, typing rhythm and dwell times to the same
+            // account/device/day seed the fingerprint uses, so behavior stays
+            // internally consistent across a run rather than freshly random.
+            HumanizeEngine.configureSeed(
+                account.email.toLowerCase(),
+                this.bot.isMobile,
+                new Date().toISOString().slice(0, 10)
+            )
             this.bot.logger.debug(this.bot.isMobile, 'BROWSER', 'Anti-detection patches applied')
 
             context.setDefaultTimeout(this.bot.utils.stringToNumber(this.bot.config?.globalTimeout ?? 30000))

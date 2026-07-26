@@ -26,7 +26,7 @@ import { sendNtfy, sendNtfyAccountNotification, flushNtfyQueue } from './logging
 import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
 import { sheetService } from './services/sheetService'
-import { stateService } from './services/stateService'
+import { isStateUpdateMessage, stateService } from './services/stateService'
 import { getAccountStartDelayMs, maskAccount } from './browser/humanize/BehaviorPolicy'
 
 interface ExecutionContext {
@@ -48,19 +48,91 @@ interface AccountStats {
     mobilePoints: number
     questPoints: number
     claimedPoints: number
+    pcProgress: string
+    mobileProgress: string
     duration: number
     success: boolean
     error?: string
 }
 
+interface AccountRunResult {
+    initialPoints: number
+    collectedPoints: number
+    pcPoints: number
+    mobilePoints: number
+    questPoints: number
+    pcProgress: string
+    mobileProgress: string
+}
+
+/** Retries per account for transient infrastructure failures. */
+const ACCOUNT_MAX_ATTEMPTS = 3
+const ACCOUNT_RETRY_BASE_DELAY_MS = 30_000
+
+/**
+ * Credential and configuration problems will fail identically on every attempt,
+ * so only network/timeout style failures are worth retrying.
+ */
+function isRetryableAccountError(error: unknown): boolean {
+    const message = errMsg(error).toLowerCase()
+
+    const permanentSignals = [
+        'password',
+        'invalid credentials',
+        'account locked',
+        'account suspended',
+        'banned',
+        'verify your identity',
+        '2fa',
+        'totp'
+    ]
+    if (permanentSignals.some(signal => message.includes(signal))) {
+        return false
+    }
+
+    const retryableSignals = [
+        'timeout',
+        'timed out',
+        'econnreset',
+        'econnrefused',
+        'enotfound',
+        'etimedout',
+        'socket hang up',
+        'network',
+        'net::err',
+        'target closed',
+        'browser has been closed',
+        'protocol error',
+        '429',
+        '502',
+        '503',
+        '504'
+    ]
+    return retryableSignals.some(signal => message.includes(signal))
+}
+
 const executionContext = new AsyncLocalStorage<ExecutionContext>()
 
+/**
+ * Returns the active account context, or throws.
+ *
+ * This used to fabricate `{ account: {} as any }` when no context was set, which
+ * turned a missing context into an `undefined` email surfacing far from the
+ * cause. Callers that need the account should fail here instead.
+ */
 export function getCurrentContext(): ExecutionContext {
     const context = executionContext.getStore()
     if (!context) {
-        return { isMobile: false, account: {} as any }
+        throw new Error(
+            'No execution context available. Account work must run inside executionContext.run({ isMobile, account }, ...).'
+        )
     }
     return context
+}
+
+/** Device flag for logging, safe to call outside an account context. */
+export function isMobileContext(): boolean {
+    return executionContext.getStore()?.isMobile ?? false
 }
 
 async function flushAllWebhooks(timeoutMs = 5000): Promise<void> {
@@ -134,7 +206,7 @@ export class MicrosoftRewardsBot {
     }
 
     get isMobile(): boolean {
-        return getCurrentContext().isMobile
+        return isMobileContext()
     }
 
     async initialize(): Promise<void> {
@@ -179,6 +251,13 @@ export class MicrosoftRewardsBot {
             worker.on('message', (msg: { __ipcLog?: IpcLog; __stats?: AccountStats[] }) => {
                 if (msg.__stats) {
                     allAccountStats.push(...msg.__stats)
+                }
+
+                // Only the primary writes db.json; workers forward their state
+                // changes here so concurrent clusters cannot clobber each other.
+                if (isStateUpdateMessage(msg)) {
+                    const { email, update } = msg.__stateUpdate
+                    stateService.applyAccountState(email, update)
                 }
 
                 const log = msg.__ipcLog
@@ -326,16 +405,11 @@ export class MicrosoftRewardsBot {
                     'ACCOUNT-START',
                     `Starting account: ${accountEmail} | geoLocale: ${account.geoLocale}`
                 )
-                stateService.updateAccountState(accountEmail, { status: 'RUNNING' });
+                stateService.updateAccountState(accountEmail, { status: 'RUNNING' })
 
                 this.axios = new AxiosClient(account.proxy)
 
-                const result: { initialPoints: number; collectedPoints: number; pcPoints: number; mobilePoints: number; questPoints: number } | undefined = await this.Main(
-                    account
-                ).catch(error => {
-                    void this.logger.error(true, 'FLOW', `Mobile flow failed for ${accountEmail}: ${errMsg(error)}`)
-                    return undefined
-                })
+                const { result, lastError } = await this.runAccountWithRetry(account, accountEmail)
 
                 const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
 
@@ -357,6 +431,8 @@ export class MicrosoftRewardsBot {
                         mobilePoints: accountMobilePoints,
                         questPoints: accountQuestPoints,
                         claimedPoints: accountClaimedPoints,
+                        pcProgress: result.pcProgress,
+                        mobileProgress: result.mobileProgress,
                         duration: parseFloat(durationSeconds),
                         success: true
                     })
@@ -365,14 +441,14 @@ export class MicrosoftRewardsBot {
                         status: 'OK',
                         totalPoints: accountFinalPoints,
                         dailyPoints: collectedPoints,
-                        pcProgress: '90/90',
-                        mobileProgress: '60/60'
-                    });
+                        pcProgress: result.pcProgress,
+                        mobileProgress: result.mobileProgress
+                    })
 
                     this.logger.info(
                         'main',
                         'ACCOUNT-END',
-                        `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | Duration: ${durationSeconds}s`,
+                        `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | PC: ${result.pcProgress} | Mobile: ${result.mobileProgress} | Duration: ${durationSeconds}s`,
                         'green'
                     )
                 } else {
@@ -385,11 +461,13 @@ export class MicrosoftRewardsBot {
                         mobilePoints: 0,
                         questPoints: 0,
                         claimedPoints: 0,
+                        pcProgress: 'N/A',
+                        mobileProgress: 'N/A',
                         duration: parseFloat(durationSeconds),
                         success: false,
-                        error: 'Flow failed'
+                        error: lastError ? errMsg(lastError) : 'Flow failed'
                     })
-                    stateService.updateAccountState(accountEmail, { status: 'ERROR' });
+                    stateService.updateAccountState(accountEmail, { status: 'ERROR' })
                 }
             } catch (error) {
                 const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
@@ -404,11 +482,13 @@ export class MicrosoftRewardsBot {
                     mobilePoints: 0,
                     questPoints: 0,
                     claimedPoints: 0,
+                    pcProgress: 'N/A',
+                    mobileProgress: 'N/A',
                     duration: parseFloat(durationSeconds),
                     success: false,
                     error: errMsg(error)
                 })
-                stateService.updateAccountState(accountEmail, { status: 'ERROR' });
+                stateService.updateAccountState(accountEmail, { status: 'ERROR' })
             }
 
             // Send per-account webhook notification
@@ -455,7 +535,72 @@ export class MicrosoftRewardsBot {
         return accountStats
     }
 
-    async Main(account: Account): Promise<{ initialPoints: number; collectedPoints: number; pcPoints: number; mobilePoints: number; questPoints: number }> {
+    /**
+     * Runs one account, retrying transient infrastructure failures.
+     *
+     * A dropped connection or a browser timeout used to cost the account its
+     * entire daily run, which matters for a bot scheduled once per day.
+     * Credential and lockout failures are not retried — they fail identically
+     * every time and repeated login attempts add account risk.
+     */
+    private async runAccountWithRetry(
+        account: Account,
+        accountEmail: string
+    ): Promise<{ result?: AccountRunResult; lastError?: unknown }> {
+        let lastError: unknown
+
+        for (let attempt = 1; attempt <= ACCOUNT_MAX_ATTEMPTS; attempt++) {
+            try {
+                const result = await this.Main(account)
+                if (attempt > 1) {
+                    this.logger.info(
+                        'main',
+                        'ACCOUNT-RETRY',
+                        `Succeeded for ${accountEmail} on attempt ${attempt}/${ACCOUNT_MAX_ATTEMPTS}`,
+                        'green'
+                    )
+                }
+                return { result }
+            } catch (error) {
+                lastError = error
+                this.logger.error(
+                    'main',
+                    'FLOW',
+                    `Flow failed for ${accountEmail} (attempt ${attempt}/${ACCOUNT_MAX_ATTEMPTS}): ${errMsg(error)}`
+                )
+
+                const canRetry = attempt < ACCOUNT_MAX_ATTEMPTS && isRetryableAccountError(error)
+                if (!canRetry) {
+                    if (attempt < ACCOUNT_MAX_ATTEMPTS) {
+                        this.logger.warn(
+                            'main',
+                            'ACCOUNT-RETRY',
+                            `Not retrying ${accountEmail}: failure looks permanent (credentials, lockout or configuration)`
+                        )
+                    }
+                    break
+                }
+
+                const backoffMs = ACCOUNT_RETRY_BASE_DELAY_MS * attempt
+                this.logger.warn(
+                    'main',
+                    'ACCOUNT-RETRY',
+                    `Retrying ${accountEmail} in ${Math.round(backoffMs / 1000)}s (attempt ${attempt + 1}/${ACCOUNT_MAX_ATTEMPTS})`
+                )
+                await this.utils.wait(backoffMs)
+
+                // A retry must not inherit cached dashboard data or a stale token.
+                this.browser.func.invalidateDashboardCache()
+                this.accessToken = ''
+                this.cookies = { mobile: [], desktop: [] }
+                this.userData.claimedPoints = 0
+            }
+        }
+
+        return { lastError }
+    }
+
+    async Main(account: Account): Promise<AccountRunResult> {
         const accountEmail = account.email
         this.logger.info('main', 'FLOW', `Starting session for ${accountEmail}`)
 
@@ -543,7 +688,11 @@ export class MicrosoftRewardsBot {
                 // Track points after quest activities
                 const pointsAfterQuests = await this.browser.func.getCurrentPoints()
                 const questPoints = pointsAfterQuests - pointsBeforeQuests
-                this.logger.info('main', 'QUEST-TRACK', `Points after quests: ${pointsAfterQuests} | Quest earned: +${questPoints} | ${accountEmail}`)
+                this.logger.info(
+                    'main',
+                    'QUEST-TRACK',
+                    `Points after quests: ${pointsAfterQuests} | Quest earned: +${questPoints} | ${accountEmail}`
+                )
 
                 const searchPoints = await this.browser.func.getSearchPoints()
                 const missingSearchPoints = this.browser.func.missingSearchPoints(searchPoints, true)
@@ -565,10 +714,22 @@ export class MicrosoftRewardsBot {
                 const finalPoints = await this.browser.func.getCurrentPoints()
                 const collectedPoints = finalPoints - initialPoints
 
+                // Real search progress, reported instead of the previous hardcoded 90/90 and 60/60.
+                let searchProgress = { pcProgress: 'N/A', mobileProgress: 'N/A' }
+                try {
+                    searchProgress = this.browser.func.formatSearchProgress(await this.browser.func.getSearchPoints())
+                } catch (error) {
+                    this.logger.warn(
+                        'main',
+                        'SEARCH-PROGRESS',
+                        `Could not read final search progress for ${accountEmail}: ${errMsg(error)}`
+                    )
+                }
+
                 this.logger.info(
                     'main',
                     'FLOW',
-                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | Quest: +${questPoints} | ${accountEmail}`
+                    `Collected: +${collectedPoints} | Mobile: +${mobilePoints} | Desktop: +${desktopPoints} | Quest: +${questPoints} | PC search: ${searchProgress.pcProgress} | Mobile search: ${searchProgress.mobileProgress} | ${accountEmail}`
                 )
 
                 return {
@@ -576,7 +737,9 @@ export class MicrosoftRewardsBot {
                     collectedPoints: collectedPoints || 0,
                     pcPoints: desktopPoints || 0,
                     mobilePoints: mobilePoints || 0,
-                    questPoints: questPoints || 0
+                    questPoints: questPoints || 0,
+                    pcProgress: searchProgress.pcProgress,
+                    mobileProgress: searchProgress.mobileProgress
                 }
             })
         } finally {
@@ -585,7 +748,16 @@ export class MicrosoftRewardsBot {
                     await executionContext.run({ isMobile: true, account }, async () => {
                         await this.browser.func.closeBrowser(mobileSession!.context, accountEmail)
                     })
-                } catch {}
+                } catch (closeError) {
+                    // Swallowed so cleanup never masks the original failure, but
+                    // a failed close leaves a browser process behind and is
+                    // worth knowing about.
+                    this.logger.warn(
+                        'main',
+                        'CLEANUP',
+                        `Failed to close mobile session for ${accountEmail}: ${errMsg(closeError)}`
+                    )
+                }
             }
         }
     }
@@ -596,18 +768,18 @@ export class MicrosoftRewardsBot {
                 email: s.email,
                 totalPoints: s.finalPoints,
                 dailyPoints: s.collectedPoints,
-                pcProgress: '90/90',
-                mobileProgress: '60/60',
+                pcProgress: s.pcProgress,
+                mobileProgress: s.mobileProgress,
                 status: s.success ? 'OK' : 'ERROR',
                 accountAge: 'N/A',
                 updatedAt: new Date().toLocaleString('vi-VN'),
                 streak: 'N/A',
                 onlineStatus: s.success ? 'ONLINE' : 'OFFLINE'
-            }));
-            await sheetService.syncAccountsToSheet(rows);
-            this.logger.info('main', 'SHEETS', `Successfully synchronized ${rows.length} accounts to Google Sheets.`);
+            }))
+            await sheetService.syncAccountsToSheet(rows)
+            this.logger.info('main', 'SHEETS', `Successfully synchronized ${rows.length} accounts to Google Sheets.`)
         } catch (e) {
-            this.logger.error('main', 'SHEETS', `Failed to sync to Google Sheets: ${(e as Error).message}`);
+            this.logger.error('main', 'SHEETS', `Failed to sync to Google Sheets: ${(e as Error).message}`)
         }
     }
 }

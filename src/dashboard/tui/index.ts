@@ -1,8 +1,7 @@
 import select from '@inquirer/select';
-import fs from 'fs';
-import path from 'path';
 import { spawn } from 'child_process';
 import { SheetService } from '../../services/sheetService';
+import { stateService } from '../../services/stateService';
 
 export class CLIInteractiveDashboard {
     private isRunning = true;
@@ -68,25 +67,31 @@ export class CLIInteractiveDashboard {
 
     private showAccountTable() {
         try {
-            const accPath = fs.existsSync(path.resolve('src/accounts.json')) 
-                ? path.resolve('src/accounts.json') 
-                : path.resolve('src/accounts.example.json');
-            const data = JSON.parse(fs.readFileSync(accPath, 'utf-8'));
+            // Reads recorded run state instead of the placeholder values this
+            // table used to print, which always looked like a completed run.
+            const states = stateService.getStates();
+
+            if (!states.length) {
+                console.log('\nChưa có dữ liệu tài khoản. Chạy bot ít nhất một lần.\n');
+                return;
+            }
+
             console.log('\n--- DANH SÁCH TÀI KHOẢN ---');
-            console.table(data.map((acc: any, idx: number) => ({
+            console.table(states.map((state, idx) => ({
                 ID: idx + 1,
-                Email: acc.email,
-                Điểm: Math.floor(Math.random() * 5000) + 1000,
-                'Điểm Ngày': '+230',
-                PC: '90/90',
-                Mobile: '60/60',
-                'Trạng Thái': 'OK',
-                'Tuổi Acc': '45d',
-                Chuỗi: '🔥 12d'
+                Email: state.email,
+                Điểm: state.totalPoints,
+                'Điểm Ngày': state.dailyPoints > 0 ? `+${state.dailyPoints}` : '0',
+                PC: state.pcProgress,
+                Mobile: state.mobileProgress,
+                'Trạng Thái': state.status,
+                'Tuổi Acc': state.accountAge,
+                Chuỗi: state.streak,
+                'Cập Nhật': state.updatedAt
             })));
             console.log('\n');
         } catch (e) {
-            console.error('Lỗi đọc tài khoản:', e);
+            console.error('Lỗi đọc trạng thái tài khoản:', e);
         }
     }
 }

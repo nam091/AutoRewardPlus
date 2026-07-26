@@ -271,7 +271,10 @@ export class QueryCore {
             if (!trimmed.startsWith('[')) continue
             try {
                 return JSON.parse(JSON.parse(trimmed)[0][2])[1]
-            } catch {}
+            } catch {
+                // Most lines in this response are not the payload; skip and try
+                // the next one rather than failing the whole extraction.
+            }
         }
         return null
     }

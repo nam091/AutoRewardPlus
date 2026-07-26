@@ -1,6 +1,6 @@
 {
     "name": "microsoft-rewards-script",
-    "version": "7.1.0",
+    "version": "7.2.0",
     "description": "Automatically do tasks for Microsoft Rewards but in TS!",
     "author": "Netsky",
     "license": "GPL-3.0-or-later",
@@ -24,6 +24,7 @@
         "clear-diagnostics": "rimraf diagnostics",
         "clear-sessions": "node ./scripts/main/clearSessions.js",
         "open-session": "node ./scripts/main/browserSession.js -email",
+        "audit-selectors": "npm run build && node ./scripts/main/auditSelectors.js -email",
         "open-session:dev": "node ./scripts/main/browserSession.js -dev -email ItsNetsky@protonmail.com",
         "dashboard": "ts-node ./src/dashboard/index.ts",
         "dashboard:cli": "ts-node ./src/dashboard/index.ts --cli"

@@ -1,5 +1,7 @@
 import type { Locator, Page } from 'patchright'
 
+import { SeededRandom } from './SeededRandom'
+
 interface Point {
     x: number
     y: number
@@ -17,12 +19,41 @@ interface BezierCurve {
  * Simulates realistic human behavior: mouse movement, typing, reading, clicking.
  */
 export class HumanizeEngine {
+    /**
+     * Seeded source for every random decision this engine makes.
+     *
+     * The rest of the project derives behavior from a stable account/device/day
+     * seed, but this engine used `Math.random()` throughout, so mouse paths,
+     * typing rhythm and dwell times were unseeded. Configuring a seed here makes
+     * the whole behavior profile reproducible for a given account and day.
+     */
+    private static random: SeededRandom | null = null
+
+    /** Binds the engine to an account/device seed. Call once per browser session. */
+    public static configureSeed(...parts: Array<string | number | boolean>): void {
+        this.random = SeededRandom.fromParts(...parts)
+    }
+
+    /** Clears the seed, restoring unseeded behavior. */
+    public static resetSeed(): void {
+        this.random = null
+    }
+
+    /** Uniform [0, 1), seeded when configured. */
+    private static rand(): number {
+        return this.random ? this.random.next() : Math.random()
+    }
+
     // ─── Mouse Movement ───────────────────────────────────────────────
 
     /**
      * Generates a random number following a Gaussian/Normal distribution using Box-Muller transform.
      */
     public static gaussianRandom(mean: number, stdev: number): number {
+        if (this.random) {
+            return Math.max(0, Math.round(this.random.gaussian(mean, stdev)));
+        }
+
         const u = 1 - Math.random();
         const v = Math.random();
         const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
@@ -96,16 +127,16 @@ export class HumanizeEngine {
         const perpY = dx / dist
 
         // Random curvature (humans don't move in perfect lines)
-        const curvature = (Math.random() - 0.5) * dist * 0.3
+        const curvature = (this.rand() - 0.5) * dist * 0.3
 
         const cp1: Point = {
-            x: start.x + dx * 0.25 + perpX * curvature * (0.5 + Math.random()),
-            y: start.y + dy * 0.25 + perpY * curvature * (0.5 + Math.random())
+            x: start.x + dx * 0.25 + perpX * curvature * (0.5 + this.rand()),
+            y: start.y + dy * 0.25 + perpY * curvature * (0.5 + this.rand())
         }
 
         const cp2: Point = {
-            x: start.x + dx * 0.75 + perpX * curvature * (0.3 + Math.random()),
-            y: start.y + dy * 0.75 + perpY * curvature * (0.3 + Math.random())
+            x: start.x + dx * 0.75 + perpX * curvature * (0.3 + this.rand()),
+            y: start.y + dy * 0.75 + perpY * curvature * (0.3 + this.rand())
         }
 
         return { start, cp1, cp2, end }
@@ -149,8 +180,8 @@ export class HumanizeEngine {
         if (!box) return false
 
         // Click target: random point within element (not exact center)
-        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
-        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+        const targetX = box.x + box.width * (0.3 + this.rand() * 0.4)
+        const targetY = box.y + box.height * (0.3 + this.rand() * 0.4)
 
         // Move mouse naturally to target
         await this.moveMouseBezier(page, targetX, targetY)
@@ -179,8 +210,8 @@ export class HumanizeEngine {
         if (!box) return
 
         // Click target: random point within element
-        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
-        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+        const targetX = box.x + box.width * (0.3 + this.rand() * 0.4)
+        const targetY = box.y + box.height * (0.3 + this.rand() * 0.4)
 
         // Move mouse naturally to target
         await this.moveMouseBezier(page, targetX, targetY)
@@ -216,8 +247,8 @@ export class HumanizeEngine {
         if (!box) return
 
         // Click target: random point within element
-        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
-        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+        const targetX = box.x + box.width * (0.3 + this.rand() * 0.4)
+        const targetY = box.y + box.height * (0.3 + this.rand() * 0.4)
 
         // Move mouse naturally to target
         await this.moveMouseBezier(page, targetX, targetY)
@@ -246,8 +277,8 @@ export class HumanizeEngine {
         if (!box) return false
 
         // Hover target: random point within element
-        const targetX = box.x + box.width * (0.3 + Math.random() * 0.4)
-        const targetY = box.y + box.height * (0.3 + Math.random() * 0.4)
+        const targetX = box.x + box.width * (0.3 + this.rand() * 0.4)
+        const targetY = box.y + box.height * (0.3 + this.rand() * 0.4)
 
         // Move mouse naturally to target
         await this.moveMouseBezier(page, targetX, targetY)
@@ -293,12 +324,12 @@ export class HumanizeEngine {
                 if (!char) continue
 
                 // Hesitation pause: ~8% chance of thinking pause (longer at word starts)
-                if (Math.random() < (i === 0 ? 0.12 : 0.06)) {
+                if (this.rand() < (i === 0 ? 0.12 : 0.06)) {
                     await this.gaussianSleep(400, 150)
                 }
 
                  // Fat-finger error: ~5% chance of hitting adjacent key
-                if (Math.random() < 0.05 && i > 0) {
+                if (this.rand() < 0.05 && i > 0) {
                     const adjacentKey = this.getAdjacentKey(char)
                     if (adjacentKey && adjacentKey.charCodeAt(0) < 128) {
                         await page.keyboard.down(adjacentKey)
@@ -311,7 +342,7 @@ export class HumanizeEngine {
                 }
 
                 // Double-letter hesitation (e.g., "ll", "ss", "tt")
-                if (i > 0 && char === prevChar && Math.random() < 0.3) {
+                if (i > 0 && char === prevChar && this.rand() < 0.3) {
                     await this.gaussianSleep(60, 20)
                 }
 
@@ -368,7 +399,7 @@ export class HumanizeEngine {
         const lower = char.toLowerCase()
         const adjacent = this.KEY_ADJACENCY[lower]
         if (!adjacent || adjacent.length === 0) return null
-        const picked = adjacent[Math.floor(Math.random() * adjacent.length)]
+        const picked = adjacent[Math.floor(this.rand() * adjacent.length)]
         if (!picked) return null
         return char === char.toUpperCase() ? picked.toUpperCase() : picked
     }
@@ -394,7 +425,7 @@ export class HumanizeEngine {
         const scrollSteps = this.gaussianRandom(5, 2)
 
         for (let i = 0; i < scrollSteps; i++) {
-            const isReading = Math.random() < 0.6 // 60% reading, 40% scanning
+            const isReading = this.rand() < 0.6 // 60% reading, 40% scanning
 
             if (isReading) {
                 // Reading mode: small scrolls with fixation pauses
@@ -412,7 +443,7 @@ export class HumanizeEngine {
                 }
 
                 // 15% chance of backtracking (re-reading)
-                if (Math.random() < 0.15 && currentScroll > 100) {
+                if (this.rand() < 0.15 && currentScroll > 100) {
                     const backtrack = this.gaussianRandom(80, 30)
                     currentScroll = Math.max(0, currentScroll - backtrack)
                     await page.mouse.wheel(0, -backtrack)
@@ -446,7 +477,7 @@ export class HumanizeEngine {
             const deltaY = Math.round(totalDeltaY / steps * (1 + easedT * 0.5))
 
             await page.mouse.wheel(0, deltaY * direction)
-            await new Promise(resolve => setTimeout(resolve, 5 + Math.random() * 10))
+            await new Promise(resolve => setTimeout(resolve, 5 + this.rand() * 10))
         }
     }
 
@@ -460,7 +491,7 @@ export class HumanizeEngine {
         const readingTimeMs = (wordsEstimate / readingSpeedWPM) * 60 * 1000
 
         // Add some variance and minimum/maximum bounds
-        const variance = readingTimeMs * (Math.random() * 0.3 - 0.15)
+        const variance = readingTimeMs * (this.rand() * 0.3 - 0.15)
         return Math.max(1000, Math.min(15000, readingTimeMs + variance))
     }
 
@@ -470,7 +501,7 @@ export class HumanizeEngine {
      * Calculates a random start time offset within a window (e.g. random window schedule).
      */
     public static getRandomScheduleOffset(minMinutes: number, maxMinutes: number): number {
-        return Math.floor(Math.random() * (maxMinutes - minMinutes + 1) + minMinutes) * 60 * 1000
+        return Math.floor(this.rand() * (maxMinutes - minMinutes + 1) + minMinutes) * 60 * 1000
     }
 
     /**
