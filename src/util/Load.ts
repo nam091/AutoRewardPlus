@@ -21,7 +21,23 @@ export function loadAccounts(): Account[] {
         const accounts = fs.readFileSync(accountDir, 'utf-8')
         const accountsData = JSON.parse(accounts)
 
-        return validateAccounts(accountsData)
+        const validated = validateAccounts(accountsData)
+        const defaultProxyUrl = process.env.DEFAULT_PROXY_URL?.trim()
+        const defaultProxyPort = process.env.DEFAULT_PROXY_PORT ? parseInt(process.env.DEFAULT_PROXY_PORT, 10) : 0
+        if (defaultProxyUrl) {
+            for (const acc of validated) {
+                if (!acc.proxy?.url) {
+                    acc.proxy = {
+                        url: defaultProxyUrl,
+                        port: defaultProxyPort,
+                        username: process.env.DEFAULT_PROXY_USERNAME || '',
+                        password: process.env.DEFAULT_PROXY_PASSWORD || '',
+                        proxyAxios: true
+                    }
+                }
+            }
+        }
+        return validated
     } catch (error) {
         throw new Error(error as string)
     }
@@ -45,6 +61,19 @@ export function loadConfig(): Config {
     }
 }
 
+function resolveSessionFile(sessionPath: string, email: string, fileName: string): string {
+    const candidates = [
+        path.join(__dirname, '../browser/', sessionPath, email, fileName),
+        path.resolve('dist/browser', sessionPath, email, fileName),
+        path.resolve('src/browser', sessionPath, email, fileName),
+        path.resolve(sessionPath, email, fileName)
+    ]
+    for (const cand of candidates) {
+        if (fs.existsSync(cand)) return cand
+    }
+    return candidates[0]!
+}
+
 export async function loadSessionData(
     sessionPath: string,
     email: string,
@@ -53,7 +82,7 @@ export async function loadSessionData(
 ) {
     try {
         const cookiesFileName = isMobile ? 'session_mobile.json' : 'session_desktop.json'
-        const cookieFile = path.join(__dirname, '../browser/', sessionPath, email, cookiesFileName)
+        const cookieFile = resolveSessionFile(sessionPath, email, cookiesFileName)
 
         let cookies: Cookie[] = []
         if (fs.existsSync(cookieFile)) {
@@ -62,7 +91,7 @@ export async function loadSessionData(
         }
 
         const fingerprintFileName = isMobile ? 'session_fingerprint_mobile.json' : 'session_fingerprint_desktop.json'
-        const fingerprintFile = path.join(__dirname, '../browser/', sessionPath, email, fingerprintFileName)
+        const fingerprintFile = resolveSessionFile(sessionPath, email, fingerprintFileName)
 
         let fingerprint!: BrowserFingerprintWithHeaders
         const shouldLoadFingerprint = isMobile ? saveFingerprint.mobile : saveFingerprint.desktop
@@ -87,16 +116,26 @@ export async function saveSessionData(
     isMobile: boolean
 ): Promise<string> {
     try {
-        const sessionDir = path.join(__dirname, '../browser/', sessionPath, email)
+        const sessionDirs = [
+            path.resolve(sessionPath, email),
+            path.resolve('src/browser', sessionPath, email),
+            path.join(__dirname, '../browser/', sessionPath, email),
+            path.resolve('dist/browser', sessionPath, email)
+        ]
         const cookiesFileName = isMobile ? 'session_mobile.json' : 'session_desktop.json'
 
-        if (!fs.existsSync(sessionDir)) {
-            await fs.promises.mkdir(sessionDir, { recursive: true })
+        for (const dir of sessionDirs) {
+            try {
+                if (!fs.existsSync(dir)) {
+                    await fs.promises.mkdir(dir, { recursive: true })
+                }
+                await fs.promises.writeFile(path.join(dir, cookiesFileName), JSON.stringify(cookies, null, 2))
+            } catch {
+                // Ignore failure for individual directory path
+            }
         }
 
-        await fs.promises.writeFile(path.join(sessionDir, cookiesFileName), JSON.stringify(cookies))
-
-        return sessionDir
+        return sessionDirs[0]!
     } catch (error) {
         throw new Error(error as string)
     }
@@ -109,17 +148,28 @@ export async function saveFingerprintData(
     fingerpint: BrowserFingerprintWithHeaders
 ): Promise<string> {
     try {
-        const sessionDir = path.join(__dirname, '../browser/', sessionPath, email)
+        const sessionDirs = [
+            path.resolve(sessionPath, email),
+            path.resolve('src/browser', sessionPath, email),
+            path.join(__dirname, '../browser/', sessionPath, email),
+            path.resolve('dist/browser', sessionPath, email)
+        ]
         const fingerprintFileName = isMobile ? 'session_fingerprint_mobile.json' : 'session_fingerprint_desktop.json'
 
-        if (!fs.existsSync(sessionDir)) {
-            await fs.promises.mkdir(sessionDir, { recursive: true })
+        for (const dir of sessionDirs) {
+            try {
+                if (!fs.existsSync(dir)) {
+                    await fs.promises.mkdir(dir, { recursive: true })
+                }
+                await fs.promises.writeFile(path.join(dir, fingerprintFileName), JSON.stringify(fingerpint, null, 2))
+            } catch {
+                // Ignore failure for individual directory path
+            }
         }
 
-        await fs.promises.writeFile(path.join(sessionDir, fingerprintFileName), JSON.stringify(fingerpint))
-
-        return sessionDir
+        return sessionDirs[0]!
     } catch (error) {
         throw new Error(error as string)
     }
 }
+

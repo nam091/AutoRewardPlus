@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoRewardPlus Dashboard</title>
+    <title>AutoRewardPlus - Command Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -11,101 +11,161 @@
             theme: {
                 extend: {
                     colors: {
-                        darkBg: '#0f172a',
-                        cardBg: '#1e293b',
+                        darkBg: '#090d16',
+                        cardBg: '#131c2e',
+                        borderBg: '#1e293b'
                     }
                 }
             }
         }
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        body { font-family: 'Outfit', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
-<body class="bg-darkBg text-slate-100 min-h-screen p-6">
-    <div class="max-w-7xl mx-auto space-y-6">
-        <!-- Header -->
-        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-cardBg/80 backdrop-blur border border-slate-700/50 p-6 rounded-2xl shadow-xl">
-            <div>
-                <h1 class="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">AutoRewardPlus Dashboard</h1>
-                <p class="text-slate-400 text-sm mt-1">Hệ thống tự động hóa Microsoft Rewards - Quản trị thông minh</p>
+<body class="bg-darkBg text-slate-100 min-h-screen p-4 md:p-6 antialiased">
+    <div class="max-w-[1600px] mx-auto space-y-6">
+        <!-- Top Navigation -->
+        <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-cardBg/90 backdrop-blur border border-slate-800 p-5 rounded-2xl shadow-2xl">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20">
+                    R+
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">AutoRewardPlus Pro Dashboard</h1>
+                    <p class="text-xs text-slate-400">Microsoft Rewards Automation Management & Analytics</p>
+                </div>
             </div>
-            <div class="flex flex-wrap gap-3">
-                <button id="btnStart" onclick="startBot()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 font-semibold rounded-xl transition shadow-lg shadow-emerald-900/30 flex items-center gap-2">
-                    ▶ Khởi chạy Bot
+            <div class="flex flex-wrap items-center gap-2.5">
+                <button id="btnStart" onclick="startBot()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold rounded-xl transition shadow-lg shadow-emerald-950 flex items-center gap-2">
+                    ▶ Chạy Tất Cả
                 </button>
-                <button id="btnStop" onclick="stopBot()" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 font-semibold rounded-xl transition shadow-lg shadow-rose-900/30 flex items-center gap-2">
+                <button id="btnStop" onclick="stopBot()" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-sm font-semibold rounded-xl transition shadow-lg shadow-rose-950 flex items-center gap-2">
                     ■ Dừng Bot
                 </button>
-                <button onclick="syncSheets()" class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 font-semibold rounded-xl transition shadow-lg shadow-cyan-900/30 flex items-center gap-2">
-                    ☁ Đồng bộ Sheets
+                <button onclick="syncSheets()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold rounded-xl transition shadow-lg shadow-indigo-950 flex items-center gap-2">
+                    ☁ Sheets
+                </button>
+                <button onclick="fetchAccounts()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium rounded-xl transition flex items-center gap-1.5">
+                    🔄 Làm mới
                 </button>
             </div>
         </header>
 
-        <!-- Stats Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="bg-cardBg/60 border border-slate-700/50 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Tổng Tài Khoản</p>
-                <p id="totalAccounts" class="text-3xl font-bold text-white mt-1">0</p>
+        <!-- KPI Summary Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+            <div class="bg-cardBg/80 border border-slate-800 p-4 rounded-xl shadow-sm">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Tài khoản</span>
+                <div class="text-2xl font-bold text-white mt-1" id="totalAccounts">0</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Tổng số acc trong file</div>
             </div>
-            <div class="bg-cardBg/60 border border-slate-700/50 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Đang Hoạt Động</p>
-                <p id="activeAccounts" class="text-3xl font-bold text-emerald-400 mt-1">0</p>
+            <div class="bg-cardBg/80 border border-slate-800 p-4 rounded-xl shadow-sm">
+                <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Đang hoạt động</span>
+                <div class="text-2xl font-bold text-emerald-400 mt-1" id="activeAccounts">0</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Chạy tốt / hoàn thành</div>
             </div>
-            <div class="bg-cardBg/60 border border-slate-700/50 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Lỗi / Cần Kiểm Tra</p>
-                <p id="errorAccounts" class="text-3xl font-bold text-rose-400 mt-1">0</p>
+            <div class="bg-cardBg/80 border border-slate-800 p-4 rounded-xl shadow-sm">
+                <span class="text-xs font-semibold uppercase tracking-wider text-rose-400">Lỗi / Check lại</span>
+                <div class="text-2xl font-bold text-rose-400 mt-1" id="errorAccounts">0</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Cần đăng nhập / proxy</div>
             </div>
-            <div class="bg-cardBg/60 border border-slate-700/50 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Điểm Thu Thập Ngày</p>
-                <p id="totalDailyPoints" class="text-3xl font-bold text-amber-400 mt-1">0</p>
+            <div class="bg-cardBg/80 border border-slate-800 p-4 rounded-xl shadow-sm">
+                <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">Điểm ngày</span>
+                <div class="text-2xl font-bold text-amber-400 mt-1" id="totalDailyPoints">+0</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Thu hoạch hôm nay</div>
+            </div>
+            <div class="bg-cardBg/80 border border-slate-800 p-4 rounded-xl shadow-sm col-span-2 md:col-span-1">
+                <span class="text-xs font-semibold uppercase tracking-wider text-cyan-400">Tổng điểm tích lũy</span>
+                <div class="text-2xl font-bold text-cyan-400 mt-1" id="totalAccumulatedPoints">0</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Toàn bộ dàn tài khoản</div>
             </div>
         </div>
 
-        <!-- Table Account List -->
-        <div class="bg-cardBg/80 border border-slate-700/50 rounded-2xl overflow-hidden shadow-xl">
-            <div class="p-5 border-b border-slate-700/50 flex justify-between items-center">
-                <h2 class="text-lg font-semibold">Danh sách Tài khoản & Trạng thái</h2>
-                <button onclick="fetchAccounts()" class="text-xs text-cyan-400 hover:underline">🔄 Làm mới</button>
+        <!-- Filter & Search Toolbar -->
+        <div class="flex flex-col sm:flex-row gap-3 justify-between items-center bg-cardBg/60 border border-slate-800/80 p-3.5 rounded-xl">
+            <div class="relative w-full sm:w-80">
+                <input id="searchInput" type="text" oninput="filterAccounts()" placeholder="🔍 Tìm theo email, proxy, level..." class="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
             </div>
+            <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                <button onclick="setStatusFilter('ALL')" class="filter-btn active px-3 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white" data-filter="ALL">Tất cả</button>
+                <button onclick="setStatusFilter('RUNNING')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="RUNNING">Đang chạy</button>
+                <button onclick="setStatusFilter('OK')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="OK">OK</button>
+                <button onclick="setStatusFilter('ERROR')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="ERROR">Lỗi</button>
+                <button onclick="setStatusFilter('IDLE')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="IDLE">Chờ</button>
+            </div>
+        </div>
+
+        <!-- Main Account Table -->
+        <div class="bg-cardBg/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm whitespace-nowrap">
-                    <thead class="bg-slate-800/80 text-slate-400 text-xs uppercase">
+                <table class="w-full text-left text-xs whitespace-nowrap">
+                    <thead class="bg-slate-900/90 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider">
                         <tr>
-                            <th class="p-4">Email</th>
-                            <th class="p-4">Điểm</th>
-                            <th class="p-4">Điểm ngày</th>
-                            <th class="p-4">PC</th>
-                            <th class="p-4">Mobile</th>
-                            <th class="p-4">Trạng thái</th>
-                            <th class="p-4">Tuổi acc</th>
-                            <th class="p-4">Chuỗi</th>
-                            <th class="p-4">Cập nhật</th>
+                            <th class="p-3.5">Tài khoản</th>
+                            <th class="p-3.5">Level</th>
+                            <th class="p-3.5">Điểm hiện có</th>
+                            <th class="p-3.5">Điểm hôm nay</th>
+                            <th class="p-3.5">PC / Mobile</th>
+                            <th class="p-3.5">Chuỗi (Streak)</th>
+                            <th class="p-3.5">Tuổi Acc</th>
+                            <th class="p-3.5">Mục tiêu đổi thưởng</th>
+                            <th class="p-3.5">Proxy / Mạng</th>
+                            <th class="p-3.5">Trạng thái</th>
+                            <th class="p-3.5">Cập nhật</th>
+                            <th class="p-3.5 text-center">Thao tác</th>
                         </tr>
                     </thead>
-                    <tbody id="accountTableBody" class="divide-y divide-slate-700/40 font-mono text-xs">
-                        <!-- Rendered dynamically -->
+                    <tbody id="accountTableBody" class="divide-y divide-slate-800/60 font-mono">
+                        <!-- Loaded dynamically -->
                     </tbody>
                 </table>
             </div>
         </div>
 
         <!-- Terminal Logs -->
-        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-xl font-mono text-xs">
-            <div class="flex justify-between items-center pb-3 border-b border-slate-800 mb-3">
-                <span class="text-slate-400 font-semibold">⚡ Live System Console</span>
-                <span id="wsStatus" class="flex items-center gap-1.5 text-emerald-400">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connected
-                </span>
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-2xl font-mono text-xs">
+            <div class="flex justify-between items-center pb-2.5 border-b border-slate-800 mb-2.5">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span class="text-slate-300 font-semibold">Live System Console</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="clearLogs()" class="text-slate-400 hover:text-slate-200 text-[11px] underline">Xóa log</button>
+                    <span id="wsStatus" class="flex items-center gap-1.5 text-emerald-400 text-[11px]">
+                        ● Connected
+                    </span>
+                </div>
             </div>
-            <div id="terminalLogs" class="h-64 overflow-y-auto space-y-1 text-slate-300 scrollbar-thin"></div>
+            <div id="terminalLogs" class="h-60 overflow-y-auto space-y-1 text-slate-300 scrollbar-thin"></div>
         </div>
     </div>
 
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 border border-cyan-500/50 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition duration-300 z-50 pointer-events-none">
+        <span id="toastIcon">ℹ️</span>
+        <span id="toastMsg">Thông báo</span>
+    </div>
+
     <script>
+        let allAccounts = [];
+        let currentFilter = 'ALL';
+
+        function showToast(msg, icon = 'ℹ️') {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastIcon').textContent = icon;
+            document.getElementById('toastMsg').textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
         const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${wsProtocol}//${location.host}/ws/logs`);
         const logContainer = document.getElementById('terminalLogs');
@@ -114,81 +174,208 @@
             const msg = JSON.parse(event.data);
             if (msg.type === 'LOG') {
                 const div = document.createElement('div');
+                div.className = msg.entry?.level === 'error' ? 'text-rose-400' :
+                                msg.entry?.level === 'warn' ? 'text-amber-400' : 'text-slate-300';
                 div.textContent = msg.data;
                 logContainer.appendChild(div);
                 logContainer.scrollTop = logContainer.scrollHeight;
             }
         };
 
+        function clearLogs() {
+            logContainer.innerHTML = '';
+        }
+
         async function fetchAccounts() {
             try {
                 const res = await fetch('/api/accounts');
                 const json = await res.json();
                 if (json.success) {
-                    renderAccounts(json.data);
+                    allAccounts = json.data;
+                    filterAccounts();
                 }
             } catch (err) {
                 console.error(err);
             }
         }
 
+        function setStatusFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                if (btn.getAttribute('data-filter') === filter) {
+                    btn.className = 'filter-btn active px-3 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white';
+                } else {
+                    btn.className = 'filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+                }
+            });
+            filterAccounts();
+        }
+
+        function filterAccounts() {
+            const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+            const filtered = allAccounts.filter(acc => {
+                const matchesFilter = currentFilter === 'ALL' || acc.status === currentFilter;
+                const matchesQuery = !query || 
+                    (acc.email && acc.email.toLowerCase().includes(query)) ||
+                    (acc.proxy && acc.proxy.toLowerCase().includes(query)) ||
+                    (acc.level && acc.level.toLowerCase().includes(query)) ||
+                    (acc.redeemGoalTitle && acc.redeemGoalTitle.toLowerCase().includes(query));
+                return matchesFilter && matchesQuery;
+            });
+            renderAccounts(filtered);
+        }
+
         function renderAccounts(accounts) {
             const tbody = document.getElementById('accountTableBody');
             tbody.innerHTML = '';
+
             let totalDaily = 0;
+            let totalAccumulated = 0;
             let active = 0;
             let errors = 0;
 
-            accounts.forEach(acc => {
+            allAccounts.forEach(acc => {
                 totalDaily += Number(acc.dailyPoints || 0);
+                totalAccumulated += Number(acc.totalPoints || 0);
                 if (acc.status === 'RUNNING' || acc.status === 'OK') active++;
                 if (acc.status === 'ERROR') errors++;
+            });
 
-                const statusColor = acc.status === 'OK' || acc.status === 'RUNNING' ? 'text-emerald-400 bg-emerald-500/10' :
-                                    acc.status === 'ERROR' ? 'text-rose-400 bg-rose-500/10' : 'text-slate-400 bg-slate-500/10';
+            document.getElementById('totalAccounts').textContent = allAccounts.length;
+            document.getElementById('activeAccounts').textContent = active;
+            document.getElementById('errorAccounts').textContent = errors;
+            document.getElementById('totalDailyPoints').textContent = `+${totalDaily.toLocaleString('vi-VN')}`;
+            document.getElementById('totalAccumulatedPoints').textContent = totalAccumulated.toLocaleString('vi-VN');
+
+            if (accounts.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-500 font-sans">Không tìm thấy tài khoản nào phù hợp</td></tr>`;
+                return;
+            }
+
+            accounts.forEach(acc => {
+                const statusColor = acc.status === 'OK' ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' :
+                                    acc.status === 'RUNNING' ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 animate-pulse' :
+                                    acc.status === 'ERROR' ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20' : 
+                                    'text-slate-400 bg-slate-500/10 border border-slate-500/20';
+
+                const levelBadge = acc.level?.includes('Gold') || acc.level?.includes('2') || acc.level?.includes('3') 
+                    ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 bg-slate-700/50';
+
+                const streakVal = acc.streak && acc.streak !== '0' && acc.streak !== 'N/A' 
+                    ? `<span class="text-orange-400 font-bold">🔥 ${acc.streak} ngày</span>` 
+                    : `<span class="text-slate-500">0</span>`;
+
+                const goalDisplay = acc.redeemGoalTitle && acc.redeemGoalTitle !== 'None'
+                    ? `<span class="text-slate-300">${acc.redeemGoalTitle}</span>${acc.redeemGoalPrice ? ` <span class="text-slate-500">(${acc.redeemGoalPrice.toLocaleString()} pts)</span>` : ''}`
+                    : `<span class="text-slate-600">—</span>`;
+
+                const proxyDisplay = acc.proxy && acc.proxy !== 'Direct'
+                    ? `<span class="text-cyan-400/90 font-mono text-[11px]" title="${acc.proxy}">🌐 ${acc.proxy}</span>`
+                    : `<span class="text-slate-500 text-[11px]">Direct</span>`;
 
                 tbody.innerHTML += `
-                    <tr class="hover:bg-slate-800/50 transition">
-                        <td class="p-4 font-semibold text-slate-200">${acc.email}</td>
-                        <td class="p-4 text-amber-400">${acc.totalPoints}</td>
-                        <td class="p-4 text-emerald-400">+${acc.dailyPoints}</td>
-                        <td class="p-4">${acc.pcProgress}</td>
-                        <td class="p-4">${acc.mobileProgress}</td>
-                        <td class="p-4">
-                            <span class="px-2.5 py-1 rounded-full font-sans font-semibold text-xs ${statusColor}">
+                    <tr class="hover:bg-slate-800/40 transition">
+                        <td class="p-3.5 font-semibold text-slate-200">
+                            <div class="flex items-center gap-1.5">
+                                <span>${acc.email}</span>
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-400 uppercase">${acc.geoLocale || 'vn'}</span>
+                            </div>
+                        </td>
+                        <td class="p-3.5">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-sans font-semibold ${levelBadge}">
+                                ${acc.level || 'Level 1'}
+                            </span>
+                        </td>
+                        <td class="p-3.5 font-bold text-amber-400">${Number(acc.totalPoints || 0).toLocaleString('vi-VN')}</td>
+                        <td class="p-3.5 font-semibold text-emerald-400">+${Number(acc.dailyPoints || 0).toLocaleString('vi-VN')}</td>
+                        <td class="p-3.5 text-slate-300">
+                            <div class="text-[11px] leading-tight">PC: ${acc.pcProgress || '0/90'}</div>
+                            <div class="text-[11px] text-slate-400 leading-tight">Mob: ${acc.mobileProgress || '0/60'}</div>
+                        </td>
+                        <td class="p-3.5 font-sans">${streakVal}</td>
+                        <td class="p-3.5 text-slate-400 font-sans">${acc.accountAge || 'N/A'}</td>
+                        <td class="p-3.5 font-sans text-xs max-w-[180px] truncate" title="${acc.redeemGoalTitle || ''}">${goalDisplay}</td>
+                        <td class="p-3.5">${proxyDisplay}</td>
+                        <td class="p-3.5">
+                            <span class="px-2 py-0.5 rounded-full font-sans font-semibold text-[10px] ${statusColor}">
                                 ${acc.status}
                             </span>
                         </td>
-                        <td class="p-4 text-slate-400">${acc.accountAge}</td>
-                        <td class="p-4 text-purple-400 font-bold">🔥 ${acc.streak}</td>
-                        <td class="p-4 text-slate-500">${acc.updatedAt}</td>
+                        <td class="p-3.5 text-slate-500 text-[11px]">${acc.updatedAt || '—'}</td>
+                        <td class="p-3.5 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <button onclick="runSingleAccount('${acc.email}')" title="Chạy riêng tài khoản này" class="p-1.5 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition border border-emerald-500/20 hover:border-emerald-500/40">
+                                    ⚡
+                                </button>
+                                <button onclick="refreshSingleAccount('${acc.email}')" title="Cập nhật nhanh thông tin (API)" class="p-1.5 hover:bg-cyan-600/20 text-cyan-400 rounded-lg transition border border-cyan-500/20 hover:border-cyan-500/40">
+                                    🔄
+                                </button>
+                            </div>
+                        </td>
                     </tr>
                 `;
             });
-
-            document.getElementById('totalAccounts').textContent = accounts.length;
-            document.getElementById('activeAccounts').textContent = active;
-            document.getElementById('errorAccounts').textContent = errors;
-            document.getElementById('totalDailyPoints').textContent = `+${totalDaily}`;
         }
 
         async function startBot() {
-            await fetch('/api/start', { method: 'POST' });
-            fetchAccounts();
+            try {
+                const res = await fetch('/api/start', { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message || 'Đã gửi lệnh chạy bot!', '🚀');
+                fetchAccounts();
+            } catch (e) {
+                showToast('Lỗi khi chạy bot: ' + e.message, '⚠️');
+            }
         }
 
         async function stopBot() {
-            await fetch('/api/stop', { method: 'POST' });
-            fetchAccounts();
+            try {
+                const res = await fetch('/api/stop', { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message || 'Đã gửi lệnh dừng bot!', '🛑');
+                fetchAccounts();
+            } catch (e) {
+                showToast('Lỗi khi dừng bot: ' + e.message, '⚠️');
+            }
         }
 
         async function syncSheets() {
-            await fetch('/api/sync-sheets', { method: 'POST' });
-            alert('Đã gửi yêu cầu đồng bộ Google Sheets!');
+            try {
+                const res = await fetch('/api/sync-sheets', { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message || 'Đồng bộ Google Sheets hoàn tất!', '☁️');
+            } catch (e) {
+                showToast('Lỗi khi đồng bộ Sheets: ' + e.message, '⚠️');
+            }
+        }
+
+        async function runSingleAccount(email) {
+            if (!confirm(`Bạn có chắc muốn chạy riêng tài khoản ${email}?`)) return;
+            try {
+                showToast(`Đang khởi động chạy ${email}...`, '⚡');
+                const res = await fetch(`/api/run-account/${encodeURIComponent(email)}`, { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message, json.success ? '🚀' : '⚠️');
+                fetchAccounts();
+            } catch (e) {
+                showToast('Lỗi: ' + e.message, '⚠️');
+            }
+        }
+
+        async function refreshSingleAccount(email) {
+            try {
+                showToast(`Đang cập nhật thông tin cho ${email}...`, '⏳');
+                const res = await fetch(`/api/refresh-account/${encodeURIComponent(email)}`, { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message, json.success ? '✅' : '⚠️');
+                fetchAccounts();
+            } catch (e) {
+                showToast('Lỗi: ' + e.message, '⚠️');
+            }
         }
 
         fetchAccounts();
-        setInterval(fetchAccounts, 10000);
+        setInterval(fetchAccounts, 8000);
     </script>
 </body>
 </html>

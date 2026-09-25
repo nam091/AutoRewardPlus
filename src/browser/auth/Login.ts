@@ -52,7 +52,7 @@ export class Login {
         emailIcon: '[data-testid="tile"]:has(svg path[d*="M5.25 4h13.5a3.25"])',
         emailIconOld: 'img[data-testid="accessibleImg"][src*="picker_verify_email"]',
         recoveryEmail: '[data-testid="proof-confirmation"]',
-        passwordIcon: '[data-testid="tile"]:has(svg path[d*="M11.78 10.22a.75.75"])',
+        passwordIcon: '[data-testid="tile"]:has(svg path[d*="M11.78 10.22a.75.75"]), [role="button"]:has-text("Use your password"), span:has-text("Use your password")',
         accountLocked: '#serviceAbuseLandingTitle',
         errorAlert: 'div[role="alert"]',
         passwordEntry: '[data-testid="passwordEntry"]',
@@ -65,14 +65,17 @@ export class Login {
         totpInputOld: 'form[name="OneTimeCodeViewForm"]',
         identityBanner: '[data-testid="identityBanner"]',
         viewFooter: '[data-testid="viewFooter"] >> [role="button"]',
-        otherWaysToSignIn: '[data-testid="viewFooter"] span[role="button"]',
+        otherWaysToSignIn: '[data-testid="viewFooter"] span[role="button"], :has-text("Other ways to sign in")',
         otpCodeEntry: '[data-testid="codeEntry"]',
         backButton: '#back-button',
         bingProfile: '#id_n',
         requestToken: 'input[name="__RequestVerificationToken"]',
         requestTokenMeta: 'meta[name="__RequestVerificationToken"]',
-        otpInput: 'div[data-testid="codeEntry"]'
+        otpInput: 'div[data-testid="codeEntry"]',
+        rewardsSignIn: 'a[href*="/auth/login"], a[href*="ru=%2Fdashboard"], a:has-text("Sign in")'
     } as const
+
+    private getACodeAttempts = 0
 
     constructor(private bot: MicrosoftRewardsBot) {
         this.emailLogin = new EmailLogin(this.bot)
@@ -95,10 +98,11 @@ export class Login {
             await this.bot.browser.utils.reloadBadPage(page)
             await this.bot.browser.utils.disableFido(page)
 
-            const maxIterations = 25
+            const maxIterations = 20
             let iteration = 0
             let previousState: LoginState = 'UNKNOWN'
             let sameStateCount = 0
+            this.getACodeAttempts = 0
 
             while (iteration < maxIterations) {
                 if (page.isClosed()) throw new Error('Page closed unexpectedly')
@@ -120,14 +124,14 @@ export class Login {
                         'LOGIN',
                         `Same state count: ${sameStateCount}/4 for state "${state}"`
                     )
-                    if (sameStateCount >= 4) {
+                    if (sameStateCount >= 3) {
                         this.bot.logger.warn(
                             this.bot.isMobile,
                             'LOGIN',
-                            `Stuck in state "${state}" for 4 loops, refreshing page`
+                            `Stuck in state "${state}" for 3 loops, refreshing page`
                         )
                         await page.reload({ waitUntil: 'domcontentloaded' })
-                        await this.bot.utils.wait(3000)
+                        await this.bot.utils.wait(2000)
                         sameStateCount = 0
                         previousState = 'UNKNOWN'
                         continue
@@ -326,7 +330,17 @@ export class Login {
             }
 
             case 'GET_A_CODE': {
-                this.bot.logger.info(this.bot.isMobile, 'LOGIN', 'Attempting to bypass "Get code" page')
+                this.getACodeAttempts++
+                if (this.getACodeAttempts > 2) {
+                    const msg = `Tài khoản ${account.email} yêu cầu xác minh bảo mật mã code (GET_A_CODE), cần đăng nhập thủ công một lần!`
+                    this.bot.logger.error(this.bot.isMobile, 'LOGIN', msg)
+                    throw new Error(msg)
+                }
+                this.bot.logger.info(
+                    this.bot.isMobile,
+                    'LOGIN',
+                    `Attempting to bypass "Get code" page (attempt ${this.getACodeAttempts}/2)`
+                )
 
                 // Try to find "Other ways to sign in" link
                 const otherWaysLink = await page
@@ -657,7 +671,9 @@ export class Login {
                 this.bot.logger.debug(this.bot.isMobile, 'GET-REWARD-SESSION', `Token fetch loop ${i + 1}/${loopMax}`)
 
                 const u = new URL(page.url())
-                const atRewardHome = u.hostname === 'rewards.bing.com' && u.pathname === '/'
+                const atRewardHome =
+                    u.hostname === 'rewards.bing.com' &&
+                    (u.pathname === '/' || u.pathname.startsWith('/dashboard'))
 
                 if (atRewardHome) {
                     await this.bot.browser.utils.tryDismissAllMessages(page)
@@ -666,7 +682,10 @@ export class Login {
                     const $ = await this.bot.browser.utils.loadInCheerio(html)
 
                     // Check which version of the dashboard is being used, disable requestToken req on new dash
-                    const isModernDashboard = $('section#dailyset').length > 0 // Only on new UI and on dashboard/overview page
+                    const isModernDashboard =
+                        $('section#dailyset').length > 0 ||
+                        $('button[slot="trigger"]').length > 0 ||
+                        $('a[href*="/earn"]').length > 0
 
                     if (isModernDashboard) {
                         this.bot.rewardsVersion = 'modern'
@@ -700,6 +719,20 @@ export class Login {
                     }
 
                     this.bot.logger.debug(this.bot.isMobile, 'GET-REWARD-SESSION', 'Token not found on page')
+
+                    // Break early if unauthenticated landing page detected
+                    if (
+                        $('a[href*="/auth/login"]').length > 0 ||
+                        $('a[href*="ru=%2Fdashboard"]').length > 0 ||
+                        html.includes('Explore the benefits of your')
+                    ) {
+                        this.bot.logger.info(
+                            this.bot.isMobile,
+                            'GET-REWARD-SESSION',
+                            'Unauthenticated Rewards landing page detected during token fetch'
+                        )
+                        break
+                    }
                 } else {
                     this.bot.logger.debug(
                         this.bot.isMobile,
@@ -716,8 +749,144 @@ export class Login {
                 'GET-REWARD-SESSION',
                 'No RequestVerificationToken found, some activities may not work'
             )
+
+            // Check if page is in unauthenticated landing state and click "Sign in"
+            const signedIn = await this.tryClickRewardsSignIn(page)
+            if (signedIn) {
+                this.bot.logger.info(
+                    this.bot.isMobile,
+                    'GET-REWARD-SESSION',
+                    'Retrying token retrieval after clicking "Sign in"...'
+                )
+
+                for (let i = 0; i < loopMax; i++) {
+                    if (page.isClosed()) break
+
+                    this.bot.logger.debug(
+                        this.bot.isMobile,
+                        'GET-REWARD-SESSION',
+                        `Post-signin token fetch loop ${i + 1}/${loopMax}`
+                    )
+
+                    await this.bot.browser.utils.tryDismissAllMessages(page)
+
+                    const html = await page.content()
+                    const $ = await this.bot.browser.utils.loadInCheerio(html)
+
+                    const isModernDashboard =
+                        $('section#dailyset').length > 0 ||
+                        $('button[slot="trigger"]').length > 0 ||
+                        $('a[href*="/earn"]').length > 0
+
+                    if (isModernDashboard) {
+                        this.bot.rewardsVersion = 'modern'
+                        this.bot.logger.info(
+                            this.bot.isMobile,
+                            'GET-REWARD-SESSION',
+                            'Modern Rewards dashboard detected after signing in.'
+                        )
+                        return
+                    }
+
+                    const token =
+                        $(this.selectors.requestToken).attr('value') ??
+                        $(this.selectors.requestTokenMeta).attr('content') ??
+                        null
+
+                    if (token) {
+                        this.bot.requestToken = token
+                        this.bot.logger.info(
+                            this.bot.isMobile,
+                            'GET-REWARD-SESSION',
+                            `Request token retrieved after signing in: ${token.substring(0, 10)}...`
+                        )
+                        return
+                    }
+
+                    await this.bot.utils.wait(1000)
+                }
+            }
         } catch (error) {
             throw this.bot.logger.error(this.bot.isMobile, 'GET-REWARD-SESSION', `Fatal error: ${errMsg(error)}`)
+        }
+    }
+
+    private async tryClickRewardsSignIn(page: Page): Promise<boolean> {
+        try {
+            const signInSelectors = [
+                'a[href*="/auth/login"]',
+                'a[href*="ru=%2Fdashboard"]',
+                'a[data-rac][href*="login"]',
+                'a:has-text("Sign in")',
+                'button:has-text("Sign in")',
+                'a:has-text("Đăng nhập")',
+                'button:has-text("Đăng nhập")'
+            ]
+
+            let foundSelector: string | null = null
+
+            for (const selector of signInSelectors) {
+                const isVisible = await page
+                    .locator(selector)
+                    .first()
+                    .isVisible()
+                    .catch(() => false)
+
+                if (isVisible) {
+                    foundSelector = selector
+                    break
+                }
+            }
+
+            if (!foundSelector) {
+                const html = await page.content().catch(() => '')
+                if (html.includes('/auth/login') || html.includes('Explore the benefits of your')) {
+                    foundSelector = 'a[href*="/auth/login"]'
+                }
+            }
+
+            if (!foundSelector) {
+                this.bot.logger.debug(
+                    this.bot.isMobile,
+                    'GET-REWARD-SESSION',
+                    'No Rewards Sign In button detected on page'
+                )
+                return false
+            }
+
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'GET-REWARD-SESSION',
+                `Unauthenticated Rewards landing page detected. Clicking "Sign in" via ${foundSelector}`
+            )
+
+            const clicked = await this.bot.browser.utils.ghostClick(page, foundSelector)
+            if (!clicked) {
+                await page
+                    .locator(foundSelector)
+                    .first()
+                    .click({ timeout: 5000, force: true })
+                    .catch(() => {})
+            }
+
+            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
+            await this.bot.utils.wait(3000)
+            await this.bot.browser.utils.tryDismissAllMessages(page).catch(() => {})
+
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'GET-REWARD-SESSION',
+                `Sign in clicked, redirected to: ${page.url()}`
+            )
+
+            return true
+        } catch (error) {
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'GET-REWARD-SESSION',
+                `Error while clicking Rewards Sign In button: ${errMsg(error)}`
+            )
+            return false
         }
     }
 

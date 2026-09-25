@@ -80,13 +80,14 @@ export class CLIInteractiveDashboard {
             console.table(states.map((state, idx) => ({
                 ID: idx + 1,
                 Email: state.email,
+                Level: state.level || 'Level 1',
                 Điểm: state.totalPoints,
                 'Điểm Ngày': state.dailyPoints > 0 ? `+${state.dailyPoints}` : '0',
                 PC: state.pcProgress,
                 Mobile: state.mobileProgress,
                 'Trạng Thái': state.status,
                 'Tuổi Acc': state.accountAge,
-                Chuỗi: state.streak,
+                'Chuỗi': state.streak ? `🔥 ${state.streak}` : '0',
                 'Cập Nhật': state.updatedAt
             })));
             console.log('\n');

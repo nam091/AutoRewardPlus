@@ -82,17 +82,31 @@ export default class BrowserFunc {
             return this.dashboardCache.data
         }
 
+        // Try getting dashboard directly from active page window.dashboard first (avoids HTTP 431)
+        const activePage = this.bot.mainMobilePage || this.bot.mainDesktopPage
+        if (activePage && !activePage.isClosed()) {
+            try {
+                const pageData = await activePage.evaluate(() => {
+                    const win = window as any
+                    if (win.dashboard && typeof win.dashboard === 'object' && win.dashboard.userStatus) {
+                        return win.dashboard
+                    }
+                    return null
+                })
+                if (pageData) {
+                    this.dashboardCache = { data: pageData, ts: Date.now() }
+                    return pageData
+                }
+            } catch {}
+        }
+
         try {
             const request: AxiosRequestConfig = {
                 url: 'https://rewards.bing.com/api/getuserinfo?type=1',
                 method: 'GET',
                 headers: {
                     ...(this.bot.fingerprint?.headers ?? {}),
-                    Cookie: this.buildCookieHeader(this.bot.cookies.mobile, [
-                        'bing.com',
-                        'live.com',
-                        'microsoftonline.com'
-                    ]),
+                    Cookie: this.buildCookieHeader(this.bot.cookies.mobile, ['bing.com']),
                     Referer: 'https://rewards.bing.com/',
                     Origin: 'https://rewards.bing.com'
                 }
@@ -109,14 +123,27 @@ export default class BrowserFunc {
         } catch (error) {
             this.bot.logger.warn(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'API failed, trying HTML fallback')
 
-            // Try using script from dashboard page
+            // Try reading HTML directly from active page if available
+            if (activePage && !activePage.isClosed()) {
+                try {
+                    const content = await activePage.content()
+                    const match = content.match(/var\s+dashboard\s*=\s*({.*?});/s)
+                    if (match?.[1]) {
+                        const data = JSON.parse(match[1]) as DashboardData
+                        this.dashboardCache = { data, ts: Date.now() }
+                        return data
+                    }
+                } catch {}
+            }
+
+            // Fallback to HTTP request with strictly filtered cookies
             try {
                 const request: AxiosRequestConfig = {
                     url: this.bot.config.baseURL,
                     method: 'GET',
                     headers: {
                         ...(this.bot.fingerprint?.headers ?? {}),
-                        Cookie: this.buildCookieHeader(this.bot.cookies.mobile),
+                        Cookie: this.buildCookieHeader(this.bot.cookies.mobile, ['bing.com']),
                         Referer: 'https://rewards.bing.com/',
                         Origin: 'https://rewards.bing.com'
                     }
@@ -133,7 +160,6 @@ export default class BrowserFunc {
                 this.dashboardCache = { data, ts: Date.now() }
                 return data
             } catch (fallbackError) {
-                // If both fail
                 this.bot.logger.error(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'Failed to get dashboard data')
                 throw fallbackError
             }
@@ -403,20 +429,52 @@ export default class BrowserFunc {
     }
 
     buildCookieHeader(cookies: Cookie[], allowedDomains?: string[]): string {
-        return [
+        const domains = allowedDomains && allowedDomains.length > 0 ? allowedDomains : ['bing.com']
+        const cookieList = [
             ...new Map(
                 cookies
                     .filter(c => {
-                        if (!allowedDomains || allowedDomains.length === 0) return true
                         return (
                             typeof c.domain === 'string' &&
-                            allowedDomains.some(d => c.domain.toLowerCase().endsWith(d.toLowerCase()))
+                            domains.some(d => c.domain.toLowerCase().endsWith(d.toLowerCase()))
                         )
                     })
                     .map(c => [c.name, c])
             ).values()
         ]
-            .map(c => `${c.name}=${c.value}`)
-            .join('; ')
+
+        let result = cookieList.map(c => `${c.name}=${c.value}`).join('; ')
+
+        // Protect against HTTP 431 (Request Header Fields Too Large)
+        if (result.length > 4096) {
+            const priorityNames = new Set([
+                'KievRPSSecAuth',
+                'NAP',
+                'ANON',
+                'MUID',
+                'MUIDB',
+                '_EDGE_S',
+                '_EDGE_V',
+                'SRCHUSR',
+                'SRCHD',
+                'SRCHUID',
+                'WLS'
+            ])
+            const priorityCookies = cookieList.filter(c => priorityNames.has(c.name))
+            const otherCookies = cookieList.filter(c => !priorityNames.has(c.name))
+            const combined = [...priorityCookies, ...otherCookies]
+            const parts: string[] = []
+            let currentLen = 0
+
+            for (const c of combined) {
+                const part = `${c.name}=${c.value}`
+                if (currentLen + part.length + 2 > 4096) break
+                parts.push(part)
+                currentLen += part.length + 2
+            }
+            result = parts.join('; ')
+        }
+
+        return result
     }
 }

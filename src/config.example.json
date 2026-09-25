@@ -43,7 +43,8 @@
         "regexPatterns": []
     },
     "proxy": {
-        "queryEngine": true
+        "queryEngine": true,
+        "ignoreCertificateErrors": false
     },
     "webhook": {
         "discord": {

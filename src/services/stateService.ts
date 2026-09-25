@@ -12,6 +12,14 @@ export interface AccountState {
     accountAge: string
     streak: string
     updatedAt: string
+    level?: string
+    lifetimePoints?: number
+    questPoints?: number
+    redeemGoalTitle?: string
+    redeemGoalPrice?: number
+    geoLocale?: string
+    proxy?: string
+    lastError?: string
 }
 
 export interface StateUpdateMessage {
@@ -92,7 +100,15 @@ export class StateService {
                 status: update.status || 'IDLE',
                 accountAge: update.accountAge || 'N/A',
                 streak: update.streak || '0',
-                updatedAt: new Date().toLocaleString('vi-VN')
+                updatedAt: new Date().toLocaleString('vi-VN'),
+                level: update.level || 'Level 1',
+                lifetimePoints: update.lifetimePoints || 0,
+                questPoints: update.questPoints || 0,
+                redeemGoalTitle: update.redeemGoalTitle || 'None',
+                redeemGoalPrice: update.redeemGoalPrice || 0,
+                geoLocale: update.geoLocale || 'vn',
+                proxy: update.proxy || 'Direct',
+                lastError: update.lastError
             })
         }
         this.saveStates(states)
@@ -100,12 +116,20 @@ export class StateService {
 
     private initializeFromAccounts(): AccountState[] {
         try {
-            const accPath = fs.existsSync(path.resolve('src/accounts.json'))
-                ? path.resolve('src/accounts.json')
-                : path.resolve('src/accounts.example.json')
+            const candidates = [
+                path.resolve('dist/accounts.json'),
+                path.resolve('src/accounts.json'),
+                path.resolve('accounts.json'),
+                path.resolve('src/accounts.example.json')
+            ]
+            const accPath = candidates.find(c => fs.existsSync(c))
 
-            if (fs.existsSync(accPath)) {
+            if (accPath && fs.existsSync(accPath)) {
                 const accounts = JSON.parse(fs.readFileSync(accPath, 'utf-8'))
+                const defaultProxyUrl = process.env.DEFAULT_PROXY_URL?.trim()
+                const defaultProxyPort = process.env.DEFAULT_PROXY_PORT ? parseInt(process.env.DEFAULT_PROXY_PORT, 10) : 0
+                const defaultProxyStr = defaultProxyUrl ? `${defaultProxyUrl}:${defaultProxyPort}` : 'Direct'
+
                 const states: AccountState[] = accounts.map((acc: any) => ({
                     email: acc.email,
                     totalPoints: 0,
@@ -115,7 +139,14 @@ export class StateService {
                     status: 'IDLE',
                     accountAge: 'N/A',
                     streak: '0',
-                    updatedAt: new Date().toLocaleString('vi-VN')
+                    updatedAt: new Date().toLocaleString('vi-VN'),
+                    level: 'Level 1',
+                    lifetimePoints: 0,
+                    questPoints: 0,
+                    redeemGoalTitle: 'None',
+                    redeemGoalPrice: 0,
+                    geoLocale: acc.geoLocale || 'vn',
+                    proxy: acc.proxy?.url ? `${acc.proxy.url}:${acc.proxy.port}` : defaultProxyStr
                 }))
                 this.saveStates(states)
                 return states

@@ -19,16 +19,18 @@ const LogFilterSchema = z.object({
     regexPatterns: z.array(z.string()).optional()
 })
 
-const DelaySchema = z.object({
-    min: Duration,
-    max: Duration
-}).refine(
-    ({ min, max }) => {
-        const toMs = (value: number | string) => (typeof value === 'number' ? value : ms(value as StringValue)!)
-        return toMs(min) <= toMs(max)
-    },
-    { message: 'Minimum delay must not exceed maximum delay' }
-)
+const DelaySchema = z
+    .object({
+        min: Duration,
+        max: Duration
+    })
+    .refine(
+        ({ min, max }) => {
+            const toMs = (value: number | string) => (typeof value === 'number' ? value : ms(value as StringValue)!)
+            return toMs(min) <= toMs(max)
+        },
+        { message: 'Minimum delay must not exceed maximum delay' }
+    )
 
 const QueryEngineSchema = z.enum(['google', 'wikipedia', 'reddit', 'local'])
 
@@ -120,7 +122,8 @@ export const ConfigSchema = z.object({
     }),
     debugLogs: z.boolean(),
     proxy: z.object({
-        queryEngine: z.boolean()
+        queryEngine: z.boolean(),
+        ignoreCertificateErrors: z.boolean().default(false)
     }),
     consoleLogFilter: LogFilterSchema,
     webhook: WebhookSchema,
@@ -138,9 +141,12 @@ export const AccountSchema = z.object({
     email: z.string().min(1),
     password: z.string(),
     totpSecret: z.string().optional(),
+    totp: z.string().optional(),
     recoveryEmail: z.string(),
     geoLocale: z.string(),
     langCode: z.string(),
+    tag: z.string().optional(),
+    enabled: z.boolean().optional(),
     proxy: z
         .object({
             proxyAxios: z.boolean(),

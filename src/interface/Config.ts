@@ -68,6 +68,7 @@ export interface ConfigDelay {
 
 export interface ConfigProxy {
     queryEngine: boolean
+    ignoreCertificateErrors?: boolean
 }
 
 export interface ConfigWorkers {

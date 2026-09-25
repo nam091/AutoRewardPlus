@@ -309,9 +309,14 @@ export class HumanizeEngine {
             const word = words[wordIdx]
             if (!word) continue
 
-            // Word boundary pause (longer between words)
+            // Word boundary pause (longer between words) and type spaces
             if (wordIdx > 0 && /^\s+$/.test(word)) {
                 await this.gaussianSleep(180, 60)
+                for (let s = 0; s < word.length; s++) {
+                    await page.keyboard.press('Space')
+                    await this.gaussianSleep(60, 20)
+                }
+                prevChar = ' '
                 continue
             }
 

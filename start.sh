@@ -14,12 +14,17 @@ if ! command -v node &> /dev/null; then
     read -p "Press any key to exit..."
     exit 1
 fi
-echo "[INFO] Building project..."
-npm install
-if [ $? -ne 0 ]; then
-    echo "[ERROR] install failed!"
-    read -p "Press any key to exit..."
-    exit 1
+# Check dependencies
+if [ ! -d "node_modules" ]; then
+    echo "[INFO] Dependencies not found. Installing..."
+    npm install
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] install failed!"
+        read -p "Press any key to exit..."
+        exit 1
+    fi
+    echo "[INFO] Installing browser binaries..."
+    npx patchright install chromium
 fi
 
 # Always rebuild before running

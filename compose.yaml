@@ -1,8 +1,9 @@
 services:
     microsoft-rewards-script:
-        image: ghcr.io/thenetsky/microsoft-rewards-script:latest
+        build: .
         container_name: microsoft-rewards-script
         restart: unless-stopped
+        init: true
         volumes:
             - ./config:/usr/src/microsoft-rewards-script/dist/config
             - ./sessions:/usr/src/microsoft-rewards-script/dist/browser/sessions
@@ -10,6 +11,10 @@ services:
             # ── Scheduling ───────────────────────────────────────────────────
             TZ: 'America/Toronto'
             NODE_ENV: 'production'
+            DASHBOARD_HOST: ${DASHBOARD_HOST:-127.0.0.1}
+            DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
+            DASHBOARD_ALLOWED_ORIGIN: ${DASHBOARD_ALLOWED_ORIGIN:-}
+            DASHBOARD_ALLOW_CONFIG_WRITE: ${DASHBOARD_ALLOW_CONFIG_WRITE:-0}
             CRON_SCHEDULE: '0 7 * * *' # use crontab.guru to customize your schedule
             RUN_ON_START: 'true' # run script immediately on container start
             SKIP_RANDOM_SLEEP: 'false'

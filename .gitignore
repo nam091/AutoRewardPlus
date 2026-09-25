@@ -1,10 +1,17 @@
+.playwright-mcp/
+.last_run_date
+Email
 sessions/
 dist/
 .dev/
 node_modules/
+accounts.json
+config.json
 src/accounts.json
 src/config.json
 src/dashboard/db.json
+dist/accounts.json
+dist/config.json
 /.vscode
 /diagnostics
 note
@@ -14,5 +21,7 @@ accounts.main.json
 .playwright-chromium-installed
 bun.lock
 .env
+*.key
+*.pem
 erudite-realm-*.json
 service-account.json

@@ -14,6 +14,19 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Check dependencies
+if not exist "node_modules\" (
+    echo [INFO] Dependencies not found. Installing...
+    call npm install
+    if %errorlevel% neq 0 (
+        echo [ERROR] Installation failed!
+        pause
+        exit /b 1
+    )
+    echo [INFO] Installing browser binaries...
+    call npx patchright install chromium
+)
+
 :: Always rebuild before running
 echo [INFO] Building project...
 call npm run build

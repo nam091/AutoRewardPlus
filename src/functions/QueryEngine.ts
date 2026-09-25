@@ -46,7 +46,7 @@ export class QueryCore {
             sourceOrder = ['google', 'wikipedia', 'reddit', 'local'],
             related = true,
             langCode = 'en',
-            geoLocale = 'US'
+            geoLocale = 'vn'
         } = options
 
         try {
@@ -606,9 +606,9 @@ export class QueryCore {
      * Falls back to local query list if API fails.
      */
     async generateAISessionQueries(sessionCount: number, langCode: string = 'vi'): Promise<string[][]> {
-        // Gather trending seeds from existing sources for hybrid authenticity
+        const geo = (this.bot?.userData?.geoLocale || 'VN').toUpperCase()
         const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
-            this.getGoogleTrends('US').catch(() => []),
+            this.getGoogleTrends(geo).catch(() => []),
             this.getWikipediaTrending(langCode).catch(() => []),
             this.getRedditTopics().catch(() => [])
         ])
@@ -825,8 +825,9 @@ thay keo tản nhiệt laptop giá bao nhiêu`
         this.bot.logger.info(false, 'AI-FALLBACK', `Generating enhanced local queries...`)
 
         // Get trending topics
+        const geo = (this.bot?.userData?.geoLocale || 'VN').toUpperCase()
         const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
-            this.getGoogleTrends('US').catch(() => []),
+            this.getGoogleTrends(geo).catch(() => []),
             this.getWikipediaTrending(langCode).catch(() => []),
             this.getRedditTopics().catch(() => [])
         ])

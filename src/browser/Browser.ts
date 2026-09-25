@@ -1,3 +1,4 @@
+import net from 'net'
 import { chromium as patchrightChromium, type BrowserContext } from 'patchright'
 import { chromium, type Browser as PlaywrightBrowser } from 'playwright-core'
 
@@ -33,12 +34,7 @@ interface BrowserCreationResult {
 class Browser {
     private readonly bot: MicrosoftRewardsBot
     private static readonly BROWSER_ARGS = [
-        '--no-sandbox',
         '--mute-audio',
-        '--disable-setuid-sandbox',
-        '--ignore-certificate-errors',
-        '--ignore-certificate-errors-spki-list',
-        '--ignore-ssl-errors',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-web-authentication-ui',
@@ -54,6 +50,26 @@ class Browser {
 
     async createBrowser(account: Account): Promise<BrowserCreationResult> {
         let browser: PlaywrightBrowser
+        const hasProxy = Boolean(account.proxy.url)
+        const ignoreCertificateErrors = hasProxy && Boolean(this.bot.config.proxy.ignoreCertificateErrors)
+        const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0
+        const sandboxArgs = runningAsRoot ? ['--no-sandbox', '--disable-setuid-sandbox'] : []
+        const certArgs = ignoreCertificateErrors
+            ? ['--ignore-certificate-errors', '--ignore-certificate-errors-spki-list', '--ignore-ssl-errors']
+            : []
+
+        if (hasProxy) {
+            const isReachable = await this.checkProxyReachable(account.proxy)
+            if (!isReachable) {
+                const proxyStr = `${account.proxy.url}:${account.proxy.port}`
+                this.bot.logger.error(
+                    this.bot.isMobile,
+                    'BROWSER-PROXY',
+                    `[PROXY-OFFLINE] Máy chủ proxy ${proxyStr} không phản hồi! Tạm dừng phiên chạy để bảo vệ tài khoản.`
+                )
+                throw new Error(`[PROXY-OFFLINE] Proxy ${proxyStr} is unreachable`)
+            }
+        }
         try {
             const proxyConfig = account.proxy.url
                 ? {
@@ -70,7 +86,7 @@ class Browser {
                 executablePath: patchrightChromium.executablePath(),
                 headless: this.bot.config.headless,
                 ...(proxyConfig && { proxy: proxyConfig }),
-                args: [...Browser.BROWSER_ARGS]
+                args: [...Browser.BROWSER_ARGS, ...sandboxArgs, ...certArgs]
             })
         } catch (error) {
             const errorMessage = errMsg(error)
@@ -104,9 +120,27 @@ class Browser {
             ]) {
                 delete injectableHeaders[header]
             }
+            const geo = (account.geoLocale || 'vn').toLowerCase()
+            const timezoneMap: Record<string, string> = {
+                vn: 'Asia/Ho_Chi_Minh',
+                us: 'America/New_York',
+                jp: 'Asia/Tokyo',
+                de: 'Europe/Berlin',
+                gb: 'Europe/London'
+            }
+            const timezoneId = timezoneMap[geo] || 'Asia/Ho_Chi_Minh'
+            const locale = geo === 'vn' ? 'vi-VN' : 'en-US'
+
+            injectableHeaders['accept-language'] =
+                geo === 'vn'
+                    ? 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
+                    : 'en-US,en;q=0.9'
+
             const context = await browser.newContext({
                 userAgent: fingerprint.fingerprint.navigator.userAgent,
                 colorScheme: 'dark',
+                timezoneId,
+                locale,
                 viewport: {
                     width: fingerprint.fingerprint.screen.width,
                     height: fingerprint.fingerprint.screen.height
@@ -115,7 +149,7 @@ class Browser {
                 isMobile: this.bot.isMobile,
                 hasTouch: this.bot.isMobile,
                 permissions: [],
-                ignoreHTTPSErrors: true,
+                ignoreHTTPSErrors: ignoreCertificateErrors,
                 extraHTTPHeaders: injectableHeaders
             })
 
@@ -167,13 +201,45 @@ class Browser {
                 `Created browser with User-Agent: "${fingerprint.fingerprint.navigator.userAgent}"`
             )
             this.bot.logger.debug(this.bot.isMobile, 'BROWSER-FINGERPRINT', JSON.stringify(fingerprint))
-            this.bot.logger.info(this.bot.isMobile, 'BROWSER', 'Enhanced anti-detection active (canvas, WebGL, audio noise)')
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'BROWSER',
+                'Enhanced anti-detection active (canvas, WebGL, audio noise)'
+            )
 
             return { context: context as unknown as BrowserContext, fingerprint }
         } catch (error) {
             await browser.close().catch(() => {})
             throw error
         }
+    }
+
+    private async checkProxyReachable(proxy: AccountProxy, timeoutMs = 3500): Promise<boolean> {
+        return new Promise(resolve => {
+            try {
+                let host = proxy.url
+                let port = proxy.port
+                if (proxy.url.includes('://')) {
+                    const u = new URL(proxy.url)
+                    host = u.hostname
+                    port = parseInt(u.port || (u.protocol === 'https:' ? '443' : '80'), 10) || proxy.port
+                }
+                const socket = net.createConnection({ host, port: proxy.port || port, timeout: timeoutMs }, () => {
+                    socket.destroy()
+                    resolve(true)
+                })
+                socket.on('timeout', () => {
+                    socket.destroy()
+                    resolve(false)
+                })
+                socket.on('error', () => {
+                    socket.destroy()
+                    resolve(false)
+                })
+            } catch {
+                resolve(false)
+            }
+        })
     }
 
     private formatProxyServer(proxy: AccountProxy): string {

@@ -30,9 +30,9 @@ class AxiosClient {
         this.directInstance = axios.create({ timeout: 20000 })
 
         if (this.account.url && this.account.proxyAxios) {
-            const agent = this.getAgentForProxy(this.account)
-            this.instance.defaults.httpAgent = agent
-            this.instance.defaults.httpsAgent = agent
+            const { httpAgent, httpsAgent } = this.getAgentsForProxy(this.account)
+            this.instance.defaults.httpAgent = httpAgent
+            this.instance.defaults.httpsAgent = httpsAgent
         }
 
         const retryOptions = {
@@ -52,9 +52,12 @@ class AxiosClient {
         axiosRetry(this.directInstance, retryOptions)
     }
 
-    private getAgentForProxy(
+    private getAgentsForProxy(
         proxyConfig: AccountProxy
-    ): HttpProxyAgent<string> | HttpsProxyAgent<string> | SocksProxyAgent {
+    ): {
+        httpAgent: HttpProxyAgent<string> | SocksProxyAgent
+        httpsAgent: HttpsProxyAgent<string> | SocksProxyAgent
+    } {
         const { url: baseUrl, port, username, password } = proxyConfig
 
         let urlObj: URL
@@ -80,16 +83,14 @@ class AxiosClient {
             proxyUrl = `${protocol}//${urlObj.hostname}:${port}`
         }
 
-        switch (protocol) {
-            case 'http:':
-                return new HttpProxyAgent(proxyUrl)
-            case 'https:':
-                return new HttpsProxyAgent(proxyUrl)
-            case 'socks4:':
-            case 'socks5:':
-                return new SocksProxyAgent(proxyUrl)
-            default:
-                throw new Error(`Unsupported proxy protocol: ${protocol}. Only HTTP(S) and SOCKS4/5 are supported!`)
+        if (protocol.startsWith('socks')) {
+            const agent = new SocksProxyAgent(proxyUrl)
+            return { httpAgent: agent, httpsAgent: agent }
+        }
+
+        return {
+            httpAgent: new HttpProxyAgent(proxyUrl),
+            httpsAgent: new HttpsProxyAgent(proxyUrl)
         }
     }
 

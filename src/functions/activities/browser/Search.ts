@@ -1,6 +1,5 @@
 import type { Page } from 'patchright'
 
-import { randomBytes } from 'crypto'
 
 import type { Counters, DashboardData } from '../../../interface/DashboardData'
 
@@ -247,23 +246,26 @@ export class Search extends Workers {
      * Simulates human behavior of narrowing/broadening search after seeing results.
      */
     private refineQuery(previousQuery: string, nextQuery: string): string | null {
-        const prevWords = previousQuery.split(/\s+/)
-        const nextWords = nextQuery.split(/\s+/)
+        const prevWords = previousQuery.trim().split(/\s+/)
+        const nextWords = nextQuery.trim().split(/\s+/)
 
-        // Strategy: take core of previous query (first 2-3 words) + add a modifier from next query
         if (prevWords.length < 2 || nextWords.length < 2) return null
 
-        const core = prevWords.slice(0, Math.min(3, prevWords.length))
-        const modifier = nextWords.slice(-2)
+        // Require meaningful shared words to prevent unnatural query mashups
+        const stopWords = new Set([
+            'và', 'là', 'của', 'ở', 'có', 'cho', 'với', 'trong', 'về', 'các', 'những',
+            'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with'
+        ])
+        const prevSignificant = new Set(
+            prevWords
+                .map(w => w.toLowerCase())
+                .filter(w => w.length > 2 && !stopWords.has(w))
+        )
+        const hasSharedTopic = nextWords.some(w => prevSignificant.has(w.toLowerCase()))
 
-        // Only refine if the queries share at least some topical relation
-        const combined = [...core, ...modifier]
-        const uniqueWords = new Set(combined.map(w => w.toLowerCase()))
+        if (!hasSharedTopic) return null
 
-        // If too few unique words, it's just repeating — skip
-        if (uniqueWords.size < 3) return null
-
-        return combined.join(' ')
+        return nextQuery
     }
 
     private async bingSearch(searchPage: Page, query: string, isMobile: boolean) {
@@ -281,10 +283,7 @@ export class Search extends Workers {
 
             this.bot.logger.debug(isMobile, 'SEARCH-BING', `Returning home to refresh state | url=${this.bingHome}`)
 
-            const cvid = randomBytes(16).toString('hex')
-            const url = `${this.bingHome}/search?q=${encodeURIComponent(query)}&PC=U531&FORM=ANNTA1&cvid=${cvid}`
-
-            await searchPage.goto(url)
+            await searchPage.goto(this.bingHome)
             await searchPage.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
             await this.bot.browser.utils.tryDismissAllMessages(searchPage)
         }

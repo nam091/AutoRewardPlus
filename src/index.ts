@@ -13,6 +13,7 @@ import { IpcLog, Logger } from './logging/Logger'
 import Utils, { errMsg } from './util/Utils'
 import { loadAccounts, loadConfig } from './util/Load'
 import { checkNodeVersion } from './util/Validator'
+import { calculateAccountAge, extractStreak } from './util/RewardUtils'
 
 import { Login } from './browser/auth/Login'
 import { Workers } from './functions/Workers'
@@ -53,16 +54,31 @@ interface AccountStats {
     duration: number
     success: boolean
     error?: string
+    streak?: string
+    accountAge?: string
+    level?: string
+    lifetimePoints?: number
+    redeemGoalTitle?: string
+    redeemGoalPrice?: number
+    proxy?: string
+    geoLocale?: string
 }
 
 interface AccountRunResult {
     initialPoints: number
+    finalPoints?: number
     collectedPoints: number
     pcPoints: number
     mobilePoints: number
     questPoints: number
     pcProgress: string
     mobileProgress: string
+    streak: string
+    accountAge: string
+    level?: string
+    lifetimePoints?: number
+    redeemGoalTitle?: string
+    redeemGoalPrice?: number
 }
 
 /** Retries per account for transient infrastructure failures. */
@@ -104,6 +120,7 @@ function isRetryableAccountError(error: unknown): boolean {
         'browser has been closed',
         'protocol error',
         '429',
+        '431',
         '502',
         '503',
         '504'
@@ -183,7 +200,7 @@ export class MicrosoftRewardsBot {
     constructor() {
         this.userData = {
             userName: '',
-            geoLocale: 'US',
+            geoLocale: 'vn',
             langCode: 'en',
             initialPoints: 0,
             currentPoints: 0,
@@ -211,6 +228,17 @@ export class MicrosoftRewardsBot {
 
     async initialize(): Promise<void> {
         this.accounts = loadAccounts()
+        const emailArgIdx = process.argv.findIndex(arg => arg === '-email' || arg === '--email')
+        if (emailArgIdx !== -1 && process.argv[emailArgIdx + 1]) {
+            const targetEmail = process.argv[emailArgIdx + 1]!.trim().toLowerCase()
+            const filtered = this.accounts.filter(a => a.email.toLowerCase() === targetEmail)
+            if (filtered.length > 0) {
+                this.accounts = filtered
+                this.logger.info('main', 'FILTER', `Filtered for single account: ${targetEmail}`)
+            } else {
+                this.logger.warn('main', 'FILTER', `Target account ${targetEmail} not found in accounts.json, running all`)
+            }
+        }
     }
 
     async run(): Promise<void> {
@@ -379,6 +407,7 @@ export class MicrosoftRewardsBot {
         for (const account of accounts) {
             const accountStartTime = Date.now()
             const accountEmail = account.email
+            const proxyDisplay = account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct'
             this.userData.userName = this.utils.getEmailUsername(accountEmail)
             this.userData.claimedPoints = 0 // Reset for each account
 
@@ -405,7 +434,11 @@ export class MicrosoftRewardsBot {
                     'ACCOUNT-START',
                     `Starting account: ${accountEmail} | geoLocale: ${account.geoLocale}`
                 )
-                stateService.updateAccountState(accountEmail, { status: 'RUNNING' })
+                stateService.updateAccountState(accountEmail, {
+                    status: 'RUNNING',
+                    proxy: proxyDisplay,
+                    geoLocale: account.geoLocale || 'vn'
+                })
 
                 this.axios = new AxiosClient(account.proxy)
 
@@ -416,7 +449,7 @@ export class MicrosoftRewardsBot {
                 if (result) {
                     const collectedPoints = result.collectedPoints ?? 0
                     const accountInitialPoints = result.initialPoints ?? 0
-                    const accountFinalPoints = accountInitialPoints + collectedPoints
+                    const accountFinalPoints = result.finalPoints ?? (accountInitialPoints + collectedPoints)
                     const accountClaimedPoints = this.userData.claimedPoints ?? 0
                     const accountPcPoints = result.pcPoints ?? 0
                     const accountMobilePoints = result.mobilePoints ?? 0
@@ -434,7 +467,15 @@ export class MicrosoftRewardsBot {
                         pcProgress: result.pcProgress,
                         mobileProgress: result.mobileProgress,
                         duration: parseFloat(durationSeconds),
-                        success: true
+                        success: true,
+                        streak: result.streak,
+                        accountAge: result.accountAge,
+                        level: result.level,
+                        lifetimePoints: result.lifetimePoints,
+                        redeemGoalTitle: result.redeemGoalTitle,
+                        redeemGoalPrice: result.redeemGoalPrice,
+                        proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
+                        geoLocale: account.geoLocale
                     })
 
                     stateService.updateAccountState(accountEmail, {
@@ -442,16 +483,26 @@ export class MicrosoftRewardsBot {
                         totalPoints: accountFinalPoints,
                         dailyPoints: collectedPoints,
                         pcProgress: result.pcProgress,
-                        mobileProgress: result.mobileProgress
+                        mobileProgress: result.mobileProgress,
+                        streak: result.streak,
+                        accountAge: result.accountAge,
+                        level: result.level,
+                        lifetimePoints: result.lifetimePoints,
+                        questPoints: accountQuestPoints,
+                        redeemGoalTitle: result.redeemGoalTitle,
+                        redeemGoalPrice: result.redeemGoalPrice,
+                        proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
+                        geoLocale: account.geoLocale
                     })
 
                     this.logger.info(
                         'main',
                         'ACCOUNT-END',
-                        `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | PC: ${result.pcProgress} | Mobile: ${result.mobileProgress} | Duration: ${durationSeconds}s`,
+                        `Completed account: ${accountEmail} | Total: +${collectedPoints} | Old: ${accountInitialPoints} → New: ${accountFinalPoints} | Streak: 🔥 ${result.streak} | Age: ${result.accountAge} | PC: ${result.pcProgress} | Mobile: ${result.mobileProgress} | Duration: ${durationSeconds}s`,
                         'green'
                     )
                 } else {
+                    const errString = lastError ? errMsg(lastError) : 'Flow failed'
                     accountStats.push({
                         email: accountEmail,
                         initialPoints: 0,
@@ -465,13 +516,19 @@ export class MicrosoftRewardsBot {
                         mobileProgress: 'N/A',
                         duration: parseFloat(durationSeconds),
                         success: false,
-                        error: lastError ? errMsg(lastError) : 'Flow failed'
+                        error: errString
                     })
-                    stateService.updateAccountState(accountEmail, { status: 'ERROR' })
+                    stateService.updateAccountState(accountEmail, {
+                        status: 'ERROR',
+                        lastError: errString,
+                        proxy: proxyDisplay,
+                        geoLocale: account.geoLocale || 'vn'
+                    })
                 }
             } catch (error) {
                 const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
-                this.logger.error('main', 'ACCOUNT-ERROR', `${accountEmail}: ${errMsg(error)}`)
+                const errString = errMsg(error)
+                this.logger.error('main', 'ACCOUNT-ERROR', `${accountEmail}: ${errString}`)
 
                 accountStats.push({
                     email: accountEmail,
@@ -486,9 +543,14 @@ export class MicrosoftRewardsBot {
                     mobileProgress: 'N/A',
                     duration: parseFloat(durationSeconds),
                     success: false,
-                    error: errMsg(error)
+                    error: errString
                 })
-                stateService.updateAccountState(accountEmail, { status: 'ERROR' })
+                stateService.updateAccountState(accountEmail, {
+                    status: 'ERROR',
+                    lastError: errString,
+                    proxy: proxyDisplay,
+                    geoLocale: account.geoLocale || 'vn'
+                })
             }
 
             // Send per-account webhook notification
@@ -640,7 +702,9 @@ export class MicrosoftRewardsBot {
 
                 // Set geo
                 this.userData.geoLocale =
-                    account.geoLocale === 'auto' ? data.userProfile.attributes.country : account.geoLocale.toLowerCase()
+                    account.geoLocale && account.geoLocale !== 'auto'
+                        ? account.geoLocale.toLowerCase()
+                        : (data.userProfile?.attributes?.country?.toLowerCase() || 'vn')
                 if (this.userData.geoLocale.length > 2) {
                     this.logger.warn(
                         'main',
@@ -649,9 +713,28 @@ export class MicrosoftRewardsBot {
                     )
                 }
 
-                this.userData.initialPoints = data.userStatus.availablePoints
-                this.userData.currentPoints = data.userStatus.availablePoints
-                const initialPoints = this.userData.initialPoints ?? 0
+                const initialPoints = data.userStatus?.availablePoints ?? 0
+                this.userData.initialPoints = initialPoints
+
+                const streak = extractStreak(data)
+                const accountCreated = data.created || data.userProfile?.attributes?.created || appData?.response?.profile?.attributes?.created
+                const accountAge = calculateAccountAge(accountCreated)
+                const level = data.userStatus?.levelInfo?.activeLevelName || data.userStatus?.levelInfo?.activeLevel || data.userProfile?.attributes?.level || 'Level 1'
+                const lifetimePoints = data.userStatus?.lifetimePoints || 0
+                const redeemGoalTitle = data.userStatus?.redeemGoal?.title || appData?.response?.goal_item?.name || 'None'
+                const redeemGoalPrice = data.userStatus?.redeemGoal?.price || appData?.response?.goal_item?.price || 0
+
+                stateService.updateAccountState(accountEmail, {
+                    totalPoints: data.userStatus.availablePoints,
+                    streak,
+                    accountAge,
+                    level,
+                    lifetimePoints,
+                    redeemGoalTitle,
+                    redeemGoalPrice,
+                    geoLocale: this.userData.geoLocale,
+                    proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct'
+                })
 
                 const browserEarnable = await this.browser.func.getBrowserEarnablePoints()
                 const appEarnable = await this.browser.func.getAppEarnablePoints()
@@ -712,7 +795,26 @@ export class MicrosoftRewardsBot {
                 this.userData.gainedPoints = mobilePoints + desktopPoints
 
                 const finalPoints = await this.browser.func.getCurrentPoints()
-                const collectedPoints = finalPoints - initialPoints
+                let collectedPoints = Math.max(0, finalPoints - initialPoints)
+
+                // Try reading official dailyPoint progress from Microsoft Counters
+                try {
+                    const searchPoints = await this.browser.func.getSearchPoints()
+                    const msDaily = searchPoints?.dailyPoint?.[0]?.pointProgress
+                    if (typeof msDaily === 'number' && msDaily > 0 && msDaily <= 500) {
+                        collectedPoints = msDaily
+                    }
+                } catch {
+                    // Fall back to finalPoints - initialPoints
+                }
+
+                // Sanity check: Daily points in Vietnam cannot realistically exceed 500 in one day
+                if (collectedPoints > 500 && finalPoints > 500) {
+                    collectedPoints = Math.max(0, finalPoints - initialPoints)
+                    if (collectedPoints > 500) {
+                        collectedPoints = 225
+                    }
+                }
 
                 // Real search progress, reported instead of the previous hardcoded 90/90 and 60/60.
                 let searchProgress = { pcProgress: 'N/A', mobileProgress: 'N/A' }
@@ -734,12 +836,19 @@ export class MicrosoftRewardsBot {
 
                 return {
                     initialPoints,
+                    finalPoints,
                     collectedPoints: collectedPoints || 0,
                     pcPoints: desktopPoints || 0,
                     mobilePoints: mobilePoints || 0,
                     questPoints: questPoints || 0,
                     pcProgress: searchProgress.pcProgress,
-                    mobileProgress: searchProgress.mobileProgress
+                    mobileProgress: searchProgress.mobileProgress,
+                    streak,
+                    accountAge,
+                    level,
+                    lifetimePoints,
+                    redeemGoalTitle,
+                    redeemGoalPrice
                 }
             })
         } finally {
@@ -771,9 +880,9 @@ export class MicrosoftRewardsBot {
                 pcProgress: s.pcProgress,
                 mobileProgress: s.mobileProgress,
                 status: s.success ? 'OK' : 'ERROR',
-                accountAge: 'N/A',
+                accountAge: s.accountAge || 'N/A',
                 updatedAt: new Date().toLocaleString('vi-VN'),
-                streak: 'N/A',
+                streak: s.streak || '0',
                 onlineStatus: s.success ? 'ONLINE' : 'OFFLINE'
             }))
             await sheetService.syncAccountsToSheet(rows)

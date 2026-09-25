@@ -15,6 +15,7 @@
 ## ✨ What's New (vs upstream v3)
 
 ### Modern UI Support
+
 - **Auto-detection**: Automatically detects whether the account uses legacy or modern Rewards UI
 - **Daily Set** (`/dashboard`): Expands collapsible sections, clicks task cards to earn points
 - **Keep Earning** (`/earn`): Detects earnable cards (badge `+N`, description "earn N points"), clicks to complete
@@ -25,6 +26,7 @@
 - **Verification**: Reloads page after completion to check/retry any remaining tasks
 
 ### Quick Launch
+
 - **`start.bat`**: Double-click to auto-build and run on Windows (no terminal needed)
 
 ---
@@ -92,6 +94,8 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 
 > [!WARNING]
 > Rebuild the script (bare metal), or recreate the container (Docker) after all config changes.
+>
+> The browser keeps TLS certificate verification enabled by default. Only enable `proxy.ignoreCertificateErrors` for a proxy setup that requires it, and understand that doing so weakens certificate validation.
 
 ### Core
 
@@ -107,17 +111,17 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 
 ### Workers
 
-| Setting                       | Type    | Default | Description                 |
-| ----------------------------- | ------- | ------- | --------------------------- |
-| `workers.doDailySet`          | boolean | `true`  | Complete daily set          |
-| `workers.doSpecialPromotions` | boolean | `true`  | Complete special promotions |
-| `workers.doMorePromotions`    | boolean | `true`  | Complete more promotions / Keep Earning |
-| `workers.doPunchCards`        | boolean | `true`  | Complete punchcards         |
-| `workers.doAppPromotions`     | boolean | `true`  | Complete app promotions     |
-| `workers.doDesktopSearch`     | boolean | `true`  | Perform desktop searches    |
-| `workers.doMobileSearch`      | boolean | `true`  | Perform mobile searches     |
-| `workers.doDailyCheckIn`      | boolean | `true`  | Complete daily check-in     |
-| `workers.doReadToEarn`        | boolean | `true`  | Complete Read-to-Earn       |
+| Setting                       | Type    | Default | Description                                  |
+| ----------------------------- | ------- | ------- | -------------------------------------------- |
+| `workers.doDailySet`          | boolean | `true`  | Complete daily set                           |
+| `workers.doSpecialPromotions` | boolean | `true`  | Complete special promotions                  |
+| `workers.doMorePromotions`    | boolean | `true`  | Complete more promotions / Keep Earning      |
+| `workers.doPunchCards`        | boolean | `true`  | Complete punchcards                          |
+| `workers.doAppPromotions`     | boolean | `true`  | Complete app promotions                      |
+| `workers.doDesktopSearch`     | boolean | `true`  | Perform desktop searches                     |
+| `workers.doMobileSearch`      | boolean | `true`  | Perform mobile searches                      |
+| `workers.doDailyCheckIn`      | boolean | `true`  | Complete daily check-in                      |
+| `workers.doReadToEarn`        | boolean | `true`  | Complete Read-to-Earn                        |
 | `workers.doMissions`          | boolean | `true`  | Complete mission/challenge cards (Modern UI) |
 
 ### Search Settings
@@ -139,7 +143,7 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 | `behavior.accountStartDelay.min` | string  | `"2sec"`  | Minimum deterministic account startup offset     |
 | `behavior.accountStartDelay.max` | string  | `"10sec"` | Maximum deterministic account startup offset     |
 | `behavior.enableSessionBreaks`   | boolean | `true`    | Allow bounded pauses during long search sessions |
-| `behavior.telemetry`             | boolean | `true`    | Log behavior metrics using hashed account IDs     |
+| `behavior.telemetry`             | boolean | `true`    | Log behavior metrics using hashed account IDs    |
 
 Result-page behavior uses a seeded, weighted choice between reading, scrolling, and visiting an eligible
 organic result. The seed is stable for an account, device type, and day, so behavior varies without becoming
@@ -156,33 +160,54 @@ plugins, or WebGL values. Canvas noise is deterministic for the same account/dev
 
 ### Logging
 
-| Setting                          | Type     | Default                | Description                       |
-| -------------------------------- | -------- | ---------------------- | --------------------------------- |
-| `debugLogs`                      | boolean  | `false`                | Enable debug logging              |
-| `consoleLogFilter.enabled`       | boolean  | `false`                | Enable console log filtering      |
-| `consoleLogFilter.mode`          | string   | `"whitelist"`          | Filter mode (whitelist/blacklist) |
-| `consoleLogFilter.levels`        | string[] | `["error", "warn"]`    | Log levels to filter              |
-| `consoleLogFilter.keywords`      | string[] | `["starting account"]` | Keywords to filter                |
+| Setting                     | Type     | Default                | Description                       |
+| --------------------------- | -------- | ---------------------- | --------------------------------- |
+| `debugLogs`                 | boolean  | `false`                | Enable debug logging              |
+| `consoleLogFilter.enabled`  | boolean  | `false`                | Enable console log filtering      |
+| `consoleLogFilter.mode`     | string   | `"whitelist"`          | Filter mode (whitelist/blacklist) |
+| `consoleLogFilter.levels`   | string[] | `["error", "warn"]`    | Log levels to filter              |
+| `consoleLogFilter.keywords` | string[] | `["starting account"]` | Keywords to filter                |
 
 ### Proxy
 
-| Setting             | Type    | Default | Description                 |
-| ------------------- | ------- | ------- | --------------------------- |
-| `proxy.queryEngine` | boolean | `true`  | Proxy query engine requests |
+| Setting                         | Type    | Default | Description                                                             |
+| ------------------------------- | ------- | ------- | ----------------------------------------------------------------------- |
+| `proxy.queryEngine`             | boolean | `true`  | Proxy query engine requests                                             |
+| `proxy.ignoreCertificateErrors` | boolean | `false` | Ignore TLS certificate errors only when explicitly enabled with a proxy |
 
 ### Webhooks
 
-| Setting                                  | Type     | Default                                              | Description                       |
-| ---------------------------------------- | -------- | ---------------------------------------------------- | --------------------------------- |
-| `webhook.discord.enabled`                | boolean  | `false`                                              | Enable Discord webhook            |
-| `webhook.discord.url`                    | string   | `""`                                                 | Discord webhook URL               |
-| `webhook.ntfy.enabled`                   | boolean  | `false`                                              | Enable ntfy notifications         |
-| `webhook.ntfy.url`                       | string   | `""`                                                 | ntfy server URL                   |
-| `webhook.ntfy.topic`                     | string   | `""`                                                 | ntfy topic                        |
-| `webhook.ntfy.token`                     | string   | `""`                                                 | ntfy authentication token         |
-| `webhook.ntfy.title`                     | string   | `"Microsoft-Rewards-Script"`                         | Notification title                |
-| `webhook.ntfy.tags`                      | string[] | `["bot", "notify"]`                                  | Notification tags                 |
-| `webhook.ntfy.priority`                  | number   | `3`                                                  | Notification priority (1-5)       |
+| Setting                   | Type     | Default                      | Description                 |
+| ------------------------- | -------- | ---------------------------- | --------------------------- |
+| `webhook.discord.enabled` | boolean  | `false`                      | Enable Discord webhook      |
+| `webhook.discord.url`     | string   | `""`                         | Discord webhook URL         |
+| `webhook.ntfy.enabled`    | boolean  | `false`                      | Enable ntfy notifications   |
+| `webhook.ntfy.url`        | string   | `""`                         | ntfy server URL             |
+| `webhook.ntfy.topic`      | string   | `""`                         | ntfy topic                  |
+| `webhook.ntfy.token`      | string   | `""`                         | ntfy authentication token   |
+| `webhook.ntfy.title`      | string   | `"Microsoft-Rewards-Script"` | Notification title          |
+| `webhook.ntfy.tags`       | string[] | `["bot", "notify"]`          | Notification tags           |
+| `webhook.ntfy.priority`   | number   | `3`                          | Notification priority (1-5) |
+
+---
+
+## Dashboard and Operational Controls
+
+The dashboard now exposes structured run status, buffered logs with event IDs, error history, run history, diagnostics inventory, and session inventory. The process controller supports `start`, `stop`, `restart`, graceful shutdown with escalation, and duplicate-run protection.
+
+The dashboard binds to `127.0.0.1` by default. When it must be reachable from another machine or container, set both variables below; remote binding without a token is rejected:
+
+```env
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_API_TOKEN=use-a-long-random-token
+DASHBOARD_ALLOWED_ORIGIN=http://localhost:3000
+```
+
+API requests accept either `Authorization: Bearer <token>` or `X-API-Key: <token>`. Config writes are disabled by default and require `DASHBOARD_ALLOW_CONFIG_WRITE=1`; the config is schema-validated, backed up, and written atomically. Secrets are redacted from the read endpoint.
+
+Useful endpoints include `/api/status`, `/api/logs`, `/api/errors`, `/api/history`, `/api/diagnostics`, `/api/sessions`, `/api/config`, `/api/start`, `/api/stop`, `/api/restart`, and `/api/sync-sheets`. Session deletion is disabled while the bot is running and is restricted to accounts present in the loaded account list.
+
+The Docker Compose file builds the checked-out source instead of pulling an unrelated upstream image. Keep the dashboard bound to localhost unless remote access and a strong token are explicitly required.
 
 ---
 
@@ -262,14 +287,14 @@ change can break it. Two things help diagnose that:
   attempted selectors are written to `diagnostics/modern-ui/`.
 - **Selector audit.** Run the audit against a live session to see exactly which selectors still match:
 
-  ```bash
-  npm run audit-selectors -- you@example.com          # opens a visible browser
-  node ./scripts/main/auditSelectors.js -email you@example.com -headless
-  ```
+    ```bash
+    npm run audit-selectors -- you@example.com          # opens a visible browser
+    node ./scripts/main/auditSelectors.js -email you@example.com -headless
+    ```
 
-  It reports, per section, which heading alias matched and how many elements each selector in the fallback
-  chain resolves to (`[OK]` matched inside the section, `[PAGE]` only outside it, `[MISS]` no match), and
-  saves the markup to `diagnostics/selector-audit/`. A saved session is required, so run the bot once first.
+    It reports, per section, which heading alias matched and how many elements each selector in the fallback
+    chain resolves to (`[OK]` matched inside the section, `[PAGE]` only outside it, `[MISS]` no match), and
+    saves the markup to `diagnostics/selector-audit/`. A saved session is required, so run the bot once first.
 
 All selectors, section ids, heading aliases, and localized text markers live in
 [`src/functions/ModernUISelectors.ts`](src/functions/ModernUISelectors.ts) — adjust them there rather than in
