@@ -183,6 +183,17 @@ export class Login {
         }
 
         if (url.hostname === 'rewards.bing.com' || url.hostname === 'account.microsoft.com') {
+            const hasSignInBtn = await Promise.race([
+                this.checkSelector(page, 'a[href*="/auth/login"]'),
+                this.checkSelector(page, 'a:has-text("Sign in")'),
+                this.checkSelector(page, 'button:has-text("Sign in")')
+            ])
+            if (hasSignInBtn) {
+                this.bot.logger.info(this.bot.isMobile, 'DETECT-STATE', 'On rewards page but found Sign In button, clicking Sign In')
+                await this.bot.browser.utils.ghostClick(page, 'a[href*="/auth/login"], a:has-text("Sign in")').catch(() => {})
+                await page.waitForLoadState('domcontentloaded').catch(() => {})
+                return 'UNKNOWN'
+            }
             this.bot.logger.debug(this.bot.isMobile, 'DETECT-STATE', 'On rewards/account page, assuming logged in')
             return 'LOGGED_IN'
         }

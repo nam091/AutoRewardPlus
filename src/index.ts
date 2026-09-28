@@ -697,7 +697,7 @@ export class MicrosoftRewardsBot {
                     this.logger.info('main', 'UI-DETECTION', 'Legacy Microsoft Rewards UI detected.')
                 }
 
-                const data: DashboardData = await this.browser.func.getDashboardData()
+                const data: DashboardData = await this.browser.func.getDashboardData(false, this.mainMobilePage)
                 const appData: AppDashboardData = await this.browser.func.getAppDashboardData()
 
                 // Set geo

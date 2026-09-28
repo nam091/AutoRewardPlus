@@ -34,6 +34,14 @@ export function loadAccounts(): Account[] {
                         password: process.env.DEFAULT_PROXY_PASSWORD || '',
                         proxyAxios: true
                     }
+                } else {
+                    acc.proxy.proxyAxios = true
+                }
+            }
+        } else {
+            for (const acc of validated) {
+                if (acc.proxy?.url) {
+                    acc.proxy.proxyAxios = true
                 }
             }
         }

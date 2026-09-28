@@ -77,13 +77,13 @@ export default class BrowserFunc {
      * Fetch user desktop dashboard data
      * @returns {DashboardData} Object of user bing rewards dashboard data
      */
-    async getDashboardData(skipCache = false): Promise<DashboardData> {
+    async getDashboardData(skipCache = false, pageOverride?: Page): Promise<DashboardData> {
         if (!skipCache && this.dashboardCache && Date.now() - this.dashboardCache.ts < DASHBOARD_CACHE_TTL_MS) {
             return this.dashboardCache.data
         }
 
         // Try getting dashboard directly from active page window.dashboard first (avoids HTTP 431)
-        const activePage = this.bot.mainMobilePage || this.bot.mainDesktopPage
+        const activePage = pageOverride || this.bot.mainMobilePage || this.bot.mainDesktopPage
         if (activePage && !activePage.isClosed()) {
             try {
                 const pageData = await activePage.evaluate(() => {
@@ -121,10 +121,28 @@ export default class BrowserFunc {
             }
             throw new Error('Dashboard data missing from API response')
         } catch (error) {
-            this.bot.logger.warn(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'API failed, trying HTML fallback')
+            this.bot.logger.warn(this.bot.isMobile, 'GET-DASHBOARD-DATA', `API failed: ${errMsg(error)}, trying fallback`)
 
-            // Try reading HTML directly from active page if available
+            // 1. Try reading directly from active browser page via fetch() in page context
             if (activePage && !activePage.isClosed()) {
+                try {
+                    const inPageData = await activePage.evaluate(async () => {
+                        try {
+                            const res = await fetch('https://rewards.bing.com/api/getuserinfo?type=1')
+                            if (res.ok) {
+                                const json = await res.json()
+                                if (json?.dashboard) return json.dashboard
+                            }
+                        } catch {}
+                        return null
+                    })
+                    if (inPageData) {
+                        this.dashboardCache = { data: inPageData as DashboardData, ts: Date.now() }
+                        return inPageData as DashboardData
+                    }
+                } catch {}
+
+                // Try reading window.dashboard or legacy var dashboard
                 try {
                     const content = await activePage.content()
                     const match = content.match(/var\s+dashboard\s*=\s*({.*?});/s)
@@ -136,7 +154,51 @@ export default class BrowserFunc {
                 } catch {}
             }
 
-            // Fallback to HTTP request with strictly filtered cookies
+            // 2. Fallback to App API if mobile accessToken is available
+            if (this.bot.accessToken) {
+                try {
+                    this.bot.logger.info(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'Attempting fallback via mobile App API')
+                    const appData = await this.getAppDashboardData()
+                    if (appData?.response) {
+                        const balance = appData.response.balance ?? 0
+                        const country = appData.response.profile?.attributes?.country?.toLowerCase() || 'vn'
+                        const level = appData.response.profile?.attributes?.level || 'Level 1'
+                        const goalName = appData.response.goal_item?.name || 'None'
+                        const goalPrice = appData.response.goal_item?.price || 0
+                        const syntheticData: any = {
+                            userStatus: {
+                                availablePoints: balance,
+                                lifetimePoints: balance,
+                                levelInfo: { activeLevelName: level, activeLevel: level },
+                                redeemGoal: { title: goalName, price: goalPrice },
+                                counters: {
+                                    pcSearch: [
+                                        { pointProgress: 0, pointProgressMax: 90 },
+                                        { pointProgress: 0, pointProgressMax: 12 }
+                                    ],
+                                    mobileSearch: [
+                                        { pointProgress: 0, pointProgressMax: 60 }
+                                    ],
+                                    activityAndQuiz: [],
+                                    dailyPoint: []
+                                }
+                            },
+                            userProfile: {
+                                attributes: { country }
+                            },
+                            promotionalItems: [],
+                            dailySetPromotions: {},
+                            morePromotions: []
+                        }
+                        this.dashboardCache = { data: syntheticData as DashboardData, ts: Date.now() }
+                        return syntheticData as DashboardData
+                    }
+                } catch (appErr) {
+                    this.bot.logger.warn(this.bot.isMobile, 'GET-DASHBOARD-DATA', `App API fallback failed: ${errMsg(appErr)}`)
+                }
+            }
+
+            // 3. Fallback to HTTP request with strictly filtered cookies
             try {
                 const request: AxiosRequestConfig = {
                     url: this.bot.config.baseURL,
@@ -152,17 +214,14 @@ export default class BrowserFunc {
                 const response = await this.bot.axios.request(request)
                 const match = response.data.match(/var\s+dashboard\s*=\s*({.*?});/s)
 
-                if (!match?.[1]) {
-                    throw new Error('Dashboard script not found in HTML')
+                if (match?.[1]) {
+                    const data = JSON.parse(match[1]) as DashboardData
+                    this.dashboardCache = { data, ts: Date.now() }
+                    return data
                 }
+            } catch {}
 
-                const data = JSON.parse(match[1]) as DashboardData
-                this.dashboardCache = { data, ts: Date.now() }
-                return data
-            } catch (fallbackError) {
-                this.bot.logger.error(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'Failed to get dashboard data')
-                throw fallbackError
-            }
+            throw new Error(`Failed to load dashboard data: ${errMsg(error)}`)
         }
     }
 
