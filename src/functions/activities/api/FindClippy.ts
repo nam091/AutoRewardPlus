@@ -15,6 +15,7 @@ export class FindClippy extends Workers {
     private oldBalance: number = this.bot.userData.currentPoints
 
     public async doFindClippy(promotion: FindClippyPromotion) {
+        this.oldBalance = Number(this.bot.userData.currentPoints ?? 0)
         const offerId = promotion.offerId
         const activityType = promotion.activityType
 

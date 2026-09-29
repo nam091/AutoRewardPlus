@@ -13,6 +13,7 @@ export class AppReward extends Workers {
     private oldBalance: number = this.bot.userData.currentPoints
 
     public async doAppReward(promotion: Promotion) {
+        this.oldBalance = Number(this.bot.userData.currentPoints ?? 0)
         if (!this.bot.accessToken) {
             this.bot.logger.warn(
                 this.bot.isMobile,

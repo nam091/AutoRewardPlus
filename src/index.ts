@@ -715,6 +715,7 @@ export class MicrosoftRewardsBot {
 
                 const initialPoints = data.userStatus?.availablePoints ?? 0
                 this.userData.initialPoints = initialPoints
+                this.userData.currentPoints = initialPoints
 
                 const streak = extractStreak(data)
                 const accountCreated = data.created || data.userProfile?.attributes?.created || appData?.response?.profile?.attributes?.created

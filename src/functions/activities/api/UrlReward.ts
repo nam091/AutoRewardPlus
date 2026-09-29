@@ -55,6 +55,7 @@ export class UrlReward extends Workers {
 
     public async doUrlReward(promotion: BasePromotion) {
         const offerId = promotion.offerId
+        this.oldBalance = Number(this.bot.userData.currentPoints ?? 0)
 
         this.bot.logger.info(
             this.bot.isMobile,
@@ -82,7 +83,7 @@ export class UrlReward extends Workers {
             // The current this.bot.requestToken may be from mobile context → causes 401
             const requestToken = await this.fetchDesktopRequestToken()
 
-            if (!requestToken && this.bot.rewardsVersion === 'legacy') {
+            if (!requestToken) {
                 this.bot.logger.warn(
                     this.bot.isMobile,
                     'URL-REWARD',

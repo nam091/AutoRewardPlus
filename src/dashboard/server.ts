@@ -88,6 +88,19 @@ export class DashboardServer {
             this.broadcast({ type: 'STATUS', data: status })
         })
         this.processManager.on('finished', () => {
+            try {
+                const states = stateService.getStates()
+                let changed = false
+                for (const s of states) {
+                    if (s.status === 'RUNNING') {
+                        s.status = 'IDLE'
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    stateService.saveStates(states)
+                }
+            } catch {}
             this.loadAccounts()
             void this.syncToSheets()
         })
@@ -95,33 +108,37 @@ export class DashboardServer {
 
     private loadAccounts(): void {
         try {
+            const isProcessActive = this.processManager.getStatus().active
             const states = stateService.getStates()
-            this.accounts = states.map((state, index) => ({
-                id: index + 1,
-                email: state.email,
-                totalPoints: state.totalPoints,
-                dailyPoints: state.dailyPoints,
-                pcProgress: state.pcProgress,
-                mobileProgress: state.mobileProgress,
-                status: state.status,
-                accountAge: state.accountAge,
-                streak: state.streak,
-                updatedAt: state.updatedAt,
-                onlineStatus: state.status === 'RUNNING' ? 'ONLINE' : 'OFFLINE',
-                level: state.level || 'Level 1',
-                lifetimePoints: state.lifetimePoints || 0,
-                questPoints: state.questPoints || 0,
-                redeemGoalTitle: state.redeemGoalTitle || 'None',
-                redeemGoalPrice: state.redeemGoalPrice || 0,
-                geoLocale: state.geoLocale || 'vn',
-                proxy:
-                    state.proxy && state.proxy !== 'Direct'
-                        ? state.proxy
-                        : process.env.DEFAULT_PROXY_URL
-                          ? `${process.env.DEFAULT_PROXY_URL}:${process.env.DEFAULT_PROXY_PORT || 10808}`
-                          : 'Direct',
-                lastError: state.lastError
-            }))
+            this.accounts = states.map((state, index) => {
+                const effectiveStatus = (!isProcessActive && state.status === 'RUNNING') ? 'IDLE' : state.status
+                return {
+                    id: index + 1,
+                    email: state.email,
+                    totalPoints: state.totalPoints,
+                    dailyPoints: state.dailyPoints,
+                    pcProgress: state.pcProgress,
+                    mobileProgress: state.mobileProgress,
+                    status: effectiveStatus,
+                    accountAge: state.accountAge,
+                    streak: state.streak,
+                    updatedAt: state.updatedAt,
+                    onlineStatus: effectiveStatus === 'RUNNING' ? 'ONLINE' : 'OFFLINE',
+                    level: state.level || 'Level 1',
+                    lifetimePoints: state.lifetimePoints || 0,
+                    questPoints: state.questPoints || 0,
+                    redeemGoalTitle: state.redeemGoalTitle || 'None',
+                    redeemGoalPrice: state.redeemGoalPrice || 0,
+                    geoLocale: state.geoLocale || 'vn',
+                    proxy:
+                        state.proxy && state.proxy !== 'Direct'
+                            ? state.proxy
+                            : process.env.DEFAULT_PROXY_URL
+                              ? `${process.env.DEFAULT_PROXY_URL}:${process.env.DEFAULT_PROXY_PORT || 10808}`
+                              : 'Direct',
+                    lastError: state.lastError
+                }
+            })
         } catch (error) {
             this.processManager.log(
                 'error',
