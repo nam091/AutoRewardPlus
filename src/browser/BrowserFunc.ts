@@ -86,6 +86,18 @@ export default class BrowserFunc {
         const activePage = pageOverride || this.bot.mainMobilePage || this.bot.mainDesktopPage
         if (activePage && !activePage.isClosed()) {
             try {
+                const isSuspended = await activePage.evaluate(() => {
+                    const text = document.body ? document.body.innerText : ''
+                    return text.includes('Your Microsoft Rewards account has been suspended') || text.includes('account has been suspended')
+                })
+                if (isSuspended) {
+                    throw new Error('Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended)')
+                }
+            } catch (err: any) {
+                if (err.message?.includes('Account Suspended')) throw err
+            }
+
+            try {
                 const pageData = await activePage.evaluate(() => {
                     const win = window as any
                     if (win.dashboard && typeof win.dashboard === 'object' && win.dashboard.userStatus) {
@@ -238,10 +250,18 @@ export default class BrowserFunc {
                     Authorization: `Bearer ${this.bot.accessToken}`,
                     'User-Agent':
                         'Bing/32.5.431027001 (com.microsoft.bing; build:431027001; iOS 17.6.1) Alamofire/5.10.2'
-                }
+                },
+                validateStatus: status => (status >= 200 && status < 300) || status === 403
             }
 
             const response = await this.bot.axios.request(request)
+
+            if (response.data?.code === 9) {
+                const msg = 'Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended - Code 9)'
+                this.bot.logger.error(this.bot.isMobile, 'GET-APP-DASHBOARD-DATA', msg)
+                throw new Error(msg)
+            }
+
             return response.data as AppDashboardData
         } catch (error) {
             this.bot.logger.error(
@@ -398,10 +418,14 @@ export default class BrowserFunc {
                     'X-Rewards-Country': this.bot.userData.geoLocale,
                     'X-Rewards-Language': 'en',
                     'X-Rewards-ismobile': 'true'
-                }
+                },
+                validateStatus: status => (status >= 200 && status < 300) || status === 403
             }
 
             const response = await this.bot.axios.request(request)
+            if (response.data?.code === 9) {
+                return { readToEarn: 0, checkIn: 0, totalEarnablePoints: 0 }
+            }
             const userData: AppUserData = response.data
             const eligibleActivities = userData.response.promotions.filter(x =>
                 eligibleOffers.includes(x.attributes.offerid ?? '')

@@ -8,7 +8,7 @@ export interface AccountState {
     dailyPoints: number
     pcProgress: string
     mobileProgress: string
-    status: 'IDLE' | 'RUNNING' | 'OK' | 'ERROR' | 'STOPPED'
+    status: 'IDLE' | 'RUNNING' | 'OK' | 'ERROR' | 'STOPPED' | 'SUSPENDED'
     accountAge: string
     streak: string
     updatedAt: string

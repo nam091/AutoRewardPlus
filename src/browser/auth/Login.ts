@@ -183,6 +183,16 @@ export class Login {
         }
 
         if (url.hostname === 'rewards.bing.com' || url.hostname === 'account.microsoft.com') {
+            const isSuspended = await page.evaluate(() => {
+                const text = document.body ? document.body.innerText : ''
+                return text.includes('Your Microsoft Rewards account has been suspended') || text.includes('account has been suspended')
+            }).catch(() => false)
+            if (isSuspended) {
+                const msg = 'Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended)'
+                this.bot.logger.error(this.bot.isMobile, 'DETECT-STATE', msg)
+                throw new Error(msg)
+            }
+
             const hasSignInBtn = await Promise.race([
                 this.checkSelector(page, 'a[href*="/auth/login"]'),
                 this.checkSelector(page, 'a:has-text("Sign in")'),

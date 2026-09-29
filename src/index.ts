@@ -408,6 +408,22 @@ export class MicrosoftRewardsBot {
             const accountStartTime = Date.now()
             const accountEmail = account.email
             const proxyDisplay = account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct'
+
+            // Skip accounts known to be suspended during batch runs (can still be re-tested individually)
+            if (accounts.length > 1) {
+                const existingState = stateService
+                    .getStates()
+                    .find(s => s.email.toLowerCase() === accountEmail.toLowerCase())
+                if (existingState?.status === 'SUSPENDED') {
+                    this.logger.warn(
+                        'main',
+                        'ACCOUNT-SKIP',
+                        `[ACCOUNT-SUSPENDED] ${accountEmail} — Microsoft Rewards account suspended. Skipping batch run.`
+                    )
+                    continue
+                }
+            }
+
             this.userData.userName = this.utils.getEmailUsername(accountEmail)
             this.userData.claimedPoints = 0 // Reset for each account
 
@@ -503,6 +519,9 @@ export class MicrosoftRewardsBot {
                     )
                 } else {
                     const errString = lastError ? errMsg(lastError) : 'Flow failed'
+                    const isSuspended =
+                        errString.toLowerCase().includes('suspended') ||
+                        errString.toLowerCase().includes('đình chỉ')
                     accountStats.push({
                         email: accountEmail,
                         initialPoints: 0,
@@ -519,7 +538,7 @@ export class MicrosoftRewardsBot {
                         error: errString
                     })
                     stateService.updateAccountState(accountEmail, {
-                        status: 'ERROR',
+                        status: isSuspended ? 'SUSPENDED' : 'ERROR',
                         lastError: errString,
                         proxy: proxyDisplay,
                         geoLocale: account.geoLocale || 'vn'
@@ -528,6 +547,9 @@ export class MicrosoftRewardsBot {
             } catch (error) {
                 const durationSeconds = ((Date.now() - accountStartTime) / 1000).toFixed(1)
                 const errString = errMsg(error)
+                const isSuspended =
+                    errString.toLowerCase().includes('suspended') ||
+                    errString.toLowerCase().includes('đình chỉ')
                 this.logger.error('main', 'ACCOUNT-ERROR', `${accountEmail}: ${errString}`)
 
                 accountStats.push({
@@ -546,7 +568,7 @@ export class MicrosoftRewardsBot {
                     error: errString
                 })
                 stateService.updateAccountState(accountEmail, {
-                    status: 'ERROR',
+                    status: isSuspended ? 'SUSPENDED' : 'ERROR',
                     lastError: errString,
                     proxy: proxyDisplay,
                     geoLocale: account.geoLocale || 'vn'

@@ -96,6 +96,7 @@
                 <button onclick="setStatusFilter('ALL')" class="filter-btn active px-3 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white" data-filter="ALL">Tất cả</button>
                 <button onclick="setStatusFilter('RUNNING')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="RUNNING">Đang chạy</button>
                 <button onclick="setStatusFilter('OK')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="OK">OK</button>
+                <button onclick="setStatusFilter('SUSPENDED')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="SUSPENDED">Bị đình chỉ</button>
                 <button onclick="setStatusFilter('ERROR')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="ERROR">Lỗi</button>
                 <button onclick="setStatusFilter('IDLE')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="IDLE">Chờ</button>
             </div>
@@ -233,17 +234,19 @@
             let totalAccumulated = 0;
             let active = 0;
             let errors = 0;
+            let suspended = 0;
 
             allAccounts.forEach(acc => {
                 totalDaily += Number(acc.dailyPoints || 0);
                 totalAccumulated += Number(acc.totalPoints || 0);
                 if (acc.status === 'RUNNING' || acc.status === 'OK') active++;
                 if (acc.status === 'ERROR') errors++;
+                if (acc.status === 'SUSPENDED') suspended++;
             });
 
             document.getElementById('totalAccounts').textContent = allAccounts.length;
             document.getElementById('activeAccounts').textContent = active;
-            document.getElementById('errorAccounts').textContent = errors;
+            document.getElementById('errorAccounts').textContent = errors + (suspended ? ` (${suspended} bị ban)` : '');
             document.getElementById('totalDailyPoints').textContent = `+${totalDaily.toLocaleString('vi-VN')}`;
             document.getElementById('totalAccumulatedPoints').textContent = totalAccumulated.toLocaleString('vi-VN');
 
@@ -255,7 +258,8 @@
             accounts.forEach(acc => {
                 const statusColor = acc.status === 'OK' ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' :
                                     acc.status === 'RUNNING' ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 animate-pulse' :
-                                    acc.status === 'ERROR' ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20' : 
+                                    acc.status === 'SUSPENDED' ? 'text-rose-400 bg-rose-500/20 border border-rose-500/40 font-bold' :
+                                    acc.status === 'ERROR' ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20' : 
                                     'text-slate-400 bg-slate-500/10 border border-slate-500/20';
 
                 const levelBadge = acc.level?.includes('Gold') || acc.level?.includes('2') || acc.level?.includes('3') 
