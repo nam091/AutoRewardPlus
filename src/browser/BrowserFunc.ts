@@ -256,10 +256,13 @@ export default class BrowserFunc {
 
             const response = await this.bot.axios.request(request)
 
-            if (response.data?.code === 9) {
-                const msg = 'Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended - Code 9)'
-                this.bot.logger.error(this.bot.isMobile, 'GET-APP-DASHBOARD-DATA', msg)
-                throw new Error(msg)
+            if (response.status === 403) {
+                if (response.data?.code === 9) {
+                    const msg = 'Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended - Code 9)'
+                    this.bot.logger.error(this.bot.isMobile, 'GET-APP-DASHBOARD-DATA', msg)
+                    throw new Error(msg)
+                }
+                throw new Error(`App API access forbidden (HTTP 403): ${JSON.stringify(response.data)}`)
             }
 
             return response.data as AppDashboardData
@@ -423,7 +426,7 @@ export default class BrowserFunc {
             }
 
             const response = await this.bot.axios.request(request)
-            if (response.data?.code === 9) {
+            if (response.status === 403 || response.data?.code === 9) {
                 return { readToEarn: 0, checkIn: 0, totalEarnablePoints: 0 }
             }
             const userData: AppUserData = response.data
