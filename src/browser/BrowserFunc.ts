@@ -239,9 +239,14 @@ export default class BrowserFunc {
 
     /**
      * Fetch user app dashboard data
-     * @returns {AppDashboardData} Object of user bing rewards dashboard data
+     * @returns {Promise<AppDashboardData | null>} Object of user bing rewards dashboard data or null if unavailable
      */
-    async getAppDashboardData(): Promise<AppDashboardData> {
+    async getAppDashboardData(): Promise<AppDashboardData | null> {
+        if (!this.bot.accessToken) {
+            this.bot.logger.debug(this.bot.isMobile, 'GET-APP-DASHBOARD-DATA', 'No access token available for App API')
+            return null
+        }
+
         try {
             const request: AxiosRequestConfig = {
                 url: 'https://prod.rewardsplatform.microsoft.com/dapi/me?channel=SAIOS&options=613',
@@ -251,7 +256,7 @@ export default class BrowserFunc {
                     'User-Agent':
                         'Bing/32.5.431027001 (com.microsoft.bing; build:431027001; iOS 17.6.1) Alamofire/5.10.2'
                 },
-                validateStatus: status => (status >= 200 && status < 300) || status === 403
+                validateStatus: status => (status >= 200 && status < 300) || status === 401 || status === 403
             }
 
             const response = await this.bot.axios.request(request)
@@ -262,17 +267,39 @@ export default class BrowserFunc {
                     this.bot.logger.error(this.bot.isMobile, 'GET-APP-DASHBOARD-DATA', msg)
                     throw new Error(msg)
                 }
-                throw new Error(`App API access forbidden (HTTP 403): ${JSON.stringify(response.data)}`)
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'GET-APP-DASHBOARD-DATA',
+                    `App API access forbidden (HTTP 403): ${JSON.stringify(response.data)}`
+                )
+                return null
+            }
+
+            if (response.status === 401) {
+                const authInfo = (response.headers && response.headers['x-auth-info']) || 'Unauthorized'
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'GET-APP-DASHBOARD-DATA',
+                    `App API unauthorized (HTTP 401 - ${authInfo}). Skipping optional mobile app data.`
+                )
+                return null
+            }
+
+            if (!response.data?.response) {
+                return null
             }
 
             return response.data as AppDashboardData
-        } catch (error) {
-            this.bot.logger.error(
+        } catch (error: any) {
+            if (error?.message?.includes('Account Suspended')) {
+                throw error
+            }
+            this.bot.logger.warn(
                 this.bot.isMobile,
                 'GET-APP-DASHBOARD-DATA',
-                `Error fetching dashboard data: ${errMsg(error)}`
+                `Error fetching app dashboard data: ${errMsg(error)}`
             )
-            throw error
+            return null
         }
     }
 
@@ -410,6 +437,10 @@ export default class BrowserFunc {
      * Get total earnable points with mobile app
      */
     async getAppEarnablePoints(): Promise<AppEarnablePoints> {
+        if (!this.bot.accessToken) {
+            return { readToEarn: 0, checkIn: 0, totalEarnablePoints: 0 }
+        }
+
         try {
             const eligibleOffers = ['ENUS_readarticle3_30points', 'Gamification_Sapphire_DailyCheckIn']
 
@@ -422,17 +453,30 @@ export default class BrowserFunc {
                     'X-Rewards-Language': 'en',
                     'X-Rewards-ismobile': 'true'
                 },
-                validateStatus: status => (status >= 200 && status < 300) || status === 403
+                validateStatus: status => (status >= 200 && status < 300) || status === 401 || status === 403
             }
 
             const response = await this.bot.axios.request(request)
-            if (response.status === 403 || response.data?.code === 9) {
+
+            if (response.status === 403 && response.data?.code === 9) {
+                const msg = 'Tài khoản đã bị Microsoft Rewards đình chỉ (Account Suspended - Code 9)'
+                this.bot.logger.error(this.bot.isMobile, 'GET-APP-EARNABLE-POINTS', msg)
+                throw new Error(msg)
+            }
+
+            if (response.status === 401 || response.status === 403 || !response.data?.response?.promotions) {
+                this.bot.logger.debug(
+                    this.bot.isMobile,
+                    'GET-APP-EARNABLE-POINTS',
+                    `App earnable points unavailable (HTTP ${response.status})`
+                )
                 return { readToEarn: 0, checkIn: 0, totalEarnablePoints: 0 }
             }
+
             const userData: AppUserData = response.data
-            const eligibleActivities = userData.response.promotions.filter(x =>
-                eligibleOffers.includes(x.attributes.offerid ?? '')
-            )
+            const eligibleActivities = Array.isArray(userData.response?.promotions)
+                ? userData.response.promotions.filter(x => eligibleOffers.includes(x.attributes?.offerid ?? ''))
+                : []
 
             let readToEarn = 0
             let checkIn = 0
@@ -440,18 +484,18 @@ export default class BrowserFunc {
             for (const item of eligibleActivities) {
                 const attrs = item.attributes
 
-                if (attrs.type === 'msnreadearn') {
-                    const pointMax = parseInt(attrs.pointmax ?? '0')
-                    const pointProgress = parseInt(attrs.pointprogress ?? '0')
+                if (attrs?.type === 'msnreadearn') {
+                    const pointMax = parseInt(attrs.pointmax ?? '0', 10)
+                    const pointProgress = parseInt(attrs.pointprogress ?? '0', 10)
                     readToEarn = Math.max(0, pointMax - pointProgress)
-                } else if (attrs.type === 'checkin') {
-                    const progress = parseInt(attrs.progress ?? '0')
+                } else if (attrs?.type === 'checkin') {
+                    const progress = parseInt(attrs.progress ?? '0', 10)
                     const checkInDay = progress % 7
                     const lastUpdated = new Date(attrs.last_updated ?? '')
                     const today = new Date()
 
                     if (checkInDay < 6 && today.getDate() !== lastUpdated.getDate()) {
-                        checkIn = parseInt(attrs[`day_${checkInDay + 1}_points`] ?? '0')
+                        checkIn = parseInt(attrs[`day_${checkInDay + 1}_points`] ?? '0', 10)
                     }
                 }
             }
@@ -463,9 +507,16 @@ export default class BrowserFunc {
                 checkIn,
                 totalEarnablePoints
             }
-        } catch (error) {
-            this.bot.logger.error(this.bot.isMobile, 'GET-APP-EARNABLE-POINTS', `An error occurred: ${errMsg(error)}`)
-            throw error
+        } catch (error: any) {
+            if (error?.message?.includes('Account Suspended')) {
+                throw error
+            }
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'GET-APP-EARNABLE-POINTS',
+                `Optional app earnable points unavailable: ${errMsg(error)}`
+            )
+            return { readToEarn: 0, checkIn: 0, totalEarnablePoints: 0 }
         }
     }
     /**

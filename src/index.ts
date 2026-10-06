@@ -26,6 +26,7 @@ import { sendDiscord, sendDiscordSummary, sendDiscordAccountNotification, flushD
 import { sendNtfy, sendNtfyAccountNotification, flushNtfyQueue } from './logging/Ntfy'
 import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
+import type { AppEarnablePoints } from './interface/Points'
 import { sheetService } from './services/sheetService'
 import { isStateUpdateMessage, stateService } from './services/stateService'
 import { getAccountStartDelayMs, maskAccount } from './browser/humanize/BehaviorPolicy'
@@ -720,7 +721,17 @@ export class MicrosoftRewardsBot {
                 }
 
                 const data: DashboardData = await this.browser.func.getDashboardData(false, this.mainMobilePage)
-                const appData: AppDashboardData = await this.browser.func.getAppDashboardData()
+                let appData: AppDashboardData | null = null
+                try {
+                    appData = await this.browser.func.getAppDashboardData()
+                } catch (appErr: any) {
+                    if (appErr?.message?.includes('Account Suspended')) throw appErr
+                    this.logger.warn(
+                        'main',
+                        'APP-DASHBOARD',
+                        `Optional mobile app dashboard unavailable: ${errMsg(appErr)}`
+                    )
+                }
 
                 // Set geo
                 this.userData.geoLocale =
@@ -760,7 +771,17 @@ export class MicrosoftRewardsBot {
                 })
 
                 const browserEarnable = await this.browser.func.getBrowserEarnablePoints()
-                const appEarnable = await this.browser.func.getAppEarnablePoints()
+                let appEarnable: AppEarnablePoints | null = null
+                try {
+                    appEarnable = await this.browser.func.getAppEarnablePoints()
+                } catch (appErr: any) {
+                    if (appErr?.message?.includes('Account Suspended')) throw appErr
+                    this.logger.warn(
+                        'main',
+                        'APP-POINTS',
+                        `Optional app earnable points unavailable: ${errMsg(appErr)}`
+                    )
+                }
 
                 this.pointsCanCollect = browserEarnable.mobileSearchPoints + (appEarnable?.totalEarnablePoints ?? 0)
 
@@ -776,7 +797,17 @@ export class MicrosoftRewardsBot {
                 const pointsBeforeQuests = await this.browser.func.getCurrentPoints()
                 this.logger.info('main', 'QUEST-TRACK', `Points before quests: ${pointsBeforeQuests} | ${accountEmail}`)
 
-                if (this.config.workers.doAppPromotions) await this.workers.doAppPromotions(appData)
+                if (this.config.workers.doAppPromotions) {
+                    if (appData && Array.isArray(appData.response?.promotions)) {
+                        await this.workers.doAppPromotions(appData)
+                    } else {
+                        this.logger.info(
+                            this.isMobile,
+                            'APP-PROMOTIONS',
+                            'Skipping: App promotions data unavailable'
+                        )
+                    }
+                }
 
                 // Modern UI: Daily Set + Keep Earning run in desktop phase (mobile can't detect properly)
                 // Legacy UI: run as usual in mobile phase

@@ -102,7 +102,16 @@ export class Workers {
         this.bot.logger.info(this.bot.isMobile, 'MORE-PROMOTIONS', 'All "More Promotion" items have been completed')
     }
 
-    public async doAppPromotions(data: AppDashboardData) {
+    public async doAppPromotions(data?: AppDashboardData | null) {
+        if (!data?.response?.promotions || !Array.isArray(data.response.promotions)) {
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'APP-PROMOTIONS',
+                'Skipping: App promotions data unavailable'
+            )
+            return
+        }
+
         const appRewards = data.response.promotions.filter(x => {
             if (x.attributes['complete']?.toLowerCase() !== 'false') return false
             if (!x.attributes['offerid']) return false
