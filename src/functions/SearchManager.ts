@@ -101,7 +101,6 @@ export class SearchManager {
                         this.createDesktopSession(account, accountEmail)
                     )
                     await executionContext.run({ isMobile: false, account }, async () => {
-                        const data = await this.bot.browser.func.getDashboardData()
                         await this.runModernUITasks(data)
                         await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
                     })

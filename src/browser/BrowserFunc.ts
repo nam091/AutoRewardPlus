@@ -83,7 +83,10 @@ export default class BrowserFunc {
         }
 
         // Try getting dashboard directly from active page window.dashboard first (avoids HTTP 431)
-        const activePage = pageOverride || this.bot.mainMobilePage || this.bot.mainDesktopPage
+        const activePage =
+            pageOverride ||
+            (this.bot.mainDesktopPage && !this.bot.mainDesktopPage.isClosed() ? this.bot.mainDesktopPage : null) ||
+            (this.bot.mainMobilePage && !this.bot.mainMobilePage.isClosed() ? this.bot.mainMobilePage : null)
         if (activePage && !activePage.isClosed()) {
             try {
                 const isSuspended = await activePage.evaluate(() => {
@@ -529,8 +532,12 @@ export default class BrowserFunc {
 
             return data.userStatus.availablePoints
         } catch (error) {
-            this.bot.logger.error(this.bot.isMobile, 'GET-CURRENT-POINTS', `An error occurred: ${errMsg(error)}`)
-            throw error
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'GET-CURRENT-POINTS',
+                `Could not refresh dashboard points: ${errMsg(error)}, fallback to tracked balance`
+            )
+            return Number(this.bot.userData.currentPoints ?? 0)
         }
     }
 

@@ -848,7 +848,12 @@ export class MicrosoftRewardsBot {
 
                 this.userData.gainedPoints = mobilePoints + desktopPoints
 
-                const finalPoints = await this.browser.func.getCurrentPoints()
+                let finalPoints = 0
+                try {
+                    finalPoints = await this.browser.func.getCurrentPoints()
+                } catch {
+                    finalPoints = Number(this.userData.currentPoints ?? initialPoints)
+                }
                 let collectedPoints = Math.max(0, finalPoints - initialPoints)
 
                 // Try reading official dailyPoint progress from Microsoft Counters
