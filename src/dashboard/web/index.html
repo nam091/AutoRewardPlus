@@ -29,8 +29,8 @@
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
-<body class="bg-darkBg text-slate-100 min-h-screen p-4 md:p-6 antialiased">
-    <div class="max-w-[1600px] mx-auto space-y-6">
+<body class="bg-darkBg text-slate-100 min-h-screen p-3 sm:p-4 md:p-6 antialiased">
+    <div class="max-w-[1720px] w-full mx-auto space-y-5">
         <!-- Top Navigation -->
         <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-cardBg/90 backdrop-blur border border-slate-800 p-5 rounded-2xl shadow-2xl">
             <div class="flex items-center gap-3">
@@ -104,22 +104,22 @@
 
         <!-- Main Account Table -->
         <div class="bg-cardBg/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs whitespace-nowrap">
-                    <thead class="bg-slate-900/90 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider">
+            <div class="overflow-x-auto scrollbar-thin">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-900/95 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px] sticky top-0 z-10 backdrop-blur">
                         <tr>
-                            <th class="p-3.5">Tài khoản</th>
-                            <th class="p-3.5">Level</th>
-                            <th class="p-3.5">Điểm hiện có</th>
-                            <th class="p-3.5">Điểm hôm nay</th>
-                            <th class="p-3.5">PC / Mobile</th>
-                            <th class="p-3.5">Chuỗi (Streak)</th>
-                            <th class="p-3.5">Tuổi Acc</th>
-                            <th class="p-3.5">Mục tiêu đổi thưởng</th>
-                            <th class="p-3.5">Proxy / Mạng</th>
-                            <th class="p-3.5">Trạng thái</th>
-                            <th class="p-3.5">Cập nhật</th>
-                            <th class="p-3.5 text-center">Thao tác</th>
+                            <th class="py-2.5 px-3">Tài khoản</th>
+                            <th class="py-2.5 px-2">Level</th>
+                            <th class="py-2.5 px-2.5 text-right">Tổng điểm</th>
+                            <th class="py-2.5 px-2.5 text-right">Hôm nay</th>
+                            <th class="py-2.5 px-2.5">PC / Mobile</th>
+                            <th class="py-2.5 px-2 text-center">Chuỗi</th>
+                            <th class="py-2.5 px-2">Tuổi</th>
+                            <th class="py-2.5 px-2.5">Mục tiêu</th>
+                            <th class="py-2.5 px-2">Proxy</th>
+                            <th class="py-2.5 px-2.5 text-center">Trạng thái</th>
+                            <th class="py-2.5 px-2 text-right">Cập nhật</th>
+                            <th class="py-2.5 px-2.5 text-center sticky right-0 bg-slate-900/95 backdrop-blur shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.35)]">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody id="accountTableBody" class="divide-y divide-slate-800/60 font-mono">
@@ -262,56 +262,86 @@
                                     acc.status === 'ERROR' ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20' : 
                                     'text-slate-400 bg-slate-500/10 border border-slate-500/20';
 
-                const levelBadge = acc.level?.includes('Gold') || acc.level?.includes('2') || acc.level?.includes('3') 
-                    ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 bg-slate-700/50';
+                const levelBadge = acc.level?.includes('Gold') || acc.level?.includes('3') 
+                    ? 'text-amber-300 bg-amber-400/10 border border-amber-500/20' :
+                    acc.level?.includes('Silver') || acc.level?.includes('2')
+                    ? 'text-slate-300 bg-slate-600/30 border border-slate-500/20'
+                    : 'text-slate-400 bg-slate-800/50 border border-slate-700/30';
 
                 const streakVal = acc.streak && acc.streak !== '0' && acc.streak !== 'N/A' 
-                    ? `<span class="text-orange-400 font-bold">🔥 ${acc.streak} ngày</span>` 
-                    : `<span class="text-slate-500">0</span>`;
+                    ? `<span class="text-orange-400 font-bold">🔥 ${acc.streak}</span>` 
+                    : `<span class="text-slate-600">0</span>`;
 
-                const goalDisplay = acc.redeemGoalTitle && acc.redeemGoalTitle !== 'None'
-                    ? `<span class="text-slate-300">${acc.redeemGoalTitle}</span>${acc.redeemGoalPrice ? ` <span class="text-slate-500">(${acc.redeemGoalPrice.toLocaleString()} pts)</span>` : ''}`
-                    : `<span class="text-slate-600">—</span>`;
+                let goalTitleText = acc.redeemGoalTitle;
+                if (goalTitleText === '000100000002') goalTitleText = 'Thẻ quà tặng';
+                else if (goalTitleText && goalTitleText.includes('{0}')) goalTitleText = 'Quyên góp';
+                const goalDisplay = goalTitleText && goalTitleText !== 'None'
+                    ? `<span class="text-slate-300 truncate max-w-[100px] inline-block font-sans text-[11px]" title="${acc.redeemGoalTitle || ''}">${goalTitleText}</span>`
+                    : `<span class="text-slate-600 text-[11px]">—</span>`;
 
+                let proxyShort = 'Direct';
+                if (acc.proxy && acc.proxy !== 'Direct') {
+                    try {
+                        const u = new URL(acc.proxy);
+                        proxyShort = `:${u.port || '10808'}`;
+                    } catch {
+                        proxyShort = acc.proxy.length > 10 ? acc.proxy.slice(-6) : acc.proxy;
+                    }
+                }
                 const proxyDisplay = acc.proxy && acc.proxy !== 'Direct'
-                    ? `<span class="text-cyan-400/90 font-mono text-[11px]" title="${acc.proxy}">🌐 ${acc.proxy}</span>`
-                    : `<span class="text-slate-500 text-[11px]">Direct</span>`;
+                    ? `<span class="text-cyan-400 font-mono text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/40 cursor-help whitespace-nowrap" title="${acc.proxy}">🌐 ${proxyShort}</span>`
+                    : `<span class="text-slate-500 text-[10px] whitespace-nowrap">Direct</span>`;
+
+                let timePart = acc.updatedAt || '—';
+                let datePart = '';
+                if (acc.updatedAt && acc.updatedAt.includes(' ')) {
+                    const parts = acc.updatedAt.split(' ');
+                    timePart = parts[0];
+                    datePart = parts[1] || '';
+                }
 
                 tbody.innerHTML += `
-                    <tr class="hover:bg-slate-800/40 transition">
-                        <td class="p-3.5 font-semibold text-slate-200">
+                    <tr class="group hover:bg-slate-800/50 transition border-b border-slate-800/40">
+                        <td class="py-2.5 px-3 font-semibold text-slate-200">
                             <div class="flex items-center gap-1.5">
-                                <span>${acc.email}</span>
-                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-400 uppercase">${acc.geoLocale || 'vn'}</span>
+                                <span class="max-w-[150px] sm:max-w-[180px] xl:max-w-[210px] truncate text-xs" title="${acc.email}">${acc.email}</span>
+                                <span class="px-1 py-0.2 rounded text-[9px] bg-slate-800/90 text-slate-400 uppercase font-sans shrink-0 border border-slate-700/50">${acc.geoLocale || 'vn'}</span>
                             </div>
                         </td>
-                        <td class="p-3.5">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-sans font-semibold ${levelBadge}">
+                        <td class="py-2.5 px-2 whitespace-nowrap">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold ${levelBadge}">
                                 ${acc.level || 'Level 1'}
                             </span>
                         </td>
-                        <td class="p-3.5 font-bold text-amber-400">${Number(acc.totalPoints || 0).toLocaleString('vi-VN')}</td>
-                        <td class="p-3.5 font-semibold text-emerald-400">+${Number(acc.dailyPoints || 0).toLocaleString('vi-VN')}</td>
-                        <td class="p-3.5 text-slate-300">
-                            <div class="text-[11px] leading-tight">PC: ${acc.pcProgress || '0/90'}</div>
-                            <div class="text-[11px] text-slate-400 leading-tight">Mob: ${acc.mobileProgress || '0/60'}</div>
+                        <td class="py-2.5 px-2.5 text-right font-bold text-amber-400 whitespace-nowrap">
+                            ${Number(acc.totalPoints || 0).toLocaleString('vi-VN')}
                         </td>
-                        <td class="p-3.5 font-sans">${streakVal}</td>
-                        <td class="p-3.5 text-slate-400 font-sans">${acc.accountAge || 'N/A'}</td>
-                        <td class="p-3.5 font-sans text-xs max-w-[180px] truncate" title="${acc.redeemGoalTitle || ''}">${goalDisplay}</td>
-                        <td class="p-3.5">${proxyDisplay}</td>
-                        <td class="p-3.5">
+                        <td class="py-2.5 px-2.5 text-right font-semibold text-emerald-400 whitespace-nowrap">
+                            +${Number(acc.dailyPoints || 0).toLocaleString('vi-VN')}
+                        </td>
+                        <td class="py-2.5 px-2.5 whitespace-nowrap">
+                            <div class="text-[11px] leading-tight text-slate-300">PC: <span class="font-semibold text-slate-200">${acc.pcProgress || '0/90'}</span></div>
+                            <div class="text-[10px] leading-tight text-slate-400">Mob: <span>${acc.mobileProgress || '0/60'}</span></div>
+                        </td>
+                        <td class="py-2.5 px-2 text-center font-sans whitespace-nowrap text-xs">${streakVal}</td>
+                        <td class="py-2.5 px-2 text-slate-400 font-sans whitespace-nowrap text-[11px]">${acc.accountAge || 'N/A'}</td>
+                        <td class="py-2.5 px-2.5 whitespace-nowrap">${goalDisplay}</td>
+                        <td class="py-2.5 px-2 whitespace-nowrap">${proxyDisplay}</td>
+                        <td class="py-2.5 px-2.5 text-center whitespace-nowrap">
                             <span class="px-2 py-0.5 rounded-full font-sans font-semibold text-[10px] ${statusColor}">
                                 ${acc.status}
                             </span>
                         </td>
-                        <td class="p-3.5 text-slate-500 text-[11px]">${acc.updatedAt || '—'}</td>
-                        <td class="p-3.5 text-center">
+                        <td class="py-2.5 px-2 whitespace-nowrap text-right" title="${acc.updatedAt || ''}">
+                            <div class="text-[11px] text-slate-300 leading-tight">${timePart}</div>
+                            <div class="text-[10px] text-slate-500 leading-tight">${datePart}</div>
+                        </td>
+                        <td class="py-2 px-2.5 text-center sticky right-0 bg-cardBg/95 group-hover:bg-slate-800/90 backdrop-blur shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.35)] whitespace-nowrap">
                             <div class="flex items-center justify-center gap-1">
-                                <button onclick="runSingleAccount('${acc.email}')" title="Chạy riêng tài khoản này" class="p-1.5 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition border border-emerald-500/20 hover:border-emerald-500/40">
+                                <button onclick="runSingleAccount('${acc.email}')" title="Chạy riêng tài khoản này" class="p-1 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition border border-emerald-500/20 hover:border-emerald-500/40 text-xs leading-none">
                                     ⚡
                                 </button>
-                                <button onclick="refreshSingleAccount('${acc.email}')" title="Cập nhật nhanh thông tin (API)" class="p-1.5 hover:bg-cyan-600/20 text-cyan-400 rounded-lg transition border border-cyan-500/20 hover:border-cyan-500/40">
+                                <button onclick="refreshSingleAccount('${acc.email}')" title="Cập nhật nhanh thông tin (API)" class="p-1 hover:bg-cyan-600/20 text-cyan-400 rounded-lg transition border border-cyan-500/20 hover:border-cyan-500/40 text-xs leading-none">
                                     🔄
                                 </button>
                             </div>
