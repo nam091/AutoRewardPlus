@@ -509,7 +509,8 @@ export class MicrosoftRewardsBot {
                         redeemGoalTitle: result.redeemGoalTitle,
                         redeemGoalPrice: result.redeemGoalPrice,
                         proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
-                        geoLocale: account.geoLocale
+                        geoLocale: account.geoLocale,
+                        lastError: ''
                     })
 
                     this.logger.info(

@@ -344,13 +344,19 @@ export default class BrowserFunc {
     }
 
     missingSearchPoints(counters: Counters, isMobile: boolean): MissingSearchPoints {
-        const mobileData = counters.mobileSearch?.[0]
-        const desktopData = counters.pcSearch?.[0]
-        const edgeData = counters.pcSearch?.[1]
+        const mobileData = counters?.mobileSearch?.[0]
+        const desktopData = counters?.pcSearch?.[0]
+        const edgeData = counters?.pcSearch?.[1]
 
-        const mobilePoints = mobileData ? Math.max(0, mobileData.pointProgressMax - mobileData.pointProgress) : 0
-        const desktopPoints = desktopData ? Math.max(0, desktopData.pointProgressMax - desktopData.pointProgress) : 0
-        const edgePoints = edgeData ? Math.max(0, edgeData.pointProgressMax - edgeData.pointProgress) : 0
+        const mobilePoints = mobileData
+            ? Math.max(0, mobileData.pointProgressMax - mobileData.pointProgress)
+            : 60
+        const desktopPoints = desktopData
+            ? Math.max(0, desktopData.pointProgressMax - desktopData.pointProgress)
+            : 90
+        const edgePoints = edgeData
+            ? Math.max(0, edgeData.pointProgressMax - edgeData.pointProgress)
+            : (desktopData ? 0 : 12)
 
         const totalPoints = isMobile ? mobilePoints : desktopPoints + edgePoints
 
@@ -388,16 +394,16 @@ export default class BrowserFunc {
             const data = await this.getDashboardData()
 
             const desktopSearchPoints =
-                data.userStatus.counters.pcSearch?.reduce(
+                data.userStatus?.counters?.pcSearch?.reduce(
                     (sum, x) => sum + (x.pointProgressMax - x.pointProgress),
                     0
-                ) ?? 0
+                ) ?? 90
 
             const mobileSearchPoints =
-                data.userStatus.counters.mobileSearch?.reduce(
+                data.userStatus?.counters?.mobileSearch?.reduce(
                     (sum, x) => sum + (x.pointProgressMax - x.pointProgress),
                     0
-                ) ?? 0
+                ) ?? 60
 
             const todayDate = this.bot.utils.getFormattedDate()
             const dailySetPoints =
@@ -590,11 +596,14 @@ export default class BrowserFunc {
         let result = cookieList.map(c => `${c.name}=${c.value}`).join('; ')
 
         // Protect against HTTP 431 (Request Header Fields Too Large)
-        if (result.length > 4096) {
+        // Microsoft servers allow headers up to 16KB, keep safety threshold at 12KB
+        if (result.length > 12288) {
             const priorityNames = new Set([
+                '_U',
+                '_C_Auth',
                 'KievRPSSecAuth',
-                'NAP',
-                'ANON',
+                'WLSSC',
+                'RPSTAuth',
                 'MUID',
                 'MUIDB',
                 '_EDGE_S',
@@ -602,7 +611,9 @@ export default class BrowserFunc {
                 'SRCHUSR',
                 'SRCHD',
                 'SRCHUID',
-                'WLS'
+                'WLS',
+                'NAP',
+                'ANON'
             ])
             const priorityCookies = cookieList.filter(c => priorityNames.has(c.name))
             const otherCookies = cookieList.filter(c => !priorityNames.has(c.name))
@@ -612,7 +623,7 @@ export default class BrowserFunc {
 
             for (const c of combined) {
                 const part = `${c.name}=${c.value}`
-                if (currentLen + part.length + 2 > 4096) break
+                if (currentLen + part.length + 2 > 12288) continue
                 parts.push(part)
                 currentLen += part.length + 2
             }

@@ -132,8 +132,20 @@ export class Search extends Workers {
 
                     searchCounters = await this.bingSearch(page, query, isMobile)
                     const newMissing = this.bot.browser.func.missingSearchPoints(searchCounters, isMobile)
-                    const newMissingTotal = newMissing.totalPoints
-                    const gainedPoints = Math.max(0, missingPointsTotal - newMissingTotal)
+                    let newMissingTotal = newMissing.totalPoints
+                    let gainedPoints = Math.max(0, missingPointsTotal - newMissingTotal)
+
+                    // Fallback to balance check if counters didn't decrease (e.g. Modern UI where counters are static or undefined)
+                    if (gainedPoints === 0) {
+                        try {
+                            const newBalance = await this.bot.browser.func.getCurrentPoints()
+                            const balanceDelta = Math.max(0, newBalance - Number(this.bot.userData.currentPoints ?? 0))
+                            if (balanceDelta > 0) {
+                                gainedPoints = balanceDelta
+                                newMissingTotal = Math.max(0, missingPointsTotal - gainedPoints)
+                            }
+                        } catch {}
+                    }
 
                     // Record feedback for pattern analysis
                     this.recordFeedback(query, gainedPoints > 0)
