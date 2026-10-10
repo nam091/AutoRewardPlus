@@ -458,15 +458,14 @@ export default class BrowserFunc {
 
             // Find and click "Points breakdown" trigger
             const breakdownSelectors = [
+                ':has-text("Points breakdown")',
+                ':has-text("Point breakdown")',
+                ':has-text("Chi tiết điểm")',
+                ':has-text("Phân tích điểm")',
                 'button:has-text("Points breakdown")',
                 'a:has-text("Points breakdown")',
+                'p:has-text("Points breakdown")',
                 '[role="button"]:has-text("Points breakdown")',
-                'button:has-text("Point breakdown")',
-                'a:has-text("Point breakdown")',
-                'button:has-text("Chi tiết điểm")',
-                'a:has-text("Chi tiết điểm")',
-                'button:has-text("Phân tích điểm")',
-                'a:has-text("Phân tích điểm")',
                 '[aria-label*="Points breakdown" i]',
                 '[aria-label*="breakdown" i]',
                 '#points-breakdown',
@@ -520,7 +519,10 @@ export default class BrowserFunc {
             // Read text from dialog
             const dialogText = await page.evaluate(() => {
                 const dlg = document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')
-                return dlg ? dlg.textContent || '' : ''
+                if (!dlg) return ''
+                const it = dlg instanceof HTMLElement ? dlg.innerText : ''
+                const tc = dlg.textContent || ''
+                return `${it}\n${tc}`
             }).catch(() => '')
 
             // Parse strings like "Desktop Bing search X/Y" and "Mobile Bing search X/Y"
