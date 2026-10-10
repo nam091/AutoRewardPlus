@@ -70,6 +70,23 @@ export class Search extends Workers {
                 `Search points remaining | Edge=${missingPoints.edgePoints} | Desktop=${missingPoints.desktopPoints} | Mobile=${missingPoints.mobilePoints}`
             )
 
+            const isModern = this.bot.rewardsVersion === 'modern'
+            const maxTarget = isMobile ? 23 : 33
+            const targetQueries = missingPointsTotal > 0
+                ? Math.min(maxTarget, Math.ceil(missingPointsTotal / 3) + 3)
+                : 0
+
+            this.bot.logger.info(
+                isMobile,
+                'SEARCH-BING',
+                `Target queries: ${targetQueries} (missingPoints=${missingPointsTotal}, isModern=${isModern})`
+            )
+
+            if (missingPointsTotal === 0) {
+                this.bot.logger.info(isMobile, 'SEARCH-BING', 'No missing search points to earn')
+                return 0
+            }
+
             const queryCore = new QueryCore(this.bot)
             const langCode = (this.bot.userData.langCode ?? 'vi').toLowerCase()
 
@@ -94,6 +111,8 @@ export class Search extends Workers {
             await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
             await this.bot.browser.utils.tryDismissAllMessages(page)
 
+            let completedQueries = 0
+
             const runSearchLoop = async (
                 queryPool: string[],
                 tag: string,
@@ -104,6 +123,15 @@ export class Search extends Workers {
                 let lastQuery = ''
 
                 for (let i = 0; i < queryPool.length; i++) {
+                    if (isModern && completedQueries >= targetQueries) {
+                        this.bot.logger.info(
+                            isMobile,
+                            tag,
+                            `Target queries reached (${completedQueries}/${targetQueries}) on Modern UI`
+                        )
+                        return { stagnant: false }
+                    }
+
                     // Time-of-day awareness: reduce frequency during quiet hours
                     if (this.bot.utils.isQuietHours()) {
                         const quietDelay = this.bot.utils.exponentialDelay(60000, 180000)
@@ -131,12 +159,35 @@ export class Search extends Workers {
                     }
 
                     searchCounters = await this.bingSearch(page, query, isMobile)
+                    completedQueries++
+
                     const newMissing = this.bot.browser.func.missingSearchPoints(searchCounters, isMobile)
                     let newMissingTotal = newMissing.totalPoints
                     let gainedPoints = Math.max(0, missingPointsTotal - newMissingTotal)
 
-                    // Fallback to balance check if counters didn't decrease (e.g. Modern UI where counters are static or undefined)
-                    if (gainedPoints === 0) {
+                    // Periodic point reconciliation: every 5 searches, call getCurrentPoints(true) (skipCache)
+                    let freshPoints: number | undefined
+                    if (completedQueries % 5 === 0) {
+                        try {
+                            const points = await this.bot.browser.func.getCurrentPoints(true)
+                            const currentPoints = Number(this.bot.userData.currentPoints ?? 0)
+                            const delta = Math.max(0, points - currentPoints)
+                            if (delta > 0) {
+                                gainedPoints = delta
+                                freshPoints = points
+                                newMissingTotal = Math.max(0, missingPointsTotal - delta)
+                                this.bot.logger.info(
+                                    isMobile,
+                                    tag,
+                                    `Point reconciliation at query ${completedQueries}/${targetQueries} (skipCache): +${delta} points | balance=${points}`,
+                                    'green'
+                                )
+                            }
+                        } catch (err) {
+                            this.bot.logger.debug(isMobile, tag, `Point reconciliation error: ${errMsg(err)}`)
+                        }
+                    } else if (gainedPoints === 0 && !isModern) {
+                        // Fallback to balance check on legacy UI if counters didn't decrease
                         try {
                             const newBalance = await this.bot.browser.func.getCurrentPoints()
                             const balanceDelta = Math.max(0, newBalance - Number(this.bot.userData.currentPoints ?? 0))
@@ -152,20 +203,39 @@ export class Search extends Workers {
 
                     if (gainedPoints === 0) {
                         stagnantLoop++
-                        this.bot.logger.info(
-                            isMobile,
-                            tag,
-                            `No points gained ${stagnantLoop}/${stagnantMax} | query="${query}" | remaining=${newMissingTotal}`
-                        )
+                        if (!isModern) {
+                            this.bot.logger.info(
+                                isMobile,
+                                tag,
+                                `No points gained ${stagnantLoop}/${stagnantMax} | query="${query}" | remaining=${newMissingTotal}`
+                            )
+                        } else {
+                            this.bot.logger.info(
+                                isMobile,
+                                tag,
+                                `Query completed (${completedQueries}/${targetQueries}) | query="${query}"`
+                            )
+                        }
                     } else {
                         stagnantLoop = 0
-                        this.bot.userData.currentPoints = Number(this.bot.userData.currentPoints ?? 0) + gainedPoints
-                        this.bot.userData.gainedPoints = (this.bot.userData.gainedPoints ?? 0) + gainedPoints
-                        totalGainedPoints += gainedPoints
+                        const pointsToAdd = (newMissingTotal < missingPointsTotal) 
+                            ? (missingPointsTotal - newMissingTotal) 
+                            : gainedPoints
+                        if (pointsToAdd > 0) {
+                            this.bot.userData.currentPoints = Number(this.bot.userData.currentPoints ?? 0) + pointsToAdd
+                            this.bot.userData.gainedPoints = (this.bot.userData.gainedPoints ?? 0) + pointsToAdd
+                            totalGainedPoints += pointsToAdd
+                        }
+                        if (freshPoints !== undefined) {
+                            this.bot.userData.currentPoints = Math.max(
+                                Number(this.bot.userData.currentPoints ?? 0),
+                                freshPoints
+                            )
+                        }
                         this.bot.logger.info(
                             isMobile,
                             tag,
-                            `gainedPoints=${gainedPoints} points | query="${query}" | remaining=${newMissingTotal}`,
+                            `gainedPoints=${pointsToAdd} points | query="${query}" | remaining=${newMissingTotal}`,
                             'green'
                         )
                     }
@@ -173,12 +243,22 @@ export class Search extends Workers {
                     lastQuery = query
                     missingPointsTotal = newMissingTotal
 
-                    if (missingPointsTotal === 0) {
+                    if (!isModern && missingPointsTotal === 0) {
                         this.bot.logger.info(isMobile, tag, 'All required search points earned')
                         return { stagnant: false }
                     }
 
-                    if (stagnantLoop > stagnantMax) {
+                    if (isModern && completedQueries >= targetQueries) {
+                        this.bot.logger.info(
+                            isMobile,
+                            tag,
+                            `Target queries reached (${completedQueries}/${targetQueries}) on Modern UI`
+                        )
+                        return { stagnant: false }
+                    }
+
+                    // On Modern UI, do NOT abort after stagnantMax iterations!
+                    if (!isModern && stagnantLoop > stagnantMax) {
                         this.bot.logger.warn(isMobile, tag, `No points for ${stagnantMax} iterations, aborting`)
                         return { stagnant: true }
                     }
@@ -193,11 +273,12 @@ export class Search extends Workers {
 
                     if (opts?.refillQueries) {
                         const remaining = queryPool.length - (i + 1)
-                        if (missingPointsTotal > 0 && remaining < 20) {
+                        const neededQueries = isModern ? (targetQueries - completedQueries) : missingPointsTotal
+                        if (neededQueries > 0 && remaining < 20) {
                             this.bot.logger.warn(
                                 isMobile,
                                 tag,
-                                `Low query buffer, regenerating via AI | remainingQueries=${remaining} | missing=${missingPointsTotal}`
+                                `Low query buffer, regenerating via AI | remainingQueries=${remaining} | needed=${neededQueries}`
                             )
                             const extra = await queryCore.generateAIQueries(30, langCode)
                             const merged = [...queryPool, ...extra].map(q => q.trim()).filter(Boolean)
@@ -213,7 +294,7 @@ export class Search extends Workers {
 
             const mainResult = await runSearchLoop(queries, 'SEARCH-BING', 10, { refillQueries: true })
 
-            if (missingPointsTotal > 0 && !mainResult.stagnant) {
+            if (!isModern && missingPointsTotal > 0 && !mainResult.stagnant) {
                 this.bot.logger.info(
                     isMobile,
                     'SEARCH-BING',
@@ -236,7 +317,33 @@ export class Search extends Workers {
                     const extraResult = await runSearchLoop(queries, 'SEARCH-BING-EXTRA', 5)
                     if (extraResult.stagnant || missingPointsTotal === 0) break
                 }
+            } else if (isModern && completedQueries < targetQueries) {
+                this.bot.logger.info(
+                    isMobile,
+                    'SEARCH-BING-EXTRA',
+                    `Running extra queries to reach target | completed=${completedQueries}/${targetQueries}`
+                )
+                const extra = await queryCore.generateAIQueries(30, langCode)
+                queries = this.bot.utils.shuffleArray([...new Set(extra.map(q => q.trim()).filter(Boolean))])
+                await runSearchLoop(queries, 'SEARCH-BING-EXTRA', 10)
             }
+
+            // Final point reconciliation check
+            try {
+                const finalFresh = await this.bot.browser.func.getCurrentPoints(true)
+                const finalDelta = Math.max(0, finalFresh - Number(this.bot.userData.currentPoints ?? 0))
+                if (finalDelta > 0) {
+                    this.bot.userData.currentPoints = finalFresh
+                    this.bot.userData.gainedPoints = (this.bot.userData.gainedPoints ?? 0) + finalDelta
+                    totalGainedPoints += finalDelta
+                    this.bot.logger.info(
+                        isMobile,
+                        'SEARCH-BING',
+                        `Final point check (skipCache): +${finalDelta} points | balance=${finalFresh}`,
+                        'green'
+                    )
+                }
+            } catch {}
 
             const finalBalance = Number(this.bot.userData.currentPoints ?? startBalance)
 

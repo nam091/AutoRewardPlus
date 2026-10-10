@@ -13,9 +13,15 @@ import type { AppDashboardData } from '../interface/AppDashBoardData'
 
 const DASHBOARD_CACHE_TTL_MS = 15_000
 
+export interface ModernSearchBreakdown {
+    desktop: { earned: number; max: number }
+    mobile: { earned: number; max: number }
+}
+
 export default class BrowserFunc {
     private bot: MicrosoftRewardsBot
     private dashboardCache: { data: DashboardData; ts: number } | null = null
+    private modernSearchBreakdown: ModernSearchBreakdown | null = null
 
     constructor(bot: MicrosoftRewardsBot) {
         this.bot = bot
@@ -23,6 +29,28 @@ export default class BrowserFunc {
 
     invalidateDashboardCache(): void {
         this.dashboardCache = null
+        this.modernSearchBreakdown = null
+    }
+
+    getSearchBreakdown(): ModernSearchBreakdown | null {
+        return this.modernSearchBreakdown
+    }
+
+    setSearchBreakdown(breakdown: ModernSearchBreakdown | null): void {
+        this.modernSearchBreakdown = breakdown
+    }
+
+    updateModernSearchBreakdownProgress(mobilePointsGained: number, desktopPointsGained: number): void {
+        if (this.modernSearchBreakdown) {
+            this.modernSearchBreakdown.mobile.earned = Math.min(
+                this.modernSearchBreakdown.mobile.max,
+                this.modernSearchBreakdown.mobile.earned + mobilePointsGained
+            )
+            this.modernSearchBreakdown.desktop.earned = Math.min(
+                this.modernSearchBreakdown.desktop.max,
+                this.modernSearchBreakdown.desktop.earned + desktopPointsGained
+            )
+        }
     }
 
     /**
@@ -348,15 +376,31 @@ export default class BrowserFunc {
         const desktopData = counters?.pcSearch?.[0]
         const edgeData = counters?.pcSearch?.[1]
 
-        const mobilePoints = mobileData
-            ? Math.max(0, mobileData.pointProgressMax - mobileData.pointProgress)
-            : 60
-        const desktopPoints = desktopData
-            ? Math.max(0, desktopData.pointProgressMax - desktopData.pointProgress)
-            : 90
-        const edgePoints = edgeData
-            ? Math.max(0, edgeData.pointProgressMax - edgeData.pointProgress)
-            : (desktopData ? 0 : 12)
+        const hasRealMobile = Boolean(
+            mobileData && typeof mobileData.pointProgressMax === 'number' && mobileData.pointProgressMax > 0
+        )
+        const hasRealDesktop = Boolean(
+            desktopData && typeof desktopData.pointProgressMax === 'number' && desktopData.pointProgressMax > 0
+        )
+
+        const mobilePoints = hasRealMobile
+            ? Math.max(0, mobileData!.pointProgressMax - mobileData!.pointProgress)
+            : this.modernSearchBreakdown?.mobile
+              ? Math.max(0, this.modernSearchBreakdown.mobile.max - this.modernSearchBreakdown.mobile.earned)
+              : 60
+
+        const desktopPoints = hasRealDesktop
+            ? Math.max(0, desktopData!.pointProgressMax - desktopData!.pointProgress)
+            : this.modernSearchBreakdown?.desktop
+              ? Math.max(0, this.modernSearchBreakdown.desktop.max - this.modernSearchBreakdown.desktop.earned)
+              : 90
+
+        const edgePoints =
+            edgeData && typeof edgeData.pointProgressMax === 'number' && edgeData.pointProgressMax > 0
+                ? Math.max(0, edgeData.pointProgressMax - edgeData.pointProgress)
+                : hasRealDesktop
+                  ? 0
+                  : this.modernSearchBreakdown ? 0 : 12
 
         const totalPoints = isMobile ? mobilePoints : desktopPoints + edgePoints
 
@@ -377,12 +421,174 @@ export default class BrowserFunc {
                 { progress: 0, max: 0 }
             )
 
-        const pc = sum(counters.pcSearch)
-        const mobile = sum(counters.mobileSearch)
+        const pc = sum(counters?.pcSearch)
+        const mobile = sum(counters?.mobileSearch)
+
+        let pcProgress = `${pc.progress}/${pc.max}`
+        let mobileProgress = `${mobile.progress}/${mobile.max}`
+
+        if (pc.max === 0 && this.modernSearchBreakdown?.desktop) {
+            pcProgress = `${this.modernSearchBreakdown.desktop.earned}/${this.modernSearchBreakdown.desktop.max}`
+        }
+
+        if (mobile.max === 0 && this.modernSearchBreakdown?.mobile) {
+            mobileProgress = `${this.modernSearchBreakdown.mobile.earned}/${this.modernSearchBreakdown.mobile.max}`
+        }
 
         return {
-            pcProgress: `${pc.progress}/${pc.max}`,
-            mobileProgress: `${mobile.progress}/${mobile.max}`
+            pcProgress,
+            mobileProgress
+        }
+    }
+
+    /**
+     * Parse Desktop and Mobile search breakdown from Modern UI modal on /earn
+     */
+    async getModernSearchBreakdown(page: Page): Promise<ModernSearchBreakdown | null> {
+        try {
+            const currentUrl = page.url()
+            if (!currentUrl.includes('rewards.bing.com/earn')) {
+                this.bot.logger.info(this.bot.isMobile, 'MODERN-BREAKDOWN', 'Navigating to rewards.bing.com/earn')
+                await page.goto('https://rewards.bing.com/earn', {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 20000
+                })
+                await this.bot.utils.wait(2000)
+            }
+
+            // Find and click "Points breakdown" trigger
+            const breakdownSelectors = [
+                'button:has-text("Points breakdown")',
+                'a:has-text("Points breakdown")',
+                '[role="button"]:has-text("Points breakdown")',
+                'button:has-text("Point breakdown")',
+                'a:has-text("Point breakdown")',
+                'button:has-text("Chi tiết điểm")',
+                'a:has-text("Chi tiết điểm")',
+                'button:has-text("Phân tích điểm")',
+                'a:has-text("Phân tích điểm")',
+                '[aria-label*="Points breakdown" i]',
+                '[aria-label*="breakdown" i]',
+                '#points-breakdown',
+                '#breakdown'
+            ]
+
+            let clicked = false
+            for (const sel of breakdownSelectors) {
+                try {
+                    const el = page.locator(sel).first()
+                    if (await el.isVisible({ timeout: 1500 })) {
+                        await el.click()
+                        clicked = true
+                        break
+                    }
+                } catch {
+                    // Try next selector
+                }
+            }
+
+            if (!clicked) {
+                clicked = await page.evaluate(() => {
+                    const all = Array.from(document.querySelectorAll('button, a, [role="button"], span, p, div'))
+                    const el = all.find(e => {
+                        const t = e.textContent?.trim()?.toLowerCase() || ''
+                        return (
+                            (t.includes('points breakdown') ||
+                                t.includes('point breakdown') ||
+                                t.includes('chi tiết điểm') ||
+                                t.includes('phân tích điểm')) &&
+                            e.children.length <= 2
+                        )
+                    })
+                    if (el && el instanceof HTMLElement) {
+                        el.click()
+                        return true
+                    }
+                    return false
+                }).catch(() => false)
+            }
+
+            if (!clicked) {
+                this.bot.logger.warn(this.bot.isMobile, 'MODERN-BREAKDOWN', 'Could not find "Points breakdown" button')
+                return this.modernSearchBreakdown
+            }
+
+            // Wait for modal / dialog
+            const dialog = page.locator('[role="dialog"], dialog, [aria-modal="true"]').first()
+            await dialog.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+
+            // Read text from dialog
+            const dialogText = await page.evaluate(() => {
+                const dlg = document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')
+                return dlg ? dlg.textContent || '' : ''
+            }).catch(() => '')
+
+            // Parse strings like "Desktop Bing search X/Y" and "Mobile Bing search X/Y"
+            const desktopMatch =
+                dialogText.match(/(?:Desktop\s+Bing\s+search|Desktop\s+search|PC\s+search|máy\s*tính)[^\d]*?(\d+)\s*[\/|trên]\s*(\d+)/i) ||
+                dialogText.match(/(?:Desktop|PC)[^\d\n\r]*?(\d+)\s*\/\s*(\d+)/i)
+
+            const mobileMatch =
+                dialogText.match(/(?:Mobile\s+Bing\s+search|Mobile\s+search|di\s*động)[^\d]*?(\d+)\s*[\/|trên]\s*(\d+)/i) ||
+                dialogText.match(/(?:Mobile)[^\d\n\r]*?(\d+)\s*\/\s*(\d+)/i)
+
+            let desktop = { earned: 0, max: 90 }
+            let mobile = { earned: 0, max: 60 }
+
+            if (desktopMatch) {
+                desktop = {
+                    earned: parseInt(desktopMatch[1]!, 10),
+                    max: parseInt(desktopMatch[2]!, 10)
+                }
+            }
+
+            if (mobileMatch) {
+                mobile = {
+                    earned: parseInt(mobileMatch[1]!, 10),
+                    max: parseInt(mobileMatch[2]!, 10)
+                }
+            }
+
+            // Close dialog
+            try {
+                const closeBtn = page.locator([
+                    '[role="dialog"] button[aria-label*="close" i]',
+                    '[role="dialog"] button[aria-label*="đóng" i]',
+                    '[role="dialog"] button:has-text("Close")',
+                    '[role="dialog"] button:has-text("Đóng")',
+                    '[role="dialog"] [data-bi-name*="close" i]',
+                    'button[aria-label*="close" i]'
+                ].join(', ')).first()
+
+                if (await closeBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+                    await closeBtn.click().catch(() => {})
+                } else {
+                    await page.keyboard.press('Escape').catch(() => {})
+                }
+                await this.bot.utils.wait(500)
+            } catch {
+                // Ignore close error
+            }
+
+            if (desktopMatch || mobileMatch) {
+                this.modernSearchBreakdown = { desktop, mobile }
+                this.bot.logger.info(
+                    this.bot.isMobile,
+                    'MODERN-BREAKDOWN',
+                    `Parsed search breakdown | Desktop: ${desktop.earned}/${desktop.max} | Mobile: ${mobile.earned}/${mobile.max}`
+                )
+                return this.modernSearchBreakdown
+            }
+
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'MODERN-BREAKDOWN',
+                'Could not parse search points breakdown from dialog text'
+            )
+            return this.modernSearchBreakdown
+        } catch (error) {
+            this.bot.logger.warn(this.bot.isMobile, 'MODERN-BREAKDOWN', `Failed to get points breakdown: ${errMsg(error)}`)
+            return this.modernSearchBreakdown
         }
     }
 
@@ -532,9 +738,9 @@ export default class BrowserFunc {
      * Get current point amount
      * @returns {number} Current total point amount
      */
-    async getCurrentPoints(): Promise<number> {
+    async getCurrentPoints(skipCache = false): Promise<number> {
         try {
-            const data = await this.getDashboardData()
+            const data = await this.getDashboardData(skipCache)
 
             return data.userStatus.availablePoints
         } catch (error) {

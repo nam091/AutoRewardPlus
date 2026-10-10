@@ -716,6 +716,9 @@ export class MicrosoftRewardsBot {
                 if (await this.browser.func.isModernUI(this.mainMobilePage)) {
                     this.rewardsVersion = 'modern'
                     this.logger.info('main', 'UI-DETECTION', 'Modern Microsoft Rewards UI detected.')
+                    await this.browser.func.getModernSearchBreakdown(this.mainMobilePage).catch(err => {
+                        this.logger.warn('main', 'MODERN-BREAKDOWN', `Failed to get points breakdown: ${errMsg(err)}`)
+                    })
                 } else {
                     this.rewardsVersion = 'legacy'
                     this.logger.info('main', 'UI-DETECTION', 'Legacy Microsoft Rewards UI detected.')
@@ -816,12 +819,13 @@ export class MicrosoftRewardsBot {
                     if (this.config.workers.doDailySet) await this.workers.doDailySet(data, this.mainMobilePage)
                     if (this.config.workers.doMorePromotions)
                         await this.workers.doMorePromotions(data, this.mainMobilePage)
+                    if (this.config.workers.doPunchCards)
+                        await this.workers.doPunchCards(data, this.mainMobilePage)
                 }
 
                 if (this.config.workers.doSpecialPromotions) await this.workers.doSpecialPromotions(data)
                 if (this.config.workers.doDailyCheckIn) await this.activities.doDailyCheckIn()
                 if (this.config.workers.doReadToEarn) await this.activities.doReadToEarn()
-                if (this.config.workers.doPunchCards) await this.workers.doPunchCards(data, this.mainMobilePage)
 
                 // Track points after quest activities
                 const pointsAfterQuests = await this.browser.func.getCurrentPoints()
@@ -848,6 +852,8 @@ export class MicrosoftRewardsBot {
                 mobileContextClosed = true
 
                 this.userData.gainedPoints = mobilePoints + desktopPoints
+
+                this.browser.func.updateModernSearchBreakdownProgress(mobilePoints, desktopPoints)
 
                 let finalPoints = 0
                 try {

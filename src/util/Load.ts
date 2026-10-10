@@ -94,8 +94,29 @@ export async function loadSessionData(
 
         let cookies: Cookie[] = []
         if (fs.existsSync(cookieFile)) {
-            const cookiesData = await fs.promises.readFile(cookieFile, 'utf-8')
-            cookies = JSON.parse(cookiesData)
+            try {
+                const cookiesData = await fs.promises.readFile(cookieFile, 'utf-8')
+                cookies = JSON.parse(cookiesData)
+            } catch {
+                cookies = []
+            }
+        }
+
+        if (!cookies || cookies.length === 0) {
+            const altCookiesFileName = isMobile ? 'session_desktop.json' : 'session_mobile.json'
+            const altCookieFile = resolveSessionFile(sessionPath, email, altCookiesFileName)
+            if (fs.existsSync(altCookieFile)) {
+                try {
+                    const altCookiesData = await fs.promises.readFile(altCookieFile, 'utf-8')
+                    const altCookies = JSON.parse(altCookiesData)
+                    if (Array.isArray(altCookies) && altCookies.length > 0) {
+                        cookies = altCookies
+                        await saveSessionData(sessionPath, cookies, email, isMobile)
+                    }
+                } catch {
+                    // Ignore parse error on alt file
+                }
+            }
         }
 
         const fingerprintFileName = isMobile ? 'session_fingerprint_mobile.json' : 'session_fingerprint_desktop.json'
