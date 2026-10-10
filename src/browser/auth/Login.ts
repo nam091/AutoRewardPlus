@@ -36,6 +36,7 @@ type LoginState =
     | 'GET_A_CODE'
     | 'GET_A_CODE_2'
     | 'OTP_CODE_ENTRY'
+    | 'TERMS_OF_USE_PROMPT'
     | 'UNKNOWN'
     | 'CHROMEWEBDATA_ERROR'
 
@@ -180,6 +181,15 @@ export class Login {
         if (isLocked) {
             this.bot.logger.debug(this.bot.isMobile, 'DETECT-STATE', 'Account locked selector found')
             return 'ACCOUNT_LOCKED'
+        }
+
+        if (url.hostname === 'account.live.com' && url.pathname.includes('/tou/accrue')) {
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'DETECT-STATE',
+                'Microsoft Terms of Use prompt detected (account.live.com/tou/accrue)'
+            )
+            return 'TERMS_OF_USE_PROMPT'
         }
 
         if (url.hostname === 'rewards.bing.com' || url.hostname === 'account.microsoft.com') {
@@ -347,6 +357,15 @@ export class Login {
                     this.bot.logger.debug(this.bot.isMobile, 'LOGIN', 'Network idle timeout after password entry')
                 })
                 this.bot.logger.info(this.bot.isMobile, 'LOGIN', 'Password entered successfully')
+                return true
+            }
+
+            case 'TERMS_OF_USE_PROMPT': {
+                this.bot.logger.info(this.bot.isMobile, 'LOGIN', 'Accepting updated Microsoft Terms of Use agreement...')
+                await page
+                    .click('input[type="submit"], button[type="submit"], #iNext, button:has-text("Tiếp theo"), button:has-text("Next")')
+                    .catch(() => {})
+                await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
                 return true
             }
 
@@ -641,6 +660,18 @@ export class Login {
                 if (state === 'PASSKEY_ERROR') {
                     this.bot.logger.info(this.bot.isMobile, 'LOGIN-BING', 'Dismissing Passkey error state')
                     await this.bot.browser.utils.ghostClick(page, this.selectors.secondaryButton)
+                }
+
+                if (state === 'TERMS_OF_USE_PROMPT' || page.url().includes('account.live.com/tou/accrue')) {
+                    this.bot.logger.info(
+                        this.bot.isMobile,
+                        'LOGIN-BING',
+                        'Accepting updated Microsoft Terms of Use prompt during Bing verification...'
+                    )
+                    await page
+                        .click('input[type="submit"], button[type="submit"], #iNext, button:has-text("Tiếp theo"), button:has-text("Next")')
+                        .catch(() => {})
+                    await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
                 }
 
                 const u = new URL(page.url())
