@@ -511,6 +511,25 @@ export default class BrowserFunc {
             const dialog = page.locator('[role="dialog"], dialog, [aria-modal="true"]').first()
             await dialog.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
 
+            // Wait for dialog content to finish loading (replaces "Loading...")
+            await page
+                .waitForFunction(
+                    () => {
+                        const dlg = document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')
+                        if (!dlg) return false
+                        const text = (dlg.textContent || '').trim().toLowerCase()
+                        return (
+                            !text.startsWith('loading') &&
+                            (text.includes('search') ||
+                                text.includes('points') ||
+                                text.includes('điểm') ||
+                                /\d+\s*\/\s*\d+/.test(text))
+                        )
+                    },
+                    { timeout: 8000 }
+                )
+                .catch(() => {})
+
             // Read text from dialog
             const dialogText = await page.evaluate(() => {
                 const dlg = document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')
