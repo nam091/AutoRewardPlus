@@ -863,15 +863,21 @@ export class MicrosoftRewardsBot {
                 }
                 let collectedPoints = Math.max(0, finalPoints - initialPoints)
 
-                // Try reading official dailyPoint progress from Microsoft Counters
-                try {
-                    const searchPoints = await this.browser.func.getSearchPoints()
-                    const msDaily = searchPoints?.dailyPoint?.[0]?.pointProgress
-                    if (typeof msDaily === 'number' && msDaily > 0 && msDaily <= 500) {
-                        collectedPoints = msDaily
+                // Authoritative today's points from Bing Modern Breakdown
+                const breakdown = this.browser.func.getSearchBreakdown()
+                if (breakdown?.todayPoints && breakdown.todayPoints > 0) {
+                    collectedPoints = breakdown.todayPoints
+                } else {
+                    // Try reading official dailyPoint progress from Microsoft Counters
+                    try {
+                        const searchPoints = await this.browser.func.getSearchPoints()
+                        const msDaily = searchPoints?.dailyPoint?.[0]?.pointProgress
+                        if (typeof msDaily === 'number' && msDaily > 0 && msDaily <= 500) {
+                            collectedPoints = msDaily
+                        }
+                    } catch {
+                        // Fall back to finalPoints - initialPoints
                     }
-                } catch {
-                    // Fall back to finalPoints - initialPoints
                 }
 
                 // Sanity check: Daily points in Vietnam cannot realistically exceed 500 in one day

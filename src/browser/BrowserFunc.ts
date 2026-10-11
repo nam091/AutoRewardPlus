@@ -16,6 +16,7 @@ const DASHBOARD_CACHE_TTL_MS = 15_000
 export interface ModernSearchBreakdown {
     desktop: { earned: number; max: number }
     mobile: { earned: number; max: number }
+    todayPoints?: number
 }
 
 export default class BrowserFunc {
@@ -40,7 +41,7 @@ export default class BrowserFunc {
         this.modernSearchBreakdown = breakdown
     }
 
-    updateModernSearchBreakdownProgress(mobilePointsGained: number, desktopPointsGained: number): void {
+    updateModernSearchBreakdownProgress(mobilePointsGained: number, desktopPointsGained: number, extraPoints = 0): void {
         if (this.modernSearchBreakdown) {
             this.modernSearchBreakdown.mobile.earned = Math.min(
                 this.modernSearchBreakdown.mobile.max,
@@ -50,6 +51,9 @@ export default class BrowserFunc {
                 this.modernSearchBreakdown.desktop.max,
                 this.modernSearchBreakdown.desktop.earned + desktopPointsGained
             )
+            if (typeof this.modernSearchBreakdown.todayPoints === 'number' && this.modernSearchBreakdown.todayPoints > 0) {
+                this.modernSearchBreakdown.todayPoints += (mobilePointsGained + desktopPointsGained + extraPoints)
+            }
         }
     }
 
@@ -525,7 +529,10 @@ export default class BrowserFunc {
                 return `${it}\n${tc}`
             }).catch(() => '')
 
-            // Parse strings like "Desktop Bing search X/Y" and "Mobile Bing search X/Y"
+            // Parse strings like "Desktop Bing search X/Y", "Mobile Bing search X/Y", and "Today's points X"
+            const todayMatch =
+                dialogText.match(/(?:Today(?:'|’|\x27)?s\s+points|Điểm\s+hôm\s+nay)[^\d]*?(\d+)/i)
+
             const desktopMatch =
                 dialogText.match(/(?:Desktop\s+Bing\s+search|Desktop\s+search|PC\s+search|máy\s*tính)[^\d]*?(\d+)\s*[\/|trên]\s*(\d+)/i) ||
                 dialogText.match(/(?:Desktop|PC)[^\d\n\r]*?(\d+)\s*\/\s*(\d+)/i)
@@ -536,6 +543,11 @@ export default class BrowserFunc {
 
             let desktop = { earned: 0, max: 90 }
             let mobile = { earned: 0, max: 60 }
+            let todayPoints = 0
+
+            if (todayMatch) {
+                todayPoints = parseInt(todayMatch[1]!, 10)
+            }
 
             if (desktopMatch) {
                 desktop = {
@@ -572,12 +584,12 @@ export default class BrowserFunc {
                 // Ignore close error
             }
 
-            if (desktopMatch || mobileMatch) {
-                this.modernSearchBreakdown = { desktop, mobile }
+            if (desktopMatch || mobileMatch || todayMatch) {
+                this.modernSearchBreakdown = { desktop, mobile, todayPoints }
                 this.bot.logger.info(
                     this.bot.isMobile,
                     'MODERN-BREAKDOWN',
-                    `Parsed search breakdown | Desktop: ${desktop.earned}/${desktop.max} | Mobile: ${mobile.earned}/${mobile.max}`
+                    `Parsed search breakdown | Today: ${todayPoints} | Desktop: ${desktop.earned}/${desktop.max} | Mobile: ${mobile.earned}/${mobile.max}`
                 )
                 return this.modernSearchBreakdown
             }

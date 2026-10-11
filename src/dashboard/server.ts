@@ -408,6 +408,20 @@ export class DashboardServer {
             .map((c: any) => `${c.name}=${c.value}`)
             .join('; ')
 
+        const defaultProxyUrl = process.env.DEFAULT_PROXY_URL?.trim()
+        const defaultProxyPort = process.env.DEFAULT_PROXY_PORT ? parseInt(process.env.DEFAULT_PROXY_PORT, 10) : 0
+        let proxyConfig = undefined
+        if (defaultProxyUrl) {
+            try {
+                const u = new URL(defaultProxyUrl)
+                proxyConfig = {
+                    host: u.hostname,
+                    port: defaultProxyPort || (u.port ? parseInt(u.port, 10) : 10808),
+                    protocol: 'http'
+                }
+            } catch {}
+        }
+
         const res = await axios.get('https://rewards.bing.com/api/getuserinfo?type=1', {
             headers: {
                 Cookie: cookieStr,
@@ -416,6 +430,7 @@ export class DashboardServer {
                 Referer: 'https://rewards.bing.com/',
                 Origin: 'https://rewards.bing.com'
             },
+            ...(proxyConfig && { proxy: proxyConfig }),
             timeout: 15000
         })
 
@@ -447,7 +462,8 @@ export class DashboardServer {
             redeemGoalTitle,
             redeemGoalPrice,
             geoLocale,
-            status: 'OK'
+            status: 'OK',
+            lastError: ''
         }
 
         stateService.updateAccountState(email, updateData)

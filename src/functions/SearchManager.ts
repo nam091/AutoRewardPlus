@@ -102,6 +102,9 @@ export class SearchManager {
                     )
                     await executionContext.run({ isMobile: false, account }, async () => {
                         await this.runModernUITasks(data)
+                        if (this.bot.rewardsVersion === 'modern') {
+                            await this.bot.browser.func.getModernSearchBreakdown(this.bot.mainDesktopPage).catch(() => {})
+                        }
                         await this.bot.browser.func.closeBrowser(desktopSession.context, accountEmail)
                     })
                 } catch (error) {
@@ -635,6 +638,9 @@ export class SearchManager {
                 }
 
                 if (!shouldSearchDesktop) {
+                    if (this.bot.rewardsVersion === 'modern') {
+                        await this.bot.browser.func.getModernSearchBreakdown(this.bot.mainDesktopPage).catch(() => {})
+                    }
                     return 0
                 }
 
@@ -645,6 +651,9 @@ export class SearchManager {
                 )
 
                 const pointsEarned = await this.bot.activities.doSearch(data, this.bot.mainDesktopPage, false)
+                if (this.bot.rewardsVersion === 'modern') {
+                    await this.bot.browser.func.getModernSearchBreakdown(this.bot.mainDesktopPage).catch(() => {})
+                }
 
                 this.bot.logger.info(
                     'main',

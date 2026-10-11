@@ -40,7 +40,12 @@ server.on('connect', (req, clientSocket, head) => {
     const [targetHost, targetPort] = req.url.split(':');
     const port = parseInt(targetPort, 10) || 443;
 
+    clientSocket.setKeepAlive(true, 10000);
+    clientSocket.setTimeout(120000, () => clientSocket.destroy());
+
     const serverSocket = net.connect(port, targetHost, () => {
+        serverSocket.setKeepAlive(true, 10000);
+        serverSocket.setTimeout(120000, () => serverSocket.destroy());
         clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         serverSocket.write(head);
         serverSocket.pipe(clientSocket);
@@ -48,14 +53,21 @@ server.on('connect', (req, clientSocket, head) => {
     });
 
     serverSocket.on('error', err => {
-        clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nProxy error: ${err.message}`);
-        clientSocket.destroy();
+        if (!clientSocket.destroyed) {
+            clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nProxy error: ${err.message}`);
+            clientSocket.destroy();
+        }
     });
 
     clientSocket.on('error', () => {
         serverSocket.destroy();
     });
+
+    serverSocket.on('close', () => clientSocket.destroy());
+    clientSocket.on('close', () => serverSocket.destroy());
 });
+
+server.maxConnections = 500;
 
 server.listen(PORT, HOST, () => {
     console.log(`[Residential Proxy] Running on ${HOST}:${PORT} (Ready for Tailscale VPS traffic)`);
