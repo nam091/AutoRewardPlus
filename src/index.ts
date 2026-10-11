@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import fs from 'node:fs'
+import path from 'node:path'
 import cluster, { Worker } from 'cluster'
 import type { BrowserContext, Cookie, Page } from 'patchright'
 import pkg from '../package.json'
@@ -272,6 +274,10 @@ export class MicrosoftRewardsBot {
 
         const allAccountStats: AccountStats[] = []
         let hadWorkerFailure = false
+
+        const distEntry = path.resolve('dist/index.js')
+        const execFile = fs.existsSync(distEntry) ? distEntry : (process.argv[1] || path.resolve('src/index.ts'))
+        cluster.setupPrimary({ exec: execFile })
 
         for (const chunk of accountChunks) {
             const worker = cluster.fork()

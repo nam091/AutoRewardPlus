@@ -460,55 +460,46 @@ export default class BrowserFunc {
                 await this.bot.utils.wait(2000)
             }
 
-            // Find and click "Points breakdown" trigger
-            const breakdownSelectors = [
-                ':has-text("Points breakdown")',
-                ':has-text("Point breakdown")',
-                ':has-text("Chi tiết điểm")',
-                ':has-text("Phân tích điểm")',
-                'button:has-text("Points breakdown")',
-                'a:has-text("Points breakdown")',
-                'p:has-text("Points breakdown")',
-                '[role="button"]:has-text("Points breakdown")',
-                '[aria-label*="Points breakdown" i]',
-                '[aria-label*="breakdown" i]',
-                '#points-breakdown',
-                '#breakdown'
-            ]
-
+            // Click "Points breakdown" trigger - find the exact leaf element
             let clicked = false
-            for (const sel of breakdownSelectors) {
-                try {
-                    const el = page.locator(sel).first()
-                    if (await el.isVisible({ timeout: 1500 })) {
-                        await el.click()
-                        clicked = true
-                        break
-                    }
-                } catch {
-                    // Try next selector
-                }
-            }
-
-            if (!clicked) {
+            try {
                 clicked = await page.evaluate(() => {
-                    const all = Array.from(document.querySelectorAll('button, a, [role="button"], span, p, div'))
-                    const el = all.find(e => {
-                        const t = e.textContent?.trim()?.toLowerCase() || ''
+                    const els = Array.from(document.querySelectorAll('a, button, p, span, div[role="button"], [role="button"]'))
+                    const found = els.find(e => {
+                        const t = (e.textContent || '').trim().toLowerCase()
                         return (
-                            (t.includes('points breakdown') ||
-                                t.includes('point breakdown') ||
-                                t.includes('chi tiết điểm') ||
-                                t.includes('phân tích điểm')) &&
-                            e.children.length <= 2
+                            t === 'points breakdown' ||
+                            t === 'point breakdown' ||
+                            t === 'chi tiết điểm' ||
+                            t === 'phân tích điểm'
                         )
                     })
-                    if (el && el instanceof HTMLElement) {
-                        el.click()
+                    if (found && found instanceof HTMLElement) {
+                        found.click()
                         return true
                     }
                     return false
-                }).catch(() => false)
+                })
+            } catch {}
+
+            if (!clicked) {
+                const breakdownSelectors = [
+                    'p:has-text("Points breakdown")',
+                    'a:has-text("Points breakdown")',
+                    'button:has-text("Points breakdown")',
+                    '[role="button"]:has-text("Points breakdown")',
+                    ':has-text("Points breakdown")'
+                ]
+                for (const sel of breakdownSelectors) {
+                    try {
+                        const el = page.locator(sel).last()
+                        if (await el.isVisible({ timeout: 1500 })) {
+                            await el.click()
+                            clicked = true
+                            break
+                        }
+                    } catch {}
+                }
             }
 
             if (!clicked) {
