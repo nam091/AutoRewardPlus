@@ -125,9 +125,25 @@ export class SearchOnBing extends Workers {
                 const searchBox = page.locator(searchBar)
                 await searchBox.waitFor({ state: 'attached', timeout: 15000 })
 
+                // Ensure searchbox is editable
+                await page.evaluate((sel: string) => {
+                    const el = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null
+                    if (el) {
+                        el.removeAttribute('readonly')
+                        el.readOnly = false
+                        el.removeAttribute('disabled')
+                        el.disabled = false
+                    }
+                }, searchBar).catch(() => {})
+
                 await HumanizeEngine.gaussianSleep(600, 200)
                 await this.bot.browser.utils.ghostClick(page, searchBar, { clickCount: 3 })
-                await searchBox.fill('')
+                await searchBox.fill('', { force: true, timeout: 5000 }).catch(async () => {
+                    await page.evaluate((sel: string) => {
+                        const el = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null
+                        if (el) el.value = ''
+                    }, searchBar)
+                })
 
                 await HumanizeEngine.typeHumanlike(page, searchBar, query)
                 await HumanizeEngine.gaussianSleep(300, 100)

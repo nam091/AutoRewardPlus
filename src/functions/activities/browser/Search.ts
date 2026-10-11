@@ -433,9 +433,27 @@ export class Search extends Workers {
                     Math.floor(2000 * timeMultiplier)
                 ))
 
+                // Ensure searchbox is editable (Bing mobile sometimes sets readonly attribute on textarea)
+                await searchPage.evaluate((sel: string) => {
+                    const el = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null
+                    if (el) {
+                        el.removeAttribute('readonly')
+                        el.readOnly = false
+                        el.removeAttribute('disabled')
+                        el.disabled = false
+                    }
+                }, searchBar).catch(() => {})
+
                 // Use human-like click with Bezier movement instead of ghostClick
                 await HumanizeEngine.humanClick(searchPage, searchBar)
-                await searchBox.fill('')
+
+                // Clear search box safely without hanging on actionability checks
+                await searchBox.fill('', { force: true, timeout: 5000 }).catch(async () => {
+                    await searchPage.evaluate((sel: string) => {
+                        const el = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null
+                        if (el) el.value = ''
+                    }, searchBar)
+                })
 
                 // Human-like typing with occasional typos and corrections
                 await HumanizeEngine.typeHumanlike(searchPage, searchBar, query)
