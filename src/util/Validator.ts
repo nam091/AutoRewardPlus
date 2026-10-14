@@ -61,7 +61,7 @@ const AIProviderSchema = z.object({
     name: z.string().min(1),
     baseUrl: z.url(),
     model: z.string().min(1),
-    apiKey: z.string(),
+    apiKey: z.string().default(''),
     priority: z.number().int().positive(),
     enabled: z.boolean()
 })
@@ -69,7 +69,7 @@ const AIProviderSchema = z.object({
 const AISchema = z.object({
     baseUrl: z.url(),
     model: z.string(),
-    apiKey: z.string(),
+    apiKey: z.string().default(''),
     fallbackProviders: z.array(AIProviderSchema).optional(),
     maxRetries: z.number().int().min(1).max(10).optional(),
     retryDelayMs: z.number().int().nonnegative().optional(),

@@ -507,8 +507,8 @@ export class QueryCore {
         // Primary endpoint
         this.aiEndpoints.push({
             baseUrl: config.baseUrl,
-            model: config.model,
-            apiKey: config.apiKey,
+            model: this.resolveModelSlug(config.model, config.baseUrl),
+            apiKey: config.apiKey || '',
             priority: 1,
             failureCount: 0
         })
@@ -516,11 +516,11 @@ export class QueryCore {
         // Fallback providers from config
         if (config.fallbackProviders) {
             for (const provider of config.fallbackProviders) {
-                if (provider.enabled && provider.apiKey) {
+                if (provider.enabled && provider.apiKey !== undefined) {
                     this.aiEndpoints.push({
                         baseUrl: provider.baseUrl,
-                        model: provider.model,
-                        apiKey: provider.apiKey,
+                        model: this.resolveModelSlug(provider.model, provider.baseUrl),
+                        apiKey: provider.apiKey || '',
                         priority: provider.priority,
                         failureCount: 0
                     })
@@ -541,6 +541,20 @@ export class QueryCore {
             'AI-INIT',
             `Initialized ${this.aiEndpoints.length} AI endpoint(s): ${this.aiEndpoints.map(e => e.baseUrl).join(', ')}`
         )
+    }
+
+    /**
+     * Resolves model alias like *free to router-supported slugs
+     */
+    private resolveModelSlug(model: string, baseUrl: string): string {
+        const trimmed = (model || '').trim()
+        if (trimmed === '*free' || trimmed.endsWith('/*free')) {
+            if (baseUrl.includes('openrouter.ai')) {
+                return 'openrouter/free'
+            }
+            return 'reward_bing'
+        }
+        return trimmed
     }
 
     /**
@@ -661,12 +675,16 @@ thay keo tản nhiệt laptop giá bao nhiêu`
                     const controller = new AbortController()
                     const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
 
+                    const headers: Record<string, string> = {
+                        'Content-Type': 'application/json'
+                    }
+                    if (endpoint.apiKey && endpoint.apiKey !== 'none') {
+                        headers['Authorization'] = `Bearer ${endpoint.apiKey}`
+                    }
+
                     const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${endpoint.apiKey}`
-                        },
+                        headers,
                         body: JSON.stringify({
                             model: endpoint.model,
                             messages: [
