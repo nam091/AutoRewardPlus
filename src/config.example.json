@@ -69,25 +69,25 @@
         }
     },
     "ai": {
-        "baseUrl": "https://9router.qwen2api.pp.ua/v1",
-        "model": "reward_bing",
+        "baseUrl": "https://kilo-free-api.prkatt001.workers.dev/v1",
+        "model": "*free",
         "apiKey": "",
         "fallbackProviders": [
             {
-                "name": "openai",
-                "baseUrl": "https://api.openai.com/v1",
-                "model": "gpt-3.5-turbo",
+                "name": "9Router",
+                "baseUrl": "https://9router.qwen2api.pp.ua/v1",
+                "model": "reward_bing",
                 "apiKey": "",
                 "priority": 2,
-                "enabled": false
+                "enabled": true
             },
             {
-                "name": "anthropic",
-                "baseUrl": "https://api.anthropic.com/v1",
-                "model": "claude-3-haiku-20240307",
+                "name": "OpenRouter",
+                "baseUrl": "https://openrouter.ai/api/v1",
+                "model": "openrouter/free",
                 "apiKey": "",
                 "priority": 3,
-                "enabled": false
+                "enabled": true
             }
         ],
         "maxRetries": 3,

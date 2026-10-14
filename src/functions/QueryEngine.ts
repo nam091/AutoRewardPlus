@@ -549,6 +549,9 @@ export class QueryCore {
     private resolveModelSlug(model: string, baseUrl: string): string {
         const trimmed = (model || '').trim()
         if (trimmed === '*free' || trimmed.endsWith('/*free')) {
+            if (baseUrl.includes('kilo')) {
+                return 'kilo-auto/free'
+            }
             if (baseUrl.includes('openrouter.ai')) {
                 return 'openrouter/free'
             }
