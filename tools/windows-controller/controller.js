@@ -181,6 +181,53 @@ class WindowsController {
     }
 
     /**
+     * Get live VPS logs
+     */
+    static async getVPSLogs() {
+        return await this.vpsRequest('/api/logs', 'GET');
+    }
+
+    /**
+     * Check if AutoRewardPlus is set to run on Windows startup
+     */
+    static getAutostartStatus() {
+        try {
+            const out = execSync('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "AutoRewardPlus"', {
+                encoding: 'utf-8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+                timeout: 3000
+            });
+            return { enabled: out.includes('AutoRewardPlus') };
+        } catch {
+            return { enabled: false };
+        }
+    }
+
+    /**
+     * Enable or disable AutoRewardPlus on Windows startup
+     */
+    static setAutostart(enabled) {
+        const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+        const rootDir = path.resolve(__dirname, '../../');
+        let exePath = path.join(rootDir, 'AutoRewardPlus.exe');
+        if (!fs.existsSync(exePath)) {
+            exePath = path.join(rootDir, 'AutoRewardControl.exe');
+        }
+
+        if (enabled) {
+            const cmd = `reg add "${regKey}" /v "AutoRewardPlus" /t REG_SZ /d "\"${exePath}\" --silent" /f`;
+            execSync(cmd, { stdio: 'ignore', timeout: 5000 });
+            return { success: true, enabled: true, message: 'Đã kích hoạt tự động chạy cùng Windows (khay hệ thống).' };
+        } else {
+            try {
+                const cmd = `reg delete "${regKey}" /v "AutoRewardPlus" /f`;
+                execSync(cmd, { stdio: 'ignore', timeout: 5000 });
+            } catch {}
+            return { success: true, enabled: false, message: 'Đã hủy kích hoạt tự động chạy cùng Windows.' };
+        }
+    }
+
+    /**
      * Sync sessions & accounts from Windows to VPS
      */
     static syncToVPS() {
