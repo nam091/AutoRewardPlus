@@ -687,18 +687,39 @@ export class ModernUIWorkers {
                 }
             }
 
-            allCards.forEach((card, i) => {
-                const anchor = card as HTMLAnchorElement
-                const fullText = (anchor.textContent ?? '').trim()
-                const lowerText = fullText.toLowerCase()
+        // Pulse cards ("Complete this puzzle", "Do you know the answer?") and
+        // the desktop taskbar / Bing-app punchcards never expose an "N/M tasks"
+        // counter — they carry their own reward language instead. Both were
+        // therefore invisible to the counter scan, which is why Keep Earning
+        // reported "Found 0 earnable card(s)" although three cards were on screen.
+        const pulseHints = [
+            'puzzle',
+            'trivia',
+            'do you know',
+            'challenge yourself',
+            'arrange the tiles',
+            'reveal the image',
+            'câu hỏi',
+            'giải đố',
+            'xếp hình',
+            'ghép hình'
+        ]
 
-                if (completedTexts.some(marker => lowerText.includes(marker))) return
-                if (completedBadgeSelectors.some(selector => !!anchor.querySelector(selector))) return
-                if (lockedTexts.some(marker => lowerText.includes(marker))) return
+        allCards.forEach((card, i) => {
+            const anchor = card as HTMLAnchorElement
+            const fullText = (anchor.textContent ?? '').trim()
+            const lowerText = fullText.toLowerCase()
 
-                // Mission cards carry sub-tasks and are handled by doMissions.
-                if (taskCountRegex.test(fullText)) return
+            if (completedTexts.some(marker => lowerText.includes(marker))) return
+            if (completedBadgeSelectors.some(selector => !!anchor.querySelector(selector))) return
+            if (lockedTexts.some(marker => lowerText.includes(marker))) return
 
+            // Mission cards carry sub-tasks and are handled by doMissions, but
+            // only when they are short-window punchcards. Streak cards use a
+            // different caption and must still be reportable.
+            const isMissionCounter = taskCountRegex.test(fullText)
+            const isPulseCard = pulseHints.some(hint => lowerText.includes(hint))
+            if (isMissionCounter && !isPulseCard) return
                 // Method 1: badge points, with or without a leading "+"
                 let pointsText = ''
                 for (const selector of pointsBadgeSelectors) {
@@ -842,13 +863,22 @@ export class ModernUIWorkers {
     private async findMissionCards(page: Page): Promise<MissionInfo[]> {
         const args = {
             taskCountPattern: this.selectors.taskCountPattern,
+            streakProgressPattern: this.selectors.streakProgressPattern,
+            missionExpiryPattern: this.selectors.missionExpiryPattern,
             barePointsPattern: this.selectors.barePointsPattern,
             titleSelectors: this.selectors.titleSelectors,
             completedBadgeSelectors: this.selectors.completedBadgeSelectors
         }
 
         return await page.evaluate(
-            ({ taskCountPattern, barePointsPattern, titleSelectors, completedBadgeSelectors }: typeof args) => {
+            ({
+                taskCountPattern,
+                streakProgressPattern,
+                missionExpiryPattern,
+                barePointsPattern,
+                titleSelectors,
+                completedBadgeSelectors
+            }: typeof args) => {
                 const result: {
                     index: number
                     title: string
@@ -859,28 +889,57 @@ export class ModernUIWorkers {
                 }[] = []
 
                 const taskCountRegex = new RegExp(taskCountPattern, 'i')
+                const streakRegex = new RegExp(streakProgressPattern, 'i')
+                const expiryRegex = new RegExp(missionExpiryPattern, 'i')
                 const barePointsRegex = new RegExp(barePointsPattern, 'i')
 
-                // Find all elements containing the task pattern (X/Y tasks/nhiệm vụ)
-                const allElements = Array.from(document.querySelectorAll('*'))
-                const taskElements = allElements.filter(el => {
-                    const childNodes = Array.from(el.childNodes)
-                    return childNodes.some(node => node.nodeType === 3 && taskCountRegex.test(node.textContent || ''))
-                })
+                // Missions live under <section id="quests">. Scoping here matters:
+                // the Streaks section above it renders captions that look like task
+                // counters ("Search: 1/1") but are daily-reset cards that cannot be
+                // completed by navigating anywhere.
+                const questsSection =
+                    document.querySelector('section#quests') ??
+                    Array.from(document.querySelectorAll('h2')).find(h =>
+                        (h.textContent ?? '').trim().toLowerCase().startsWith('quest')
+                    )?.closest('section') ??
+                    null
+
+                const scope: ParentNode = questsSection ?? document
 
                 const seen = new Set<string>()
+                const results: (typeof result)[number][] = []
 
-                taskElements.forEach((taskEl, i) => {
-                    const el = taskEl as HTMLElement
-                    const fullText = el.textContent?.trim() || ''
+                // 1. Preferred path: real mission anchors (/earn/quest/...).
+                //    These carry the quest slug, its title and its N/M counter.
+                Array.from(
+                    scope.querySelectorAll<HTMLAnchorElement>('a[href*="/earn/quest/"], a[href*="/quest"]')
+                ).forEach(anchor => {
+                    const card = anchor.querySelector('div') ?? anchor
+                    const fullText = (card.textContent ?? '').trim()
+                    if (!fullText) return
 
-                    // Skip if completed badge present in parent elements
-                    let temp: HTMLElement | null = el
+                    // Skip punchcards that need an app/OS install and can never be
+                    // finished by a headless browser; they only burn time.
+                    if (/windows taskbar|thanh taskbar|search bar/i.test(fullText)) return
+
+                    const taskMatch = fullText.match(taskCountRegex)
+                    const streakMatch = fullText.match(streakRegex)
+                    const match = taskMatch ?? streakMatch
+
+                    // Daily streak cards have no "Expires in N days" caption. Only
+                    // punchcards (expiring over days/weeks) are worth opening.
+                    if (!match || !expiryRegex.test(fullText)) return
+
+                    const completedTasks = parseInt(match[1] ?? '0')
+                    const totalTasks = parseInt(match[2] ?? '0')
+                    if (completedTasks >= totalTasks || totalTasks === 0) return
+
                     let isCompleted = false
+                    let temp: HTMLElement | null = card as HTMLElement
                     while (temp && temp.tagName !== 'BODY') {
                         if (
                             completedBadgeSelectors.some(selector => !!temp!.querySelector(selector)) ||
-                            temp.className.toLowerCase().includes('success')
+                            temp.className.toString().toLowerCase().includes('success')
                         ) {
                             isCompleted = true
                             break
@@ -889,49 +948,14 @@ export class ModernUIWorkers {
                     }
                     if (isCompleted) return
 
-                    const taskMatch = fullText.match(taskCountRegex)
-                    if (!taskMatch) return
-
-                    const completedTasks = parseInt(taskMatch[1] ?? '0')
-                    const totalTasks = parseInt(taskMatch[2] ?? '0')
-
-                    if (completedTasks >= totalTasks || totalTasks === 0) return
-
-                    // Traverse up to find the container card/link
-                    let card: HTMLElement | null = el
-                    while (card && card.tagName !== 'BODY') {
-                        if (
-                            card.tagName === 'A' ||
-                            card.getAttribute('role') === 'link' ||
-                            card.tagName === 'LI' ||
-                            card.className.toLowerCase().includes('card') ||
-                            card.className.toLowerCase().includes('item')
-                        ) {
-                            break
-                        }
-                        card = card.parentElement
-                    }
-                    if (!card) card = el.parentElement || el
-
-                    const anchor = card.tagName === 'A' ? (card as HTMLAnchorElement) : card.querySelector('a[href]')
-                    const rawHref = anchor ? (anchor as HTMLAnchorElement).href : card.getAttribute('href') || ''
-                    const href = rawHref.startsWith('http')
-                        ? rawHref
-                        : rawHref
-                          ? `${window.location.origin}${rawHref}`
-                          : ''
-
                     let pointsText = ''
                     card.querySelectorAll('span, div, p').forEach(sub => {
-                        const text = sub.textContent?.trim() || ''
-                        if (/^\+\d+$/.test(text)) pointsText = text
+                        const text = (sub.textContent ?? '').trim()
+                        if (/^\+?\d{1,4}$/.test(text) && sub.children.length === 0) pointsText = `+${text.replace('+', '')}`
                     })
-
                     if (!pointsText) {
-                        const match = (card.textContent || '').match(barePointsRegex)
-                        if (match?.[1] && parseInt(match[1]) > 0) {
-                            pointsText = `+${match[1]}`
-                        }
+                        const bare = fullText.match(barePointsRegex)
+                        if (bare?.[1] && parseInt(bare[1]) > 0) pointsText = `+${bare[1]}`
                     }
 
                     let title = ''
@@ -942,28 +966,128 @@ export class ModernUIWorkers {
                             break
                         }
                     }
-                    if (!title) {
-                        title =
-                            (card.textContent ?? '')
-                                .replace(taskCountRegex, '')
-                                .replace(/\+\d+/, '')
-                                .replace(/Expires in.*?$/i, '')
-                                .trim()
-                                .substring(0, 60) || `Quest_${i}`
-                    }
+                    if (!title) title = fullText.replace(taskCountRegex, '').trim().substring(0, 60) || 'Quest'
 
-                    const dedupeKey = href || title
-                    if (seen.has(dedupeKey)) return
-                    seen.add(dedupeKey)
+                    const href = anchor.href
+                    if (seen.has(href)) return
+                    seen.add(href)
 
-                    result.push({
-                        index: result.length,
-                        title,
-                        points: pointsText || '+0',
-                        totalTasks,
-                        completedTasks,
-                        href
+                    results.push({ index: 0, title, points: pointsText || '+0', totalTasks, completedTasks, href })
+                })
+
+                // 2. Fallback path: the redesign also renders mission cards as
+                //    <button aria-expanded>, resolved by climbing from the counter.
+                //    Only used when no anchor matched, so the primary path wins.
+                if (!results.length) {
+                    const allElements = Array.from(scope.querySelectorAll('*'))
+                    const taskElements = allElements.filter(el => {
+                        const childNodes = Array.from(el.childNodes)
+                        return childNodes.some(
+                            node => node.nodeType === 3 && (taskCountRegex.test(node.textContent || '') || streakRegex.test(node.textContent || ''))
+                        )
                     })
+
+                    taskElements.forEach((taskEl, i) => {
+                        const el = taskEl as HTMLElement
+                        const fullText = el.textContent?.trim() || ''
+                        if (!expiryRegex.test(fullText)) return
+
+                        let isCompleted = false
+                        let temp: HTMLElement | null = el
+                        while (temp && temp.tagName !== 'BODY') {
+                            if (
+                                completedBadgeSelectors.some(selector => !!temp!.querySelector(selector)) ||
+                                temp.className.toString().toLowerCase().includes('success')
+                            ) {
+                                isCompleted = true
+                                break
+                            }
+                            temp = temp.parentElement
+                        }
+                        if (isCompleted) return
+
+                        const match = fullText.match(taskCountRegex) ?? fullText.match(streakRegex)
+                        if (!match) return
+
+                        const completedTasks = parseInt(match[1] ?? '0')
+                        const totalTasks = parseInt(match[2] ?? '0')
+                        if (completedTasks >= totalTasks || totalTasks === 0) return
+
+                        let card: HTMLElement | null = el
+                        while (card && card.tagName !== 'BODY') {
+                            if (
+                                card.tagName === 'A' ||
+                                card.tagName === 'BUTTON' ||
+                                card.getAttribute('role') === 'link' ||
+                                card.tagName === 'LI' ||
+                                card.className.toString().toLowerCase().includes('card') ||
+                                card.className.toString().toLowerCase().includes('item')
+                            ) {
+                                break
+                            }
+                            card = card.parentElement
+                        }
+                        if (!card) card = el.parentElement || el
+
+                        const anchor =
+                            card.tagName === 'A'
+                                ? (card as HTMLAnchorElement)
+                                : card.querySelector('a[href*="/quest"], a[href]')
+                        const rawHref = anchor
+                            ? (anchor as HTMLAnchorElement).href
+                            : card.getAttribute('href') || ''
+                        const href = rawHref.startsWith('http')
+                            ? rawHref
+                            : rawHref
+                              ? `${window.location.origin}${rawHref}`
+                              : ''
+
+                        let pointsText = ''
+                        card.querySelectorAll('span, div, p').forEach(sub => {
+                            const text = sub.textContent?.trim() || ''
+                            if (/^\+\d+$/.test(text)) pointsText = text
+                        })
+
+                        if (!pointsText) {
+                            const bare = (card.textContent || '').match(barePointsRegex)
+                            if (bare?.[1] && parseInt(bare[1]) > 0) pointsText = `+${bare[1]}`
+                        }
+
+                        let title = ''
+                        for (const selector of titleSelectors) {
+                            const titleEl = card.querySelector(selector)
+                            if (titleEl?.textContent?.trim()) {
+                                title = titleEl.textContent.trim().substring(0, 60)
+                                break
+                            }
+                        }
+                        if (!title) {
+                            title =
+                                (card.textContent ?? '')
+                                    .replace(taskCountRegex, '')
+                                    .replace(/\+\d+/, '')
+                                    .replace(/Expires in.*?$/i, '')
+                                    .trim()
+                                    .substring(0, 60) || `Quest_${i}`
+                        }
+
+                        const dedupeKey = href || title
+                        if (seen.has(dedupeKey)) return
+                        seen.add(dedupeKey)
+
+                        results.push({
+                            index: results.length,
+                            title,
+                            points: pointsText || '+0',
+                            totalTasks,
+                            completedTasks,
+                            href
+                        })
+                    })
+                }
+
+                results.forEach((r, i) => {
+                    result.push({ ...r, index: i })
                 })
 
                 return result
@@ -978,29 +1102,45 @@ export class ModernUIWorkers {
         const args = {
             mission,
             missionCardSelectors: this.selectors.missionCardSelectors,
-            taskCountPattern: this.selectors.taskCountPattern
+            taskCountPattern: this.selectors.taskCountPattern,
+            streakProgressPattern: this.selectors.streakProgressPattern
         }
 
-        const clicked = await page.evaluate(({ mission: m, missionCardSelectors, taskCountPattern }: typeof args) => {
-            const taskCountRegex = new RegExp(taskCountPattern, 'i')
-            const elements = document.querySelectorAll(missionCardSelectors.join(', '))
+        const clicked = await page.evaluate(
+            ({ mission: m, missionCardSelectors, taskCountPattern, streakProgressPattern }: typeof args) => {
+                const taskCountRegex = new RegExp(taskCountPattern, 'i')
+                const streakRegex = new RegExp(streakProgressPattern, 'i')
+                const elements = document.querySelectorAll(missionCardSelectors.join(', '))
 
-            for (const el of elements) {
-                const fullText = el.textContent?.trim() || ''
-                if (!taskCountRegex.test(fullText)) continue
-
-                const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
-                const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
-
-                if ((m.href && href === m.href) || (m.title && fullText.includes(m.title))) {
-                    const target = (anchor || el) as HTMLElement
-                    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    target.click()
-                    return true
+                // Prefer the exact quest anchor when one exists: it is unambiguous
+                // and safe to click even if several cards share a similar title.
+                if (m.href && m.href.includes('/quest')) {
+                    const exact = document.querySelector<HTMLAnchorElement>(`a[href="${new URL(m.href).pathname}"]`)
+                    if (exact) {
+                        exact.scrollIntoView({ block: 'center' })
+                        exact.click()
+                        return true
+                    }
                 }
-            }
-            return false
-        }, args)
+
+                for (const el of elements) {
+                    const fullText = el.textContent?.trim() || ''
+                    if (!taskCountRegex.test(fullText) && !streakRegex.test(fullText)) continue
+
+                    const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
+                    const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
+
+                    if ((m.href && href === m.href) || (m.title && fullText.includes(m.title))) {
+                        const target = (anchor || el) as HTMLElement
+                        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        target.click()
+                        return true
+                    }
+                }
+                return false
+            },
+            args
+        )
 
         if (!clicked) {
             // Deliberately no positional fallback: the old code clicked
@@ -1075,6 +1215,19 @@ export class ModernUIWorkers {
         await missionPage.evaluate(() => window.scrollTo(0, 0))
         await this.bot.utils.wait(1000)
 
+        // Punchcards frequently need an external action (open the Windows taskbar,
+        // install the mobile app). Clicking those links navigates away without ever
+        // completing a task, which is what made the whole mission silently stall.
+        // Detect that upfront and report it instead of looping three times.
+        if (await this.isUnreachableMission(missionPage)) {
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'MODERN-MISSIONS',
+                `Skipping "${missionTitle}": requires a desktop taskbar or mobile app action that this browser cannot perform`
+            )
+            return
+        }
+
         const maxAttempts = 3
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const tasks = await this.findMissionSubTasks(missionPage)
@@ -1113,6 +1266,31 @@ export class ModernUIWorkers {
             await missionPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
             await this.bot.utils.wait(3000)
         }
+    }
+
+    /**
+     * Matches missions whose completion requires an OS/app-level action.
+     * These are the "search the Windows taskbar" and "check in on the Bing app"
+     * punchcards: their sub-tasks only render an install/launch prompt, so the
+     * browser can never satisfy them no matter how many times they are clicked.
+     */
+    private async isUnreachableMission(page: Page): Promise<boolean> {
+        return await page.evaluate(() => {
+            const text = (document.body.textContent ?? '').toLowerCase()
+            const markers = [
+                'windows taskbar',
+                'thanh taskbar',
+                'search box on the windows',
+                'hộp tìm kiếm trên thanh',
+                'download the bing app',
+                'tải ứng dụng bing',
+                'install the bing app',
+                'cài đặt ứng dụng bing',
+                'open the bing app',
+                'mở ứng dụng bing'
+            ]
+            return markers.some(marker => text.includes(marker))
+        })
     }
 
     private async findMissionSubTasks(page: Page): Promise<CardInfo[]> {

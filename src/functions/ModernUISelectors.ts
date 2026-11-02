@@ -64,6 +64,12 @@ export const SECTIONS = {
         label: 'Level up activities',
         ids: ['levelup'],
         headings: ['level up', 'nâng cấp', 'thăng hạng']
+    },
+    streaks: {
+        key: 'streaks',
+        label: 'Streaks',
+        ids: ['streaks'],
+        headings: ['streaks', 'chuỗi', 'chuỗi ngày']
     }
 } as const satisfies Record<string, SectionProfile>
 
@@ -124,6 +130,21 @@ export const COMPLETED_BADGE_SELECTORS = [
 /** Lowercased text markers meaning "already completed", per locale. */
 export const COMPLETED_TEXTS = ['completed', 'complete', 'đã hoàn thành', 'hoàn thành', 'hoàn tất'] as const
 
+/**
+ * Streak-card progress labels on the /earn page, e.g. "Search: 1/1",
+ * "Activity: 3/3", "Check-in: 0/1". These live in a caption that sits AFTER
+ * the task-count slot in the DOM, so TASK_COUNT_PATTERN never sees them;
+ * without a dedicated pattern every streak card is skipped.
+ */
+export const STREAK_PROGRESS_PATTERN =
+    '(?:search|activity|check[\\s-]?in|tìm\\s*kiếm|hoạt\\s*động|điểm\\s*danh)\\s*:\\s*(\\d+)\\s*\\/\\s*(\\d+)'
+
+/**
+ * Long-window missions are punchcards that expire in days/weeks, not the
+ * one-search-per-day streak cards. "Expires in 6 days", "Expires in 4 weeks".
+ */
+export const MISSION_EXPIRY_PATTERN = 'expires\\s+in\\s+\\d+\\s+(?:days?|weeks?|hours?|ngày|tuần|giờ)'
+
 /** Lowercased text markers meaning "locked / not eligible", per locale. */
 export const LOCKED_TEXTS = [
     'level required',
@@ -174,6 +195,10 @@ export const SKELETON_SELECTORS = [
 export const MISSION_CARD_SELECTORS = [
     'a[href*="/earn/quest/"]',
     'a[href*="/quest"]',
+    // The May 2026 redesign renders mission cards as <button aria-expanded>
+    // rather than anchors, so an href-only chain never matched them and every
+    // mission reported "Could not locate mission card".
+    'button[aria-expanded][id^="react-aria-"]',
     'a[href]',
     '[role="link"]',
     'div[class*="Card"]',
@@ -225,6 +250,10 @@ export interface EvaluateProfile {
     taskCountPattern: string
     /** Source for the "earn N points" description pattern, multi-locale. */
     earnPointsPattern: string
+    /** Source for streak card progress captions ("Search: 1/1"). */
+    streakProgressPattern: string
+    /** Source for punchcard expiry captions ("Expires in 6 days"). */
+    missionExpiryPattern: string
     /** Source for the bare "N points" pattern, multi-locale. */
     barePointsPattern: string
 }
@@ -254,6 +283,8 @@ export function buildEvaluateProfile(): EvaluateProfile {
         maxCardPoints: MAX_CARD_POINTS,
         taskCountPattern: TASK_COUNT_PATTERN,
         earnPointsPattern: EARN_POINTS_PATTERN,
-        barePointsPattern: BARE_POINTS_PATTERN
+        barePointsPattern: BARE_POINTS_PATTERN,
+        streakProgressPattern: STREAK_PROGRESS_PATTERN,
+        missionExpiryPattern: MISSION_EXPIRY_PATTERN
     }
 }
