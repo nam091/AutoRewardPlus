@@ -69,3 +69,13 @@ test('mission card selectors include the button-based redesign', () => {
     )
     assert.ok(MISSION_CARD_SELECTORS.some(selector => selector.includes('/earn/quest/')))
 })
+
+test('completion probe must stop at the section boundary', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'functions', 'ModernUIWorkers.ts'), 'utf8')
+
+    // Walking parents past <section> reached <main>, where the already-completed
+    // Daily Set cards expose success badges. Every punchcard then looked finished
+    // and was dropped before it could be clicked, so Quests never ran.
+    const guards = src.match(/if \(temp\.tagName === 'SECTION'\) break/g) || []
+    assert.strictEqual(guards.length, 2, 'both mission scanners need the section-boundary guard')
+})

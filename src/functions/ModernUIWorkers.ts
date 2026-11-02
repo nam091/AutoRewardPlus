@@ -944,6 +944,11 @@ export class ModernUIWorkers {
                             isCompleted = true
                             break
                         }
+                        // Stop at the section boundary. Walking past it reached
+                        // <main>, whose completed Daily Set cards carry success
+                        // badges, so every punchcard looked already finished and
+                        // was dropped before it could be clicked.
+                        if (temp.tagName === 'SECTION') break
                         temp = temp.parentElement
                     }
                     if (isCompleted) return
@@ -1002,6 +1007,7 @@ export class ModernUIWorkers {
                                 isCompleted = true
                                 break
                             }
+                            if (temp.tagName === 'SECTION') break
                             temp = temp.parentElement
                         }
                         if (isCompleted) return
