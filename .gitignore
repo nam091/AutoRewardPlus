@@ -24,4 +24,5 @@ bun.lock
 *.key
 *.pem
 erudite-realm-*.json
-service-account.json
+service-account.json# Local batch imports must never reach the remote (contains credentials)
+newaccounts.json
