@@ -39,7 +39,8 @@ export class StateService {
     public getStates(): AccountState[] {
         try {
             if (fs.existsSync(this.dbPath)) {
-                return JSON.parse(fs.readFileSync(this.dbPath, 'utf-8'))
+                const stored: AccountState[] = JSON.parse(fs.readFileSync(this.dbPath, 'utf-8'))
+                return this.syncWithAccounts(stored)
             }
         } catch (error) {
             console.error('[StateService] Error reading state DB:', error)
@@ -47,6 +48,30 @@ export class StateService {
 
         // Initialize from accounts.json
         return this.initializeFromAccounts()
+    }
+
+    /**
+     * Reconciles the persisted DB with accounts.json.
+     *
+     * db.json is also the dashboard cache. Reading it verbatim meant accounts
+     * added to accounts.json never appeared in the UI, and accounts removed
+     * (banned nicknames) lingered forever. New entries are appended as IDLE and
+     * entries whose account no longer exists are dropped.
+     */
+    private syncWithAccounts(stored: AccountState[]): AccountState[] {
+        const known = this.initializeFromAccounts()
+        const byEmail = new Map(stored.map(s => [s.email.toLowerCase(), s]))
+
+        const merged: AccountState[] = []
+        for (const state of known) {
+            const hit = byEmail.get(state.email.toLowerCase())
+            merged.push(hit ? hit : state)
+        }
+
+        if (merged.length !== stored.length) {
+            this.saveStates(merged)
+        }
+        return merged
     }
 
     public saveStates(states: AccountState[]) {
