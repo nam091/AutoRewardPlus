@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket'
 import fastifyStatic from '@fastify/static'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { timingSafeEqual } from 'node:crypto'
 
 import axios from 'axios'
@@ -70,6 +71,8 @@ export class DashboardServer {
     private readonly host = process.env.DASHBOARD_HOST?.trim() || '127.0.0.1'
     private readonly logSubscribers: Set<DashboardSocket> = new Set()
     private accounts: AccountStatus[] = []
+    private liveCheckAt = 0
+    private liveCheckResult = false
 
     constructor() {
         this.processManager = new ProcessManager({ cwd: process.cwd() })
@@ -107,11 +110,16 @@ export class DashboardServer {
     }
 
     private loadAccounts(): void {
-        try {
-            const isProcessActive = this.processManager.getStatus().active
+        try {            const isProcessActive = this.processManager.getStatus().active
             const states = stateService.getStates()
             this.accounts = states.map((state, index) => {
-                const effectiveStatus = (!isProcessActive && state.status === 'RUNNING') ? 'IDLE' : state.status
+                // A row is only stale if no bot process is alive AND we are not
+                // mid-run. The old check relied purely on the child process this
+                // dashboard had spawned, so a run started from the CLI (or any
+                // process the dashboard did not fork) showed every account as
+                // IDLE although db.json still said RUNNING.
+                const staleRunning = state.status === 'RUNNING' && !isProcessActive && !this.hasLiveBotProcess()
+                const effectiveStatus = staleRunning ? 'IDLE' : state.status
                 return {
                     id: index + 1,
                     email: state.email,
@@ -145,6 +153,32 @@ export class DashboardServer {
                 `Error loading accounts: ${error instanceof Error ? error.message : String(error)}`
             )
         }
+    }
+
+    /**
+     * True when any bot process is alive, whoever started it.
+     *
+     * The dashboard normally forks the bot itself, but a run can also be kicked
+     * off from a shell, a cron entry or the Windows control center. In those
+     * cases `processManager` has no child handle and every account would be
+     * reported IDLE even though db.json still says RUNNING.
+     */
+    private hasLiveBotProcess(): boolean {
+        const now = Date.now()
+        if (now - this.liveCheckAt < 5000) return this.liveCheckResult
+        this.liveCheckAt = now
+
+        try {
+            const out = execFileSync('pgrep', ['-af', 'dist/index.js'], { encoding: 'utf-8', timeout: 2000 })
+            this.liveCheckResult = out
+                .split('\n')
+                .map(line => line.trim())
+                .some(line => line.length > 0 && !line.includes('pgrep') && !line.includes('dist/dashboard'))
+        } catch {
+            // pgrep exits 1 when nothing matches, and is absent on Windows
+            this.liveCheckResult = false
+        }
+        return this.liveCheckResult
     }
 
     private applyProcessStatus(status: ProcessStatus): void {
