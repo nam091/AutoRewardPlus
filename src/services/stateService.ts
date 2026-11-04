@@ -46,8 +46,8 @@ export class StateService {
             console.error('[StateService] Error reading state DB:', error)
         }
 
-        // Initialize from accounts.json
-        return this.initializeFromAccounts()
+        // No database yet: seed it once from accounts.json
+        return this.initializeFromAccounts({ persist: true })
     }
 
     /**
@@ -57,20 +57,21 @@ export class StateService {
      * added to accounts.json never appeared in the UI, and accounts removed
      * (banned nicknames) lingered forever. New entries are appended as IDLE and
      * entries whose account no longer exists are dropped.
+     *
+     * IMPORTANT: this must never persist on read. The previous version called
+     * initializeFromAccounts(), which wrote a zeroed row set to disk as a side
+     * effect, so every dashboard poll silently wiped real points/streaks.
      */
     private syncWithAccounts(stored: AccountState[]): AccountState[] {
-        const known = this.initializeFromAccounts()
+        const blankTemplates = this.initializeFromAccounts({ persist: false })
         const byEmail = new Map(stored.map(s => [s.email.toLowerCase(), s]))
 
         const merged: AccountState[] = []
-        for (const state of known) {
-            const hit = byEmail.get(state.email.toLowerCase())
-            merged.push(hit ? hit : state)
+        for (const template of blankTemplates) {
+            const hit = byEmail.get(template.email.toLowerCase())
+            merged.push(hit ? hit : template)
         }
 
-        if (merged.length !== stored.length) {
-            this.saveStates(merged)
-        }
         return merged
     }
 
@@ -139,7 +140,14 @@ export class StateService {
         this.saveStates(states)
     }
 
-    private initializeFromAccounts(): AccountState[] {
+    /**
+     * Builds blank IDLE rows from accounts.json.
+     *
+     * `persist` defaults to false: seeding a fresh database and reconciling an
+     * existing one both read this, and only the former may touch the disk.
+     */
+    private initializeFromAccounts(options: { persist?: boolean } = {}): AccountState[] {
+        const { persist = false } = options
         try {
             const candidates = [
                 path.resolve('dist/accounts.json'),
@@ -173,7 +181,7 @@ export class StateService {
                     geoLocale: acc.geoLocale || 'vn',
                     proxy: acc.proxy?.url ? `${acc.proxy.url}:${acc.proxy.port}` : defaultProxyStr
                 }))
-                this.saveStates(states)
+                if (persist) this.saveStates(states)
                 return states
             }
         } catch (error) {
