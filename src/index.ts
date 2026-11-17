@@ -261,9 +261,9 @@ export class MicrosoftRewardsBot {
                 resumeEmail =
                     stateService
                         .getStates()
-                        .find(s => s.status === 'ERROR' && (s.updatedAt || '').includes(stamp))?.email || null
+                        .find(s => ['ERROR', 'RUNNING'].includes(s.status) && (s.updatedAt || '').includes(stamp))?.email || null
                 if (resumeEmail) {
-                    this.logger.info('main', 'RESUME', `No checkpoint file — using today's ERROR row: ${resumeEmail}`)
+                    this.logger.info('main', 'RESUME', `No checkpoint file — using today's unfinished row: ${resumeEmail}`)
                 }
             }
 

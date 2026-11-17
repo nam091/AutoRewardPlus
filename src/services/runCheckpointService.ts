@@ -58,15 +58,12 @@ export class RunCheckpointService {
         // An error is more important than a start: keep it if this account is
         // already the checkpoint, and never overwrite an error with a later
         // successful account's start within the same run.
+        // The first failure of a batch is the most useful resume point. Later
+        // accounts may also fail, but restarting from the earliest one avoids
+        // skipping the account that actually broke the run.
         const previous = this.load()
-        if (
-            previous &&
-            previous.date === localDay(date) &&
-            previous.reason === 'error' &&
-            reason === 'started' &&
-            previous.email.toLowerCase() !== email.toLowerCase()
-        ) {
-            return
+        if (previous && previous.date === localDay(date) && previous.reason === 'error') {
+            if (previous.email.toLowerCase() !== email.toLowerCase() || reason === 'error') return
         }
 
         this.write({ date: localDay(date), email, reason, updatedAt: date.toISOString() })

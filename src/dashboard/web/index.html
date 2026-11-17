@@ -100,7 +100,7 @@
                 <button onclick="setStatusFilter('ALL')" class="filter-btn active px-3 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white" data-filter="ALL">Tất cả</button>
                 <button onclick="setStatusFilter('RUNNING')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="RUNNING">Đang chạy</button>
                 <button onclick="setStatusFilter('OK')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="OK">OK</button>
-                <button onclick="setStatusFilter('SUSPENDED')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="SUSPENDED">Bị đình chỉ</button>
+                <button id="filterSuspended" onclick="setStatusFilter('SUSPENDED')" class="filter-btn hidden px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="SUSPENDED">Bị đình chỉ</button>
                 <button onclick="setStatusFilter('ERROR')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="ERROR">Lỗi</button>
                 <button onclick="setStatusFilter('IDLE')" class="filter-btn px-3 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="IDLE">Chờ</button>
             </div>
@@ -213,6 +213,8 @@
                             ? '🙈 Ẩn acc bị ban'
                             : `👁 Acc bị ban (${hiddenBannedCount})`;
                     }
+                    const suspendedTab = document.getElementById('filterSuspended');
+                    if (suspendedTab) suspendedTab.classList.toggle('hidden', !showBanned);
                     filterAccounts();
                 }
             } catch (err) {
