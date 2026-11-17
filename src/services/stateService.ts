@@ -2,6 +2,8 @@ import cluster from 'cluster'
 import fs from 'fs'
 import path from 'path'
 
+import { runCheckpointService } from './runCheckpointService'
+
 export interface AccountState {
     email: string
     totalPoints: number
@@ -113,6 +115,15 @@ export class StateService {
     /** Writes a state change to disk. Primary process only. */
     public applyAccountState(email: string, update: Partial<AccountState>) {
         const states = this.getStates()
+
+        // Checkpoint writes are primary-only: workers forward their state
+        // updates here over IPC, so this is the single safe write point.
+        if (update.status === 'RUNNING') {
+            runCheckpointService.mark(email, 'started')
+        } else if (update.status === 'ERROR') {
+            runCheckpointService.mark(email, 'error')
+        }
+
         const idx = states.findIndex(s => s.email.toLowerCase() === email.toLowerCase())
         if (idx !== -1) {
             states[idx] = { ...states[idx]!, ...update, updatedAt: new Date().toLocaleString('vi-VN') }

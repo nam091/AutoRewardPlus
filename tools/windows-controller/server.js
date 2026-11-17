@@ -226,14 +226,14 @@ const HTML_CONTENT = `<!DOCTYPE html>
                         </span>
                     </div>
                     <p class="text-xs text-slate-400 mt-1">
-                        Tự động khởi động ngầm trong khay hệ thống (System Tray) khi bật máy, duy trì Residential Proxy :10808 cho VPS hoạt động 24/7 mà không làm phiền màn hình.
+                        Tự động khởi động Web Control Center và Residential Proxy :10808 khi bật máy, không cần ứng dụng desktop hay khay hệ thống.
                     </p>
                 </div>
 
                 <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
                     <div class="text-xs text-slate-300">
-                        <div class="font-medium">Chế độ chạy ngầm System Tray</div>
-                        <div class="text-[11px] text-slate-500">AutoRewardPlus.exe --silent</div>
+                        <div class="font-medium">Web Control Center (không dùng tray)</div>
+                        <div class="text-[11px] text-slate-500">AutoReward-WebControl.bat --silent</div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input id="toggleAutostart" type="checkbox" onchange="toggleAutostart(this.checked)" class="sr-only peer">

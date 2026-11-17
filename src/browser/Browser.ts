@@ -215,6 +215,16 @@ class Browser {
     }
 
     private async checkProxyReachable(proxy: AccountProxy, timeoutMs = 3500): Promise<boolean> {
+        // A single TCP probe is sensitive to brief Windows/proxy restarts.
+        // Retry twice so a transient blip does not mark every account ERROR.
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            if (await this.probeProxy(proxy, timeoutMs)) return true
+            if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+        }
+        return false
+    }
+
+    private probeProxy(proxy: AccountProxy, timeoutMs: number): Promise<boolean> {
         return new Promise(resolve => {
             try {
                 let host = proxy.url

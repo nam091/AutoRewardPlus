@@ -31,6 +31,7 @@ import type { AppDashboardData } from './interface/AppDashBoardData'
 import type { AppEarnablePoints } from './interface/Points'
 import { sheetService } from './services/sheetService'
 import { isStateUpdateMessage, stateService } from './services/stateService'
+import { runCheckpointService } from './services/runCheckpointService'
 import { getAccountStartDelayMs, maskAccount } from './browser/humanize/BehaviorPolicy'
 
 interface ExecutionContext {
@@ -242,6 +243,44 @@ export class MicrosoftRewardsBot {
                 this.logger.warn('main', 'FILTER', `Target account ${targetEmail} not found in accounts.json, running all`)
             }
         }
+
+        // A single-account run is an explicit user choice and must not move
+        // the batch resume point. Batch runs resume from the last account they
+        // reached on the same local day.
+        const batchRun = this.accounts.length > 1
+        runCheckpointService.enabled = batchRun
+        if (batchRun) {
+            let resumeEmail = runCheckpointService.getResumeEmail()
+
+            // First launch after adding the checkpoint feature (or after the
+            // file was lost): fall back to today's first ERROR row still in
+            // db.json so the batch starts where the previous run broke.
+            if (!resumeEmail) {
+                const today = new Date()
+                const stamp = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`
+                resumeEmail =
+                    stateService
+                        .getStates()
+                        .find(s => s.status === 'ERROR' && (s.updatedAt || '').includes(stamp))?.email || null
+                if (resumeEmail) {
+                    this.logger.info('main', 'RESUME', `No checkpoint file — using today's ERROR row: ${resumeEmail}`)
+                }
+            }
+
+            if (resumeEmail) {
+                const idx = this.accounts.findIndex(a => a.email.toLowerCase() === resumeEmail.toLowerCase())
+                if (idx >= 0) {
+                    // Only run this account and the ones after it. Accounts
+                    // before the checkpoint already succeeded this day.
+                    this.accounts = this.accounts.slice(idx)
+                    this.logger.info(
+                        'main',
+                        'RESUME',
+                        `Same-day resume: starting from ${resumeEmail} (${idx + 1}/${this.accounts.length})`
+                    )
+                }
+            }
+        }
     }
 
     async run(): Promise<void> {
@@ -364,6 +403,18 @@ export class MicrosoftRewardsBot {
 
                 await this.syncToGoogleSheets(allAccountStats)
                 await flushAllWebhooks()
+
+                const runnableCount = stateService
+                    .getStates()
+                    .filter(s => this.accounts.some(a => a.email.toLowerCase() === s.email.toLowerCase()) && s.status !== 'SUSPENDED')
+                    .length
+                const allSucceeded =
+                    allAccountStats.length >= runnableCount &&
+                    allAccountStats.every(stat => stat.success)
+                if (allSucceeded && !hadWorkerFailure) {
+                    runCheckpointService.clear()
+                    this.logger.info('main', 'RESUME-CLEAR', 'Full batch succeeded — checkpoint cleared')
+                }
 
                 process.exit(hadWorkerFailure ? 1 : 0)
             }
@@ -621,6 +672,16 @@ export class MicrosoftRewardsBot {
 
             await this.syncToGoogleSheets(accountStats)
             await flushAllWebhooks()
+
+            const runnableCount = stateService
+                .getStates()
+                .filter(s => this.accounts.some(a => a.email.toLowerCase() === s.email.toLowerCase()) && s.status !== 'SUSPENDED')
+                .length
+            if (accountStats.length >= runnableCount && accountStats.every(stat => stat.success)) {
+                runCheckpointService.clear()
+                this.logger.info('main', 'RESUME-CLEAR', 'Full batch succeeded — checkpoint cleared')
+            }
+
             process.exit(0)
         }
 

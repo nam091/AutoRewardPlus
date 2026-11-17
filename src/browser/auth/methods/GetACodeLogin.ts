@@ -42,6 +42,12 @@ export class CodeLogin {
         try {
             this.bot.logger.info(this.bot.isMobile, 'LOGIN-CODE', 'Code login authentication requested')
 
+            // Unattended runs have stdin set to 'ignore' by the dashboard. A
+            // 5-minute prompt would only produce a misleading timeout error.
+            if (!process.stdin.isTTY) {
+                throw new Error('[OTP-REQUIRED] Microsoft yêu cầu mã xác minh qua email. Chạy công cụ đăng nhập tương tác để nhập mã.')
+            }
+
             const emailMessage = await getSubtitleMessage(page)
             if (emailMessage) {
                 this.bot.logger.info(this.bot.isMobile, 'LOGIN-CODE', `Page message: "${emailMessage}"`)

@@ -9,6 +9,7 @@ import { timingSafeEqual } from 'node:crypto'
 
 import axios from 'axios'
 import { stateService } from '../services/stateService'
+import { runCheckpointService } from '../services/runCheckpointService'
 import { sheetService } from '../services/sheetService'
 import { ProcessManager, type LogLevel, type ProcessStatus, type RunLogEntry } from './processManager'
 import { DiagnosticService } from './diagnosticService'
@@ -109,10 +110,12 @@ export class DashboardServer {
         })
     }
 
-    private loadAccounts(): void {
-        try {            const isProcessActive = this.processManager.getStatus().active
+    private loadAccounts(includeBanned = false): void {
+        try {
+            const isProcessActive = this.processManager.getStatus().active
             const states = stateService.getStates()
-            this.accounts = states.map((state, index) => {
+            const visibleStates = includeBanned ? states : states.filter(s => s.status !== 'SUSPENDED')
+            this.accounts = visibleStates.map((state, index) => {
                 // A row is only stale if no bot process is alive AND we are not
                 // mid-run. The old check relied purely on the child process this
                 // dashboard had spawned, so a run started from the CLI (or any
@@ -236,9 +239,17 @@ export class DashboardServer {
             this.app.register(fastifyStatic, { root: webDir, prefix: '/' })
         }
 
-        this.app.get('/api/accounts', async () => {
-            this.loadAccounts()
-            return { success: true, data: this.accounts }
+        this.app.get<{ Querystring: { showBanned?: string } }>('/api/accounts', async request => {
+            const includeBanned = request.query.showBanned === '1' || request.query.showBanned === 'true'
+            this.loadAccounts(includeBanned)
+            return {
+                success: true,
+                data: this.accounts,
+                meta: {
+                    bannedCount: stateService.getStates().filter(s => s.status === 'SUSPENDED').length,
+                    resumeEmail: runCheckpointService.getResumeEmail()
+                }
+            }
         })
 
         this.app.get('/api/status', async () => ({ success: true, data: this.processManager.getStatus() }))

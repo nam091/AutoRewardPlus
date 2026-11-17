@@ -209,15 +209,12 @@ class WindowsController {
     static setAutostart(enabled) {
         const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
         const rootDir = path.resolve(__dirname, '../../');
-        let exePath = path.join(rootDir, 'AutoRewardPlus.exe');
-        if (!fs.existsSync(exePath)) {
-            exePath = path.join(rootDir, 'AutoRewardControl.exe');
-        }
+        const launcher = path.join(rootDir, 'AutoReward-WebControl.bat');
 
         if (enabled) {
-            const cmd = `reg add "${regKey}" /v "AutoRewardPlus" /t REG_SZ /d "\"${exePath}\" --silent" /f`;
+            const cmd = `reg add "${regKey}" /v "AutoRewardPlus" /t REG_SZ /d "\"${launcher}\" --silent" /f`;
             execSync(cmd, { stdio: 'ignore', timeout: 5000 });
-            return { success: true, enabled: true, message: 'Đã kích hoạt tự động chạy cùng Windows (khay hệ thống).' };
+            return { success: true, enabled: true, message: 'Đã kích hoạt tự động khởi động web control center cùng Windows.' };
         } else {
             try {
                 const cmd = `reg delete "${regKey}" /v "AutoRewardPlus" /f`;

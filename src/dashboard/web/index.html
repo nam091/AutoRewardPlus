@@ -55,8 +55,12 @@
                 <button onclick="fetchAccounts()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium rounded-xl transition flex items-center gap-1.5">
                     🔄 Làm mới
                 </button>
+                <button id="btnShowBanned" onclick="toggleBanned()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium rounded-xl transition">
+                    👁 Acc bị ban (0)
+                </button>
             </div>
         </header>
+        <div id="resumeHint" class="hidden text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/40 px-4 py-2 rounded-lg"></div>
 
         <!-- KPI Summary Cards -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
@@ -156,6 +160,9 @@
     <script>
         let allAccounts = [];
         let currentFilter = 'ALL';
+        let showBanned = false;
+        let hiddenBannedCount = 0;
+        let resumeEmail = '';
 
         function showToast(msg, icon = 'ℹ️') {
             const toast = document.getElementById('toast');
@@ -189,15 +196,34 @@
 
         async function fetchAccounts() {
             try {
-                const res = await fetch('/api/accounts');
+                const res = await fetch('/api/accounts' + (showBanned ? '?showBanned=1' : ''));
                 const json = await res.json();
                 if (json.success) {
                     allAccounts = json.data;
+                    hiddenBannedCount = Number(json.meta?.bannedCount || 0);
+                    resumeEmail = json.meta?.resumeEmail || '';
+                    const resumeEl = document.getElementById('resumeHint');
+                    if (resumeEl) {
+                        resumeEl.textContent = resumeEmail ? `Sẽ chạy tiếp từ: ${resumeEmail}` : '';
+                        resumeEl.classList.toggle('hidden', !resumeEmail);
+                    }
+                    const bannedBtn = document.getElementById('btnShowBanned');
+                    if (bannedBtn) {
+                        bannedBtn.textContent = showBanned
+                            ? '🙈 Ẩn acc bị ban'
+                            : `👁 Acc bị ban (${hiddenBannedCount})`;
+                    }
                     filterAccounts();
                 }
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        function toggleBanned() {
+            showBanned = !showBanned;
+            if (!showBanned && currentFilter === 'SUSPENDED') setStatusFilter('ALL');
+            else fetchAccounts();
         }
 
         function setStatusFilter(filter) {
@@ -244,9 +270,9 @@
                 if (acc.status === 'SUSPENDED') suspended++;
             });
 
-            document.getElementById('totalAccounts').textContent = allAccounts.length;
+            document.getElementById('totalAccounts').textContent = allAccounts.length + (showBanned ? 0 : hiddenBannedCount);
             document.getElementById('activeAccounts').textContent = active;
-            document.getElementById('errorAccounts').textContent = errors + (suspended ? ` (${suspended} bị ban)` : '');
+            document.getElementById('errorAccounts').textContent = errors;
             document.getElementById('totalDailyPoints').textContent = `+${totalDaily.toLocaleString('vi-VN')}`;
             document.getElementById('totalAccumulatedPoints').textContent = totalAccumulated.toLocaleString('vi-VN');
 
@@ -328,9 +354,10 @@
                         <td class="py-2.5 px-2.5 whitespace-nowrap">${goalDisplay}</td>
                         <td class="py-2.5 px-2 whitespace-nowrap">${proxyDisplay}</td>
                         <td class="py-2.5 px-2.5 text-center whitespace-nowrap">
-                            <span class="px-2 py-0.5 rounded-full font-sans font-semibold text-[10px] ${statusColor}">
+                            <span class="px-2 py-0.5 rounded-full font-sans font-semibold text-[10px] ${statusColor}" title="${(acc.lastError || '').replace(/"/g, '&quot;')}">
                                 ${acc.status}
                             </span>
+                            ${acc.status === 'ERROR' && acc.lastError ? `<div class="text-[9px] text-rose-300/80 max-w-[140px] truncate mx-auto" title="${acc.lastError.replace(/"/g, '&quot;')}">${acc.lastError.replace(/</g, '&lt;')}</div>` : ''}
                         </td>
                         <td class="py-2.5 px-2 whitespace-nowrap text-right" title="${acc.updatedAt || ''}">
                             <div class="text-[11px] text-slate-300 leading-tight">${timePart}</div>
