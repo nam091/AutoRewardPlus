@@ -945,6 +945,7 @@ export class ModernUIWorkers {
                 const scopes: ParentNode[] = hasQuestsSection ? questContainers : [document]
 
                 const isTriggerOrInfoControl = (el: HTMLElement): boolean => {
+                    if (el.closest('[hidden], [aria-hidden="true"], [inert], template')) return true
                     if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) return true
                     if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return true
                     if (
@@ -1421,26 +1422,21 @@ export class ModernUIWorkers {
         const beforeClickUrl = page.url()
         const targetLocator = page.locator('[data-arp-mission-target="1"]').first()
 
-        if (locateResult.isButtonControl) {
-            const clickedViaLocator = await targetLocator
-                .click({ timeout: 5000 })
-                .then(() => true)
-                .catch(() => false)
-            if (!clickedViaLocator) {
-                await page.evaluate(() => {
-                    const el = document.querySelector<HTMLElement>('[data-arp-mission-target="1"]')
-                    el?.click()
-                })
-            }
-        } else {
+        const clickedViaLocator = await targetLocator
+            .click({ timeout: 5000 })
+            .then(() => true)
+            .catch(() => false)
+        if (!clickedViaLocator) {
             await page.evaluate(() => {
                 const el = document.querySelector<HTMLElement>('[data-arp-mission-target="1"]')
                 el?.click()
             })
+        }
+        if (!locateResult.isButtonControl) {
             await this.bot.utils.wait(600)
-            // Fallback to Playwright Locator click if DOM click did not trigger navigation or tab or expansion
+            // Fallback to DOM click if Playwright Locator click did not trigger navigation or tab or expansion
             const currentTabs = page.context().pages().length
-            const sameUrl = page.url() === beforeClickUrl
+            const sameUrl = this.normalizeUrlWithoutHash(page.url()) === this.normalizeUrlWithoutHash(beforeClickUrl)
             const expandedNow = await page
                 .evaluate(() => {
                     const el = document.querySelector('[data-arp-mission-target="1"]')
@@ -1448,7 +1444,7 @@ export class ModernUIWorkers {
                     return el?.getAttribute('aria-expanded') === 'true' || hasDialog
                 })
                 .catch(() => false)
-            if (currentTabs <= 1 && sameUrl && !expandedNow) {
+            if (currentTabs <= 1 && sameUrl && !expandedNow && !clickedViaLocator) {
                 await targetLocator.click({ timeout: 5000 }).catch(() => {})
             }
         }
@@ -1466,7 +1462,8 @@ export class ModernUIWorkers {
             await page.waitForLoadState('domcontentloaded').catch(() => {})
             await this.bot.utils.wait(2000)
             const currentUrl = page.url()
-            const hasNavigated = !currentUrl.endsWith('/earn') && !currentUrl.endsWith('/earn/')
+            const hasNavigated =
+                this.normalizeUrlWithoutHash(currentUrl) !== this.normalizeUrlWithoutHash(beforeClickUrl)
             const isQuestPage =
                 currentUrl.includes('/quest') ||
                 currentUrl.includes('/mission') ||
@@ -1478,7 +1475,10 @@ export class ModernUIWorkers {
 
                 await this.completeMissionTasks(page, mission.title)
 
-                await page.goto('https://rewards.bing.com/earn', {
+                const returnEarnUrl = beforeClickUrl.startsWith('http')
+                    ? beforeClickUrl
+                    : 'https://rewards.bing.com/earn'
+                await page.goto(returnEarnUrl, {
                     waitUntil: 'domcontentloaded',
                     timeout: 30000
                 })
@@ -1630,8 +1630,10 @@ export class ModernUIWorkers {
             } else {
                 // Ensure we are back on missionUrl before reloading to check progress
                 if (this.normalizeUrlWithoutHash(missionPage.url()) !== this.normalizeUrlWithoutHash(missionUrl)) {
-                    await missionPage.goto(missionUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
-                } else {
+                    if (/^https?:/i.test(missionUrl)) {
+                        await missionPage.goto(missionUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                    }
+                } else if (/^https?:/i.test(missionUrl)) {
                     await missionPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
                 }
                 await this.bot.utils.wait(3000)
@@ -1888,16 +1890,11 @@ export class ModernUIWorkers {
 
                     if (matches) {
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                        const isButton = el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
-                        if (isButton) {
-                            el.setAttribute('data-arp-subtask-target', '1')
-                            return { matched: true, isButton: true }
-                        }
-                        el.click()
-                        return { matched: true, isButton: false }
+                        el.setAttribute('data-arp-subtask-target', '1')
+                        return { matched: true }
                     }
                 }
-                return { matched: false, isButton: false }
+                return { matched: false }
             },
             args
         )
@@ -1913,27 +1910,28 @@ export class ModernUIWorkers {
             return false
         }
 
-        if (clickMeta.isButton) {
-            const clickedViaLocator = await page
-                .locator('[data-arp-subtask-target="1"]')
-                .first()
-                .click({ timeout: 5000 })
-                .then(() => true)
-                .catch(() => false)
-            if (!clickedViaLocator) {
-                await page.evaluate(() => {
+        const clickedViaLocator = await page
+            .locator('[data-arp-subtask-target="1"]')
+            .first()
+            .click({ timeout: 5000 })
+            .then(() => true)
+            .catch(() => false)
+        if (!clickedViaLocator) {
+            await page
+                .evaluate(() => {
                     const el = document.querySelector<HTMLElement>('[data-arp-subtask-target="1"]')
                     el?.click()
                 })
-            }
-            await page
-                .evaluate(() => {
-                    document
-                        .querySelectorAll('[data-arp-subtask-target]')
-                        .forEach(el => el.removeAttribute('data-arp-subtask-target'))
-                })
                 .catch(() => {})
+            await page.waitForLoadState('domcontentloaded').catch(() => {})
         }
+        await page
+            .evaluate(() => {
+                document
+                    .querySelectorAll('[data-arp-subtask-target]')
+                    .forEach(el => el.removeAttribute('data-arp-subtask-target'))
+            })
+            .catch(() => {})
 
         this.bot.logger.info(
             this.bot.isMobile,
