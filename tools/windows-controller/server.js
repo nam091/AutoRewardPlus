@@ -11,264 +11,324 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutoRewardPlus - Windows Control & Proxy Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
+                        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace']
                     }
                 }
             }
         }
     </script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
         body {
-            background-color: #070b12;
+            background-color: #070a10;
             background-image:
-                radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.08) 0px, transparent 50%),
-                radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
-            background-attachment: fixed;
-            font-family: 'Inter', system-ui, sans-serif;
+                radial-gradient(ellipse 80% 50% at 15% -10%, rgba(16, 185, 129, 0.08), transparent),
+                radial-gradient(ellipse 60% 40% at 90% 0%, rgba(6, 182, 212, 0.06), transparent);
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
         }
-        .glass-card {
-            background: rgba(15, 23, 42, 0.72);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        .panel {
+            background: rgba(13, 19, 32, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -16px rgba(0, 0, 0, 0.7);
         }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
-        ::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.8); border-radius: 9999px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #263248; border-radius: 999px; }
     </style>
 </head>
-<body class="text-slate-100 min-h-screen p-4 md:p-6 antialiased selection:bg-cyan-500 selection:text-white">
-    <div class="max-w-7xl mx-auto space-y-5">
+<body class="text-slate-100 min-h-[100dvh] p-4 sm:p-6 antialiased selection:bg-emerald-500/30">
+    <div class="max-w-[1540px] mx-auto space-y-5">
 
-        <!-- Header Bar -->
-        <header class="glass-card p-4 md:p-5 rounded-2xl shadow-2xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <!-- Top App Bar -->
+        <header class="panel rounded-2xl p-4 sm:px-5 sm:py-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div class="flex items-center gap-3.5">
-                <div class="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 flex items-center justify-center font-extrabold text-white text-xl shadow-lg shadow-cyan-500/25 border border-white/20">
-                    ⚡
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center font-extrabold text-slate-950 text-base shadow-lg shadow-emerald-500/20">
+                    R+
                 </div>
                 <div>
-                    <div class="flex items-center gap-2">
-                        <h1 class="text-lg md:text-xl font-bold bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">AutoRewardPlus Control Center</h1>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">Proxy + VPS</span>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">AutoRewardPlus Windows Center</h1>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/10">v7.2.2</span>
                     </div>
-                    <p class="text-xs text-slate-400">Windows Residential Tunnel (:10808) &bull; Oracle Cloud VPS Controller (:3030)</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Windows Residential Proxy (:10808) &bull; Oracle Cloud VPS (:3030)</p>
                 </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                <div id="tsBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
+                <div id="tsBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#070a10] border border-white/10 text-xs text-slate-300">
                     <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
-                    <span class="font-medium">Tailscale: Checking...</span>
+                    <span>Tailscale: Checking...</span>
                 </div>
-                <div id="proxyBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
+                <div id="proxyBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#070a10] border border-white/10 text-xs text-slate-300">
                     <span class="w-2 h-2 rounded-full bg-slate-500"></span>
-                    <span class="font-medium">Proxy: Checking...</span>
+                    <span>Proxy: Checking...</span>
                 </div>
-                <div id="vpsBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
+                <div id="vpsBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#070a10] border border-white/10 text-xs text-slate-300">
                     <span class="w-2 h-2 rounded-full bg-slate-500"></span>
-                    <span class="font-medium">VPS: Connecting...</span>
+                    <span>VPS: Connecting...</span>
                 </div>
-                <button onclick="refreshData()" class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-medium rounded-xl transition flex items-center gap-1.5">
-                    <span id="refreshIcon">🔄</span>
+                <button onclick="openVpsDashboard()" class="px-3.5 py-1.5 bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 border border-white/10 text-xs font-semibold rounded-xl transition">
+                    Mở Dashboard VPS (:3030)
+                </button>
+                <button onclick="refreshData()" class="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+                    <span id="refreshIcon">↻</span>
                     <span>Làm mới</span>
                 </button>
             </div>
         </header>
 
-        <!-- Active Single-Run Pool Bar -->
-        <div id="singlePoolBar" class="hidden glass-card p-3.5 rounded-2xl border border-cyan-500/30 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div class="flex flex-wrap items-center gap-2" id="singlePoolItems"></div>
-            <button onclick="triggerAction('stop')" class="px-3 py-1 bg-rose-600/80 hover:bg-rose-500 text-white rounded-lg font-semibold">Dừng tất cả acc đơn</button>
+        <!-- Active Single Pool Bar -->
+        <div id="singlePoolBar" class="hidden panel rounded-2xl p-3.5 border-emerald-500/30 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div id="singlePoolItems" class="flex flex-wrap items-center gap-2"></div>
+            <button onclick="triggerAction('stop')" class="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-xl font-semibold">Dừng tất cả</button>
         </div>
 
-        <!-- KPI Metrics Ribbon -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div class="glass-card p-4 rounded-2xl">
-                <div class="text-[11px] font-semibold tracking-wider uppercase text-slate-400">Tổng điểm tích lũy</div>
-                <div id="kpiTotalPoints" class="text-2xl md:text-3xl font-extrabold text-cyan-300 mt-1 font-mono">--</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Toàn bộ tài khoản</div>
-            </div>
-            <div class="glass-card p-4 rounded-2xl">
-                <div class="text-[11px] font-semibold tracking-wider uppercase text-slate-400">Điểm kiếm hôm nay</div>
-                <div id="kpiTodayValue" class="text-2xl md:text-3xl font-extrabold text-emerald-400 mt-1 font-mono">--</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Tổng thu hoạch trong ngày</div>
-            </div>
-            <div class="glass-card p-4 rounded-2xl">
-                <div class="text-[11px] font-semibold tracking-wider uppercase text-slate-400">Acc OK / Chạy</div>
-                <div id="kpiActiveAccounts" class="text-2xl md:text-3xl font-extrabold text-sky-400 mt-1 font-mono">-- / --</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Slot đơn: <span id="kpiSingleSlots">0/2</span></div>
-            </div>
-            <div class="glass-card p-4 rounded-2xl">
-                <div class="text-[11px] font-semibold tracking-wider uppercase text-slate-400">Lỗi / Đình chỉ</div>
-                <div id="kpiErrorSuspended" class="text-2xl md:text-3xl font-extrabold text-amber-400 mt-1 font-mono">-- / --</div>
-                <div class="text-[11px] text-slate-500 mt-0.5">Lỗi cần xử lý / Đã ban</div>
-            </div>
-        </div>
+        <!-- 12-Col Bento Layout -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
 
-        <!-- Proxy Tool Telemetry & Diagnostics -->
-        <div class="glass-card p-5 rounded-2xl shadow-xl space-y-4">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                <div>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                        <span>🛡️</span> Tool Residential Proxy (:10808) &bull; Telemetry & Kiểm tra Tunnel
-                    </h2>
-                    <p id="proxyMetaText" class="text-xs text-slate-400 mt-0.5 font-mono">Đang đọc thống kê proxy...</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <button onclick="proxyAction('test-local-proxy')" class="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold transition">🔍 Test Tunnel Local</button>
-                    <button onclick="proxyAction('test-vps-proxy')" class="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-semibold transition">🌐 Test VPS → Proxy</button>
-                    <button onclick="proxyAction('sync-proxy-ip')" class="px-3 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition">📡 Đồng bộ IP lên VPS</button>
-                    <button onclick="proxyAction('restart-proxy')" class="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition">🔄 Restart Proxy</button>
-                </div>
-            </div>
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs font-mono">
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">TUNNELS ĐANG MỞ</div><div id="pxActive" class="text-sm font-bold text-cyan-300 mt-0.5">0</div></div>
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">TỔNG TUNNELS</div><div id="pxTotal" class="text-sm font-bold text-slate-200 mt-0.5">0</div></div>
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">DỮ LIỆU GỬI</div><div id="pxBytesIn" class="text-sm font-bold text-slate-200 mt-0.5">0 KB</div></div>
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">DỮ LIỆU NHẬN</div><div id="pxBytesOut" class="text-sm font-bold text-emerald-300 mt-0.5">0 KB</div></div>
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">LỖI / CHẶN IP</div><div id="pxErrors" class="text-sm font-bold text-amber-300 mt-0.5">0 / 0</div></div>
-                <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5"><div class="text-[10px] text-slate-500">UPTIME</div><div id="pxUptime" class="text-sm font-bold text-slate-200 mt-0.5">0s</div></div>
-            </div>
-        </div>
-
-        <!-- 1-Click Action Hub -->
-        <div class="glass-card p-5 rounded-2xl shadow-xl space-y-4">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                        <span>🎮</span> Trung tâm Điều khiển VPS (1-Click)
-                    </h2>
-                    <p class="text-xs text-slate-400 mt-0.5">Điều phối trực tiếp tới VPS Oracle qua Tailscale</p>
-                </div>
-                <button onclick="testTailscale()" class="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-medium transition">
-                    ⚡ Test Ping Tailscale
-                </button>
-            </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <button onclick="triggerAction('start')" class="p-3.5 bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-xl transition flex flex-col items-center justify-center gap-1.5 border border-emerald-400/20">
-                    <span class="text-xl">🚀</span>
-                    <div class="text-xs font-bold">Chạy Tất Cả</div>
-                    <div class="text-[10px] text-emerald-200">Batch Mode</div>
-                </button>
-                <button onclick="triggerAction('run-unfinished')" class="p-3.5 bg-gradient-to-br from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white rounded-xl transition flex flex-col items-center justify-center gap-1.5 border border-cyan-400/20">
-                    <span class="text-xl">⚡</span>
-                    <div class="text-xs font-bold">Chạy Acc Lỗi/Chờ</div>
-                    <div class="text-[10px] text-cyan-100">Queue 2 Acc/Lượt</div>
-                </button>
-                <button onclick="triggerAction('stop')" class="p-3.5 bg-gradient-to-br from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white rounded-xl transition flex flex-col items-center justify-center gap-1.5 border border-rose-400/20">
-                    <span class="text-xl">🛑</span>
-                    <div class="text-xs font-bold">Dừng Bot</div>
-                    <div class="text-[10px] text-rose-200">Stop Batch &amp; Queue</div>
-                </button>
-                <button onclick="openVpsDashboard()" class="p-3.5 bg-gradient-to-br from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white rounded-xl transition flex flex-col items-center justify-center gap-1.5 border border-indigo-400/20">
-                    <span class="text-xl">📊</span>
-                    <div class="text-xs font-bold">Mở Web Dashboard</div>
-                    <div class="text-[10px] text-indigo-200">Settings &amp; Full UI :3030</div>
-                </button>
-                <button onclick="triggerAction('sync')" class="p-3.5 bg-gradient-to-br from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white rounded-xl transition flex flex-col items-center justify-center gap-1.5 border border-amber-400/20 col-span-2 md:col-span-1">
-                    <span class="text-xl">🔄</span>
-                    <div class="text-xs font-bold">Đồng bộ Session</div>
-                    <div class="text-[10px] text-amber-200">Sync to VPS</div>
-                </button>
-            </div>
-        </div>
-
-        <!-- Automation & Startup Settings -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="glass-card p-5 rounded-2xl shadow-xl flex flex-col justify-between space-y-4">
-                <div>
+            <!-- Left Control & Telemetry Column -->
+            <div class="xl:col-span-4 space-y-5">
+                <!-- 1-Click Controls -->
+                <div class="panel rounded-2xl p-5 space-y-3.5">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-400">💻 Khởi động cùng Windows</h2>
-                        <span id="autostartStatusBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">Đang kiểm tra...</span>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300">Điều khiển nhanh VPS</h2>
+                        <button onclick="testTailscale()" class="text-[11px] px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-cyan-300 border border-white/10 transition">Ping Tailscale</button>
                     </div>
-                    <p class="text-xs text-slate-400 mt-1">Tự động khởi động Web Control Center (:4000) và Residential Proxy (:10808) khi bật máy.</p>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button onclick="triggerAction('start')" class="p-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition font-bold text-xs text-left space-y-0.5 shadow-lg shadow-emerald-500/15">
+                            <div>▶ Chạy Tất Cả</div>
+                            <div class="text-[10px] font-medium text-emerald-950/80">Batch toàn dàn</div>
+                        </button>
+                        <button onclick="triggerAction('run-unfinished')" class="p-3 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-emerald-300 rounded-xl transition font-semibold text-xs text-left space-y-0.5">
+                            <div>⚡ Chạy Lỗi/Chờ</div>
+                            <div class="text-[10px] text-slate-400">Queue 2 acc/lượt</div>
+                        </button>
+                        <button onclick="triggerAction('stop')" class="p-3 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 rounded-xl transition font-semibold text-xs text-left space-y-0.5">
+                            <div>■ Dừng Bot</div>
+                            <div class="text-[10px] text-rose-300/70">Dừng batch &amp; queue</div>
+                        </button>
+                        <button onclick="triggerAction('sync')" class="p-3 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-slate-200 rounded-xl transition font-semibold text-xs text-left space-y-0.5">
+                            <div>↻ Đồng bộ Session</div>
+                            <div class="text-[10px] text-slate-400">Copy Windows → VPS</div>
+                        </button>
+                    </div>
                 </div>
-                <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                    <div class="text-xs text-slate-300">AutoReward-WebControl.bat --silent</div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input id="toggleAutostart" type="checkbox" onchange="toggleAutostart(this.checked)" class="sr-only peer">
-                        <div class="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                    </label>
+
+                <!-- Proxy Tool Telemetry -->
+                <div class="panel rounded-2xl p-5 space-y-3.5">
+                    <div>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-emerald-400">Tool Proxy (:10808)</h2>
+                        <p id="proxyMetaText" class="text-[11px] text-slate-400 mt-0.5 font-mono">Đang đọc thống kê proxy...</p>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-xs font-mono">
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">ACTIVE</div><div id="pxActive" class="text-sm font-bold text-emerald-300 mt-0.5 tabular-nums">0</div></div>
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">TUNNELS</div><div id="pxTotal" class="text-sm font-bold text-slate-200 mt-0.5 tabular-nums">0</div></div>
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">UPTIME</div><div id="pxUptime" class="text-sm font-bold text-slate-200 mt-0.5 tabular-nums">0s</div></div>
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">GỬI</div><div id="pxBytesIn" class="text-xs font-bold text-slate-200 mt-0.5 tabular-nums">0 KB</div></div>
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">NHẬN</div><div id="pxBytesOut" class="text-xs font-bold text-emerald-300 mt-0.5 tabular-nums">0 KB</div></div>
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5"><div class="text-[10px] text-slate-500">LỖI/CHẶN</div><div id="pxErrors" class="text-xs font-bold text-amber-300 mt-0.5 tabular-nums">0/0</div></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <button onclick="proxyAction('test-local-proxy')" class="px-3 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-emerald-300 rounded-xl font-semibold transition">Test Local</button>
+                        <button onclick="proxyAction('test-vps-proxy')" class="px-3 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-cyan-300 rounded-xl font-semibold transition">Test VPS → Proxy</button>
+                        <button onclick="proxyAction('sync-proxy-ip')" class="px-3 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-slate-200 rounded-xl font-semibold transition">Đồng bộ IP VPS</button>
+                        <button onclick="proxyAction('restart-proxy')" class="px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 rounded-xl font-semibold transition">Restart Proxy</button>
+                    </div>
+                </div>
+
+                <!-- Windows Automation -->
+                <div class="panel rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300">Khởi động cùng Windows</h2>
+                            <p class="text-[11px] text-slate-500 mt-0.5">Tự chạy Proxy :10808 &amp; Center :4000</p>
+                        </div>
+                        <div class="flex items-center gap-2.5">
+                            <span id="autostartStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/[0.06] text-slate-400">...</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input id="toggleAutostart" type="checkbox" onchange="toggleAutostart(this.checked)" class="sr-only peer">
+                                <div class="w-10 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="pt-3 border-t border-white/[0.06] space-y-2.5">
+                        <div class="text-xs font-semibold text-slate-300">Lịch chạy hàng ngày (Task Scheduler)</div>
+                        <div class="flex items-center gap-2">
+                            <input id="scheduleTime" type="time" value="07:30" class="bg-[#070a10] border border-white/10 px-3 py-1.5 rounded-xl text-xs text-emerald-300 font-mono">
+                            <button onclick="saveSchedule()" class="flex-1 px-3 py-1.5 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold rounded-xl transition">Lưu Lịch</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="glass-card p-5 rounded-2xl shadow-xl flex flex-col justify-between space-y-4">
-                <div>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-400">⏰ Lịch Chạy Hàng Ngày (Windows Task)</h2>
-                    <p class="text-xs text-slate-400 mt-1">Kích hoạt tự động chạy dàn tài khoản trên VPS theo khung giờ định sẵn.</p>
+            <!-- Right Accounts & Logs Column -->
+            <div class="xl:col-span-8 space-y-5">
+                <!-- 4 KPI Cards -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="panel rounded-2xl p-4">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tổng điểm</div>
+                        <div id="kpiTotalPoints" class="text-2xl font-bold text-cyan-300 mt-1 font-mono tabular-nums">--</div>
+                        <div class="text-[11px] text-slate-500">Toàn bộ tài khoản</div>
+                    </div>
+                    <div class="panel rounded-2xl p-4">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Hôm nay</div>
+                        <div id="kpiTodayValue" class="text-2xl font-bold text-emerald-400 mt-1 font-mono tabular-nums">--</div>
+                        <div class="text-[11px] text-slate-500">Thu hoạch 24h</div>
+                    </div>
+                    <div class="panel rounded-2xl p-4">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">OK / Tổng</div>
+                        <div id="kpiActiveAccounts" class="text-2xl font-bold text-white mt-1 font-mono tabular-nums">-- / --</div>
+                        <div class="text-[11px] text-slate-500">Slot đơn: <span id="kpiSingleSlots" class="text-emerald-300">0/2</span></div>
+                    </div>
+                    <div class="panel rounded-2xl p-4">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Lỗi / Đình chỉ</div>
+                        <div id="kpiErrorSuspended" class="text-2xl font-bold text-amber-300 mt-1 font-mono tabular-nums">-- / --</div>
+                        <div class="text-[11px] text-slate-500">Cần xử lý / Ban</div>
+                    </div>
                 </div>
-                <div class="flex items-center gap-3 pt-2 border-t border-slate-800/80">
-                    <input id="scheduleTime" type="time" value="07:30" class="bg-slate-900 border border-slate-700/80 px-3 py-2 rounded-xl text-xs text-cyan-300 font-mono">
-                    <button onclick="saveSchedule()" class="flex-1 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-xs font-bold rounded-xl transition">💾 Lưu Lịch Hàng Ngày</button>
+
+                <!-- Accounts Table -->
+                <div class="panel rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-white/[0.06] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h2 class="text-xs font-bold uppercase tracking-wider text-white">Danh sách Tài khoản &amp; Tiến độ</h2>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Chạy đơn tối đa 2 acc song song, dư sẽ tự xếp hàng đợi</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <input id="accountFilter" type="text" onkeyup="filterAccountsTable()" placeholder="Lọc email / trạng thái..." class="flex-1 sm:w-52 bg-[#070a10] border border-white/10 px-3 py-1.5 rounded-xl text-xs text-slate-200 placeholder-slate-500">
+                            <button onclick="openAccountModal()" class="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl transition shrink-0">+ Thêm Tài Khoản</button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-[#090e19] text-slate-400 font-semibold border-b border-white/[0.06] text-[10px] uppercase tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-3.5">Tài khoản</th>
+                                    <th class="py-3 px-2.5 text-right">Điểm</th>
+                                    <th class="py-3 px-3">PC / Mobile</th>
+                                    <th class="py-3 px-2.5 text-center">Chuỗi</th>
+                                    <th class="py-3 px-2.5 text-center">Trạng thái</th>
+                                    <th class="py-3 px-3.5 text-center">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="accountsBody" class="divide-y divide-white/[0.04] font-mono text-slate-300">
+                                <tr><td colspan="6" class="py-8 text-center text-slate-500 font-sans">Đang tải dữ liệu từ VPS...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div class="panel rounded-2xl overflow-hidden">
+                    <div class="px-4 py-2.5 border-b border-white/[0.06] flex justify-between items-center bg-[#0a0f1a]">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span class="text-xs font-bold text-slate-200">Live Engine Logs (VPS)</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[11px]">
+                            <button onclick="fetchLogs()" class="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 rounded-lg border border-white/10">Làm mới</button>
+                            <button onclick="clearTerminal()" class="px-2.5 py-1 bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 rounded-lg border border-white/10">Xoá</button>
+                        </div>
+                    </div>
+                    <div id="terminal" class="bg-[#06090f] p-3.5 font-mono text-[11px] leading-relaxed text-slate-300 h-44 overflow-y-auto space-y-1">
+                        <div class="text-slate-500">[System] Đang lắng nghe nhật ký hoạt động từ VPS...</div>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Accounts Table -->
-        <div class="glass-card rounded-2xl overflow-hidden shadow-2xl p-5 space-y-4">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+    <!-- Account Add/Edit/Import Modal -->
+    <div id="accountModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="panel bg-[#0e1525] border-white/15 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <div class="flex items-center gap-3">
+                    <h3 id="accModalTitle" class="text-sm font-bold text-white">Thêm tài khoản</h3>
+                    <div id="accModalTabs" class="flex gap-1 text-xs bg-[#070a10] p-1 rounded-xl border border-white/[0.06]">
+                        <button onclick="switchModalTab('single')" id="accTabSingle" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold">1 Tài khoản</button>
+                        <button onclick="switchModalTab('bulk')" id="accTabBulk" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold">Import hàng loạt</button>
+                    </div>
+                </div>
+                <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+
+            <div id="accSingleForm" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="sm:col-span-2">
+                    <label class="block text-slate-400 mb-1">Email *</label>
+                    <input id="accEmail" type="email" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
                 <div>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-400">👥 Danh sách Tài khoản (Chạy đơn tối đa 2 acc + Hàng đợi tự động)</h2>
-                    <p class="text-xs text-slate-400 mt-0.5">Bấm ⚡ để chạy đơn ngay (nếu đã đủ 2/2 slot sẽ tự xếp hàng đợi)</p>
+                    <label class="block text-slate-400 mb-1">Mật khẩu <span id="accPassHint" class="text-slate-500">*</span></label>
+                    <input id="accPassword" type="password" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
-                <input id="accountFilter" type="text" onkeyup="filterAccountsTable()" placeholder="Lọc email / trạng thái..." class="w-full sm:w-64 bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-xl text-xs text-slate-200 placeholder-slate-500">
+                <div>
+                    <label class="block text-slate-400 mb-1">TOTP Secret (2FA)</label>
+                    <input id="accTotp" type="text" placeholder="Base32 (tuỳ chọn)" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Recovery Email</label>
+                    <input id="accRecovery" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Tag / Nhóm</label>
+                    <input id="accTag" type="text" placeholder="vd: main, clone" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Geo Locale</label>
+                    <input id="accGeo" type="text" value="vn" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Language Code</label>
+                    <input id="accLang" type="text" value="vi" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                </div>
+                <div class="sm:col-span-2 grid grid-cols-3 gap-2 pt-1 border-t border-white/[0.06]">
+                    <input id="accProxyUrl" type="text" placeholder="Proxy riêng (trống = mặc định)" class="col-span-2 bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                    <input id="accProxyPort" type="number" min="0" max="65535" placeholder="Port" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                </div>
+                <div class="sm:col-span-2 flex gap-4">
+                    <label class="flex items-center gap-2"><input id="accEnabled" type="checkbox" checked class="accent-emerald-500"> Kích hoạt (enabled)</label>
+                </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs whitespace-nowrap">
-                    <thead class="text-slate-400 font-semibold border-b border-slate-800 text-[11px] uppercase tracking-wider">
-                        <tr>
-                            <th class="pb-3 px-2">Tài khoản</th>
-                            <th class="pb-3 px-2">Hôm nay</th>
-                            <th class="pb-3 px-2">PC</th>
-                            <th class="pb-3 px-2">Mobile</th>
-                            <th class="pb-3 px-2">Chuỗi</th>
-                            <th class="pb-3 px-2">Trạng thái</th>
-                            <th class="pb-3 px-2 text-center">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody id="accountsBody" class="divide-y divide-slate-800/40 font-mono text-slate-300">
-                        <tr><td colspan="7" class="py-6 text-center text-slate-500">Đang tải dữ liệu từ VPS...</td></tr>
-                    </tbody>
-                </table>
+            <div id="accBulkForm" class="hidden space-y-3 text-xs">
+                <div class="text-slate-400">Dán mỗi dòng 1 tài khoản: <code class="text-emerald-300">email|password|totpSecret|recoveryEmail</code> (hoặc <code class="text-emerald-300">email|password</code>).</div>
+                <textarea id="accBulkText" rows="7" placeholder="user1@outlook.com|MatKhau123|TOTP|rec1@gmail.com&#10;user2@gmail.com|MatKhau456" class="w-full bg-[#070a10] border border-white/10 rounded-xl p-3 font-mono text-xs text-slate-200"></textarea>
+                <div class="grid grid-cols-3 gap-2">
+                    <input id="accBulkGeo" type="text" value="vn" placeholder="Geo" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                    <input id="accBulkLang" type="text" value="vi" placeholder="Lang" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                    <input id="accBulkTag" type="text" placeholder="Tag (tuỳ chọn)" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                </div>
             </div>
-        </div>
 
-        <!-- Live Logs -->
-        <div class="glass-card rounded-2xl overflow-hidden shadow-2xl p-5 space-y-3">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Engine Logs (VPS)</h2>
+            <div class="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-white/[0.08]">
+                <div id="accEditExtraBtns" class="hidden flex gap-2">
+                    <button onclick="deleteModalSession()" class="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold">Xoá Session</button>
+                    <button onclick="deleteModalAccount()" class="px-3 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold">Xoá Tài Khoản</button>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="fetchLogs()" class="px-2.5 py-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700">Làm mới</button>
-                    <button onclick="clearTerminal()" class="px-2.5 py-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg border border-slate-700">Xoá</button>
+                <div class="flex gap-2 ml-auto">
+                    <button onclick="closeAccountModal()" class="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] text-xs rounded-xl">Huỷ</button>
+                    <button onclick="saveAccountModal()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl">Lưu Tài Khoản</button>
                 </div>
-            </div>
-            <div id="terminal" class="bg-black/80 border border-slate-800/90 rounded-xl p-3.5 font-mono text-[11px] leading-relaxed text-slate-300 h-52 overflow-y-auto space-y-1">
-                <div class="text-slate-500">[System] Đang lắng nghe nhật ký hoạt động từ VPS...</div>
             </div>
         </div>
     </div>
 
     <!-- Toast -->
-    <div id="toast" class="fixed bottom-5 right-5 glass-card border border-cyan-500/50 text-white px-4 py-3 rounded-2xl shadow-2xl text-xs flex items-center gap-3 transform translate-y-24 opacity-0 transition duration-300 z-50 pointer-events-none">
+    <div id="toast" class="fixed bottom-5 right-5 panel bg-[#121a2b] border-emerald-500/40 text-white px-4 py-3 rounded-2xl shadow-2xl text-xs flex items-center gap-3 transform translate-y-24 opacity-0 transition duration-300 z-50 pointer-events-none">
         <span id="toastIcon" class="text-base">ℹ️</span>
         <div>
-            <div id="toastTitle" class="font-bold text-cyan-300 text-[11px] uppercase tracking-wider">Thông báo</div>
+            <div id="toastTitle" class="font-bold text-emerald-300 text-[11px] uppercase tracking-wider">Thông báo</div>
             <div id="toastMsg" class="text-slate-200 mt-0.5">Nội dung</div>
         </div>
     </div>
@@ -276,6 +336,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <script>
         let rawAccounts = [];
         let singlePool = { maxConcurrent: 2, activeCount: 0, queuedCount: 0, active: [], queue: [] };
+        let editingEmail = null;
+        let modalMode = 'single';
 
         function fmtBytes(bytes) {
             const n = Number(bytes || 0);
@@ -284,13 +346,21 @@ const HTML_CONTENT = `<!DOCTYPE html>
             return (n / 1048576).toFixed(2) + ' MB';
         }
 
+        function parseRatio(text, defaultMax) {
+            const m = String(text || '').match(/(\\d+)\\s*\\/\\s*(\\d+)/);
+            if (!m) return { pct: 0, label: text || ('0/' + defaultMax) };
+            const cur = parseInt(m[1], 10);
+            const max = Math.max(1, parseInt(m[2], 10));
+            return { pct: Math.min(100, Math.round((cur / max) * 100)), label: cur + '/' + max };
+        }
+
         function showToast(msg, icon = 'ℹ️', title = 'Thông báo') {
             const toast = document.getElementById('toast');
             document.getElementById('toastIcon').textContent = icon;
             document.getElementById('toastTitle').textContent = title;
             document.getElementById('toastMsg').textContent = msg;
             toast.classList.remove('translate-y-24', 'opacity-0');
-            setTimeout(() => toast.classList.add('translate-y-24', 'opacity-0'), 4500);
+            setTimeout(() => toast.classList.add('translate-y-24', 'opacity-0'), 4200);
         }
 
         async function refreshData() {
@@ -302,21 +372,17 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
                 const tsBadge = document.getElementById('tsBadge');
                 if (data.tailscale && data.tailscale.active) {
-                    tsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-medium font-mono">Tailscale: ' + (data.tailscale.ip || 'OK') + '</span>';
-                    tsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs';
+                    tsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-mono">TS: ' + (data.tailscale.ip || 'OK') + '</span>';
                 } else {
-                    tsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span><span class="text-rose-400 font-medium">Tailscale: Disconnected</span>';
-                    tsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-xs';
+                    tsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span><span class="text-rose-400">TS: Offline</span>';
                 }
 
                 const proxyBadge = document.getElementById('proxyBadge');
                 const pStats = data.proxy?.stats;
                 if (data.proxy && data.proxy.running) {
-                    proxyBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-medium">Proxy :' + data.proxy.port + (pStats ? ' (' + pStats.activeTunnels + ' tunnels)' : '') + '</span>';
-                    proxyBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs';
+                    proxyBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-mono">Proxy :' + data.proxy.port + (pStats ? ' (' + pStats.activeTunnels + ')' : '') + '</span>';
                 } else {
-                    proxyBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-amber-300 font-medium">Proxy: Offline</span>';
-                    proxyBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs';
+                    proxyBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-amber-300">Proxy: Offline</span>';
                 }
 
                 if (pStats) {
@@ -324,9 +390,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     document.getElementById('pxTotal').textContent = pStats.totalTunnels ?? 0;
                     document.getElementById('pxBytesIn').textContent = fmtBytes(pStats.bytesIn);
                     document.getElementById('pxBytesOut').textContent = fmtBytes(pStats.bytesOut);
-                    document.getElementById('pxErrors').textContent = (pStats.totalErrors ?? 0) + ' / ' + (pStats.blockedRequests ?? 0);
+                    document.getElementById('pxErrors').textContent = (pStats.totalErrors ?? 0) + '/' + (pStats.blockedRequests ?? 0);
                     document.getElementById('pxUptime').textContent = (pStats.uptimeSec ?? 0) + 's';
-                    document.getElementById('proxyMetaText').textContent = 'PID: ' + pStats.pid + ' | Allowlist: ' + pStats.allowlist + ' | Auth: ' + (pStats.authEnabled ? 'ON' : 'OFF');
+                    document.getElementById('proxyMetaText').textContent = 'PID ' + pStats.pid + ' • ' + pStats.allowlist;
                 }
 
                 const vpsBadge = document.getElementById('vpsBadge');
@@ -334,11 +400,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     const vpsData = data.vps.data || {};
                     singlePool = vpsData.singlePool || singlePool;
                     const modeText = vpsData.mode === 'single' ? 'SINGLE ' + singlePool.activeCount + '/' + singlePool.maxConcurrent : (vpsData.state || 'IDLE');
-                    vpsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-medium">VPS: ' + modeText + '</span>';
-                    vpsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs';
+                    vpsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-mono">VPS: ' + modeText + '</span>';
                 } else {
-                    vpsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span><span class="text-rose-400 font-medium">VPS: Offline</span>';
-                    vpsBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-xs';
+                    vpsBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span><span class="text-rose-400">VPS: Offline</span>';
                 }
 
                 renderSinglePoolBar();
@@ -347,7 +411,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     const toggle = document.getElementById('toggleAutostart');
                     const badge = document.getElementById('autostartStatusBadge');
                     toggle.checked = Boolean(data.autostart.enabled);
-                    badge.textContent = data.autostart.enabled ? 'ĐÃ BẬT' : 'ĐÃ TẮT';
+                    badge.textContent = data.autostart.enabled ? 'BẬT' : 'TẮT';
                 }
 
                 if (data.accounts && data.accounts.data) {
@@ -359,9 +423,9 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     updateKPIs(rawAccounts, meta);
                 }
             } catch (err) {
-                showToast('Lỗi tải dữ liệu: ' + err.message, '⚠️', 'Lỗi');
+                showToast('Lỗi tải dữ liệu: ' + err.message, '⚠️');
             } finally {
-                setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+                setTimeout(() => refreshIcon.classList.remove('animate-spin'), 350);
             }
         }
 
@@ -377,14 +441,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 return;
             }
             bar.classList.remove('hidden');
-            const parts = [];
-            parts.push('<span class="font-bold text-cyan-300">Chạy đơn (' + active.length + '/' + (singlePool.maxConcurrent || 2) + '):</span>');
+            const parts = ['<span class="font-bold text-emerald-300">Chạy đơn (' + active.length + '/' + (singlePool.maxConcurrent || 2) + '):</span>'];
             for (const r of active) {
-                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/70 border border-cyan-500/40 text-cyan-200 font-mono">▶ ' + r.email + ' (' + r.uptimeSec + 's) <button onclick="stopSingleAccount(\'' + r.email + '\')" class="text-rose-400 hover:text-rose-300 font-bold">✕</button></span>');
+                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono">' + r.email + ' (' + r.uptimeSec + 's) <button onclick="stopSingleAccount(\'' + r.email + '\')" class="text-rose-300 font-bold">✕</button></span>');
             }
             for (let i = 0; i < queue.length; i++) {
                 const q = queue[i];
-                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-200 font-mono">⏳ #' + (i + 1) + ' ' + q.email + ' <button onclick="stopSingleAccount(\'' + q.email + '\')" class="text-rose-400 hover:text-rose-300 font-bold">✕</button></span>');
+                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 font-mono">#' + (i + 1) + ' ' + q.email + ' <button onclick="stopSingleAccount(\'' + q.email + '\')" class="text-rose-300 font-bold">✕</button></span>');
             }
             items.innerHTML = parts.join('');
         }
@@ -398,7 +461,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 if (acc.status === 'ERROR') err++;
             }
             document.getElementById('kpiTotalPoints').textContent = total.toLocaleString('vi-VN');
-            document.getElementById('kpiTodayValue').textContent = '+' + today.toLocaleString('vi-VN') + ' pts';
+            document.getElementById('kpiTodayValue').textContent = '+' + today.toLocaleString('vi-VN');
             document.getElementById('kpiActiveAccounts').textContent = ok + ' / ' + accounts.length;
             document.getElementById('kpiErrorSuspended').textContent = err + ' / ' + Number(meta?.bannedCount || 0);
         }
@@ -406,36 +469,52 @@ const HTML_CONTENT = `<!DOCTYPE html>
         function renderAccountsTable(accounts) {
             const tbody = document.getElementById('accountsBody');
             if (!accounts || accounts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-500">Không có tài khoản nào.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-500 font-sans">Không có tài khoản nào.</td></tr>';
                 return;
             }
             tbody.innerHTML = accounts.map(acc => {
-                const statusClass = acc.status === 'OK' ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40' :
-                    acc.status === 'RUNNING' ? 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40 animate-pulse' :
-                    acc.status === 'ERROR' ? 'bg-rose-950/60 text-rose-300 border-rose-500/40' :
-                    'bg-slate-800 text-slate-300 border-slate-700';
+                const statusClass = acc.status === 'OK' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' :
+                    acc.status === 'RUNNING' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 animate-pulse' :
+                    acc.status === 'ERROR' ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' :
+                    'bg-white/[0.04] text-slate-300 border-white/10';
+
+                const pc = parseRatio(acc.pcProgress, 90);
+                const mob = parseRatio(acc.mobileProgress, 60);
 
                 let actionHtml = '';
                 if (acc.singleRunning) {
-                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2.5 py-1 bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 rounded-lg text-[10px] font-semibold border border-rose-500/40">■ Dừng</button>\`;
+                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 rounded-lg text-[10px] font-bold border border-rose-500/35">Dừng</button>\`;
                 } else if (acc.queued) {
-                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 rounded-lg text-[10px] font-semibold border border-amber-500/40">✕ Huỷ (#\${acc.queuePosition})</button>\`;
+                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 rounded-lg text-[10px] font-bold border border-amber-500/35">#\${acc.queuePosition}</button>\`;
                 } else {
-                    actionHtml = \`<button onclick="runSingleAccount('\${acc.email}')" class="px-2.5 py-1 bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-300 rounded-lg text-[10px] font-semibold border border-cyan-500/30">⚡ Chạy đơn</button>\`;
+                    actionHtml = \`<button onclick="runSingleAccount('\${acc.email}')" class="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-[10px] font-semibold border border-emerald-500/25">Chạy</button>\`;
                 }
 
                 return \`
-                    <tr class="hover:bg-slate-800/30 transition">
-                        <td class="py-2.5 px-2">
-                            <div class="font-medium text-slate-200">\${acc.email}</div>
-                            <div class="text-[10px] text-slate-500">\${acc.level || 'Level 1'} &bull; \${acc.enabled === false ? 'DISABLED' : (acc.geoLocale || 'vn').toUpperCase()}</div>
+                    <tr class="hover:bg-white/[0.025] transition">
+                        <td class="py-2.5 px-3.5">
+                            <div class="font-semibold text-slate-100">\${acc.email}</div>
+                            <div class="text-[10px] text-slate-500 font-sans">\${acc.level || 'Level 1'} &bull; \${acc.enabled === false ? 'DISABLED' : (acc.geoLocale || 'vn').toUpperCase()}</div>
                         </td>
-                        <td class="py-2.5 px-2"><span class="font-bold text-emerald-400">+\${acc.dailyPoints || 0}</span> <span class="text-[10px] text-slate-500">(\${(acc.totalPoints || 0).toLocaleString('vi-VN')})</span></td>
-                        <td class="py-2.5 px-2 text-sky-300 font-semibold">\${acc.pcProgress || '0/90'}</td>
-                        <td class="py-2.5 px-2 text-indigo-300 font-semibold">\${acc.mobileProgress || '0/60'}</td>
-                        <td class="py-2.5 px-2 text-amber-400 font-bold">\${acc.streak ? acc.streak + 'd 🔥' : '0d'}</td>
-                        <td class="py-2.5 px-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border \${statusClass}">\${acc.status}</span></td>
-                        <td class="py-2.5 px-2 text-center">\${actionHtml}</td>
+                        <td class="py-2.5 px-2.5 text-right tabular-nums">
+                            <div class="font-bold text-white">\${(acc.totalPoints || 0).toLocaleString('vi-VN')}</div>
+                            <div class="text-[11px] font-semibold text-emerald-400">+\${acc.dailyPoints || 0}</div>
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <div class="space-y-1 w-28">
+                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>PC</span><span class="text-slate-200">\${pc.label}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-emerald-400" style="width:\${pc.pct}%"></div></div></div>
+                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>Mob</span><span class="text-slate-200">\${mob.label}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-cyan-400" style="width:\${mob.pct}%"></div></div></div>
+                            </div>
+                        </td>
+                        <td class="py-2.5 px-2.5 text-center text-amber-300 font-bold font-sans">\${acc.streak ? acc.streak + 'd' : '0'}</td>
+                        <td class="py-2.5 px-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border \${statusClass}">\${acc.status}</span></td>
+                        <td class="py-2.5 px-3.5 text-center">
+                            <div class="inline-flex items-center gap-1">
+                                \${actionHtml}
+                                <button onclick="interactiveLogin('\${acc.email}')" title="Đăng nhập lấy cookie trên Windows" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-amber-300 rounded-lg text-[10px] border border-white/10">🔑</button>
+                                <button onclick="openAccountModal('\${acc.email}')" title="Sửa / Xoá" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 rounded-lg text-[10px] border border-white/10">⚙</button>
+                            </div>
+                        </td>
                     </tr>
                 \`;
             }).join('');
@@ -444,8 +523,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         function filterAccountsTable() {
             const query = (document.getElementById('accountFilter').value || '').toLowerCase().trim();
             const filtered = !query ? rawAccounts : rawAccounts.filter(a =>
-                (a.email || '').toLowerCase().includes(query) ||
-                (a.status || '').toLowerCase().includes(query)
+                (a.email || '').toLowerCase().includes(query) || (a.status || '').toLowerCase().includes(query)
             );
             renderAccountsTable(filtered);
         }
@@ -456,10 +534,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 const res = await fetch('/api/action/' + action);
                 const data = await res.json();
                 showToast(data.message || 'Hoàn tất!', data.success ? '✅' : '❌');
-                setTimeout(refreshData, 1000);
-            } catch (err) {
-                showToast(err.message, '❌');
-            }
+                setTimeout(refreshData, 900);
+            } catch (err) { showToast(err.message, '❌'); }
         }
 
         async function proxyAction(action) {
@@ -467,34 +543,23 @@ const HTML_CONTENT = `<!DOCTYPE html>
             try {
                 const res = await fetch('/api/action/' + action);
                 const data = await res.json();
-                const msg = data.data?.message || data.message || 'Xong';
-                showToast(msg, data.success ? '✅' : '⚠️', 'Proxy Diagnostics');
-                setTimeout(refreshData, 800);
-            } catch (err) {
-                showToast(err.message, '❌');
-            }
+                showToast(data.data?.message || data.message || 'Xong', data.success ? '✅' : '⚠️', 'Proxy Diagnostics');
+                setTimeout(refreshData, 700);
+            } catch (err) { showToast(err.message, '❌'); }
         }
 
         async function runSingleAccount(email) {
-            try {
-                const res = await fetch('/api/action/run-account?email=' + encodeURIComponent(email));
-                const data = await res.json();
-                showToast(data.message || ('Đã kích hoạt ' + email), data.success ? '🚀' : '⚠️');
-                setTimeout(refreshData, 800);
-            } catch (err) {
-                showToast(err.message, '❌');
-            }
+            const res = await fetch('/api/action/run-account?email=' + encodeURIComponent(email));
+            const data = await res.json();
+            showToast(data.message || ('Đã kích hoạt ' + email), data.success ? '✅' : '⚠️');
+            setTimeout(refreshData, 700);
         }
 
         async function stopSingleAccount(email) {
-            try {
-                const res = await fetch('/api/action/stop-account?email=' + encodeURIComponent(email));
-                const data = await res.json();
-                showToast(data.message || ('Đã dừng ' + email), data.success ? '🛑' : '⚠️');
-                setTimeout(refreshData, 800);
-            } catch (err) {
-                showToast(err.message, '❌');
-            }
+            const res = await fetch('/api/action/stop-account?email=' + encodeURIComponent(email));
+            const data = await res.json();
+            showToast(data.message || ('Đã dừng ' + email), data.success ? '🛑' : '⚠️');
+            setTimeout(refreshData, 700);
         }
 
         async function toggleAutostart(enabled) {
@@ -507,7 +572,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         async function testTailscale() {
             const res = await fetch('/api/action/test-tailscale');
             const data = await res.json();
-            showToast(data.message, data.success ? '⚡' : '⚠️');
+            showToast(data.message, data.success ? '✅' : '⚠️');
         }
 
         async function saveSchedule() {
@@ -517,9 +582,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
             showToast(data.message, data.success ? '⏰' : '❌');
         }
 
-        function openVpsDashboard() {
-            window.open('http://100.126.196.30:3030', '_blank');
-        }
+        function openVpsDashboard() { window.open('http://100.126.196.30:3030', '_blank'); }
 
         async function fetchLogs() {
             try {
@@ -528,7 +591,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 if (data.success && data.data) {
                     const term = document.getElementById('terminal');
                     term.innerHTML = data.data.slice(-60).map(entry => {
-                        const cls = entry.level === 'error' ? 'text-rose-400' : entry.level === 'warn' ? 'text-amber-400' : 'text-slate-300';
+                        const cls = entry.level === 'error' ? 'text-rose-400' : entry.level === 'warn' ? 'text-amber-300' : 'text-slate-300';
                         return \`<div class="\${cls}">[\${(entry.timestamp || '').slice(11, 19)}] \${entry.message}</div>\`;
                     }).join('');
                     term.scrollTop = term.scrollHeight;
@@ -536,8 +599,127 @@ const HTML_CONTENT = `<!DOCTYPE html>
             } catch {}
         }
 
-        function clearTerminal() {
-            document.getElementById('terminal').innerHTML = '<div class="text-slate-500">[System] Đã xoá log màn hình.</div>';
+        function clearTerminal() { document.getElementById('terminal').innerHTML = '<div class="text-slate-500">[System] Đã xoá log màn hình.</div>'; }
+
+        function switchModalTab(mode) {
+            modalMode = mode;
+            const isBulk = mode === 'bulk';
+            document.getElementById('accSingleForm').classList.toggle('hidden', isBulk);
+            document.getElementById('accBulkForm').classList.toggle('hidden', !isBulk);
+            document.getElementById('accTabSingle').className = !isBulk
+                ? 'px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold'
+                : 'px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold';
+            document.getElementById('accTabBulk').className = isBulk
+                ? 'px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold'
+                : 'px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold';
+        }
+
+        async function openAccountModal(email = null) {
+            editingEmail = email;
+            document.getElementById('accountModal').classList.remove('hidden');
+            document.getElementById('accModalTabs').classList.toggle('hidden', Boolean(email));
+            switchModalTab('single');
+
+            let existing = null;
+            if (email) {
+                try {
+                    const res = await fetch('/api/accounts/manage');
+                    const json = await res.json();
+                    existing = (json.data || []).find(a => a.email.toLowerCase() === email.toLowerCase()) || null;
+                } catch {}
+            }
+
+            document.getElementById('accModalTitle').textContent = existing ? ('Sửa: ' + existing.email) : 'Thêm tài khoản mới';
+            document.getElementById('accEditExtraBtns').classList.toggle('hidden', !existing);
+            document.getElementById('accPassHint').textContent = existing ? '(trống nếu giữ cũ)' : '*';
+
+            document.getElementById('accEmail').value = existing?.email || '';
+            document.getElementById('accPassword').value = '';
+            document.getElementById('accTotp').value = '';
+            document.getElementById('accRecovery').value = existing?.recoveryEmail || '';
+            document.getElementById('accTag').value = existing?.tag || '';
+            document.getElementById('accGeo').value = existing?.geoLocale || 'vn';
+            document.getElementById('accLang').value = existing?.langCode || 'vi';
+            document.getElementById('accProxyUrl').value = existing?.proxy?.url || '';
+            document.getElementById('accProxyPort').value = existing?.proxy?.port || 0;
+            document.getElementById('accEnabled').checked = existing ? existing.enabled !== false : true;
+        }
+
+        function closeAccountModal() {
+            document.getElementById('accountModal').classList.add('hidden');
+            editingEmail = null;
+        }
+
+        async function saveAccountModal() {
+            if (!editingEmail && modalMode === 'bulk') {
+                const rawText = document.getElementById('accBulkText').value.trim();
+                if (!rawText) return showToast('Hãy dán danh sách tài khoản.', '⚠️');
+                const res = await fetch('/api/accounts/bulk-import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rawText,
+                        geoLocale: document.getElementById('accBulkGeo').value.trim() || 'vn',
+                        langCode: document.getElementById('accBulkLang').value.trim() || 'vi',
+                        tag: document.getElementById('accBulkTag').value.trim()
+                    })
+                });
+                const json = await res.json();
+                showToast(json.message || 'Xong', json.success ? '✅' : '❌');
+                if (json.success) {
+                    document.getElementById('accBulkText').value = '';
+                    closeAccountModal();
+                    refreshData();
+                }
+                return;
+            }
+
+            const payload = {
+                email: document.getElementById('accEmail').value.trim(),
+                password: document.getElementById('accPassword').value,
+                totpSecret: document.getElementById('accTotp').value.trim(),
+                recoveryEmail: document.getElementById('accRecovery').value.trim(),
+                tag: document.getElementById('accTag').value.trim(),
+                geoLocale: document.getElementById('accGeo').value.trim() || 'vn',
+                langCode: document.getElementById('accLang').value.trim() || 'vi',
+                enabled: document.getElementById('accEnabled').checked,
+                proxy: {
+                    url: document.getElementById('accProxyUrl').value.trim(),
+                    port: Number(document.getElementById('accProxyPort').value || 0),
+                    proxyAxios: true
+                }
+            };
+
+            const res = await fetch(editingEmail ? '/api/accounts/manage?email=' + encodeURIComponent(editingEmail) : '/api/accounts/manage', {
+                method: editingEmail ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+            showToast(json.message || 'Xong', json.success ? '✅' : '❌');
+            if (json.success) { closeAccountModal(); refreshData(); }
+        }
+
+        async function deleteModalSession() {
+            if (!editingEmail || !confirm('Xoá session cookie của ' + editingEmail + '?')) return;
+            const res = await fetch('/api/accounts/session?email=' + encodeURIComponent(editingEmail), { method: 'DELETE' });
+            const json = await res.json();
+            showToast(json.message || 'Xong', json.success ? '🗑' : '❌');
+            refreshData();
+        }
+
+        async function deleteModalAccount() {
+            if (!editingEmail || !confirm('Xoá vĩnh viễn tài khoản ' + editingEmail + '?')) return;
+            const res = await fetch('/api/accounts/manage?email=' + encodeURIComponent(editingEmail), { method: 'DELETE' });
+            const json = await res.json();
+            showToast(json.message || 'Xong', json.success ? '🗑' : '❌');
+            if (json.success) { closeAccountModal(); refreshData(); }
+        }
+
+        async function interactiveLogin(email) {
+            const res = await fetch('/api/action/interactive-login?email=' + encodeURIComponent(email));
+            const json = await res.json();
+            showToast(json.message || 'Đã mở trình duyệt đăng nhập!', json.success ? '🔑' : '❌');
         }
 
         refreshData();
@@ -558,12 +740,78 @@ setInterval(async () => {
     } catch {}
 }, 30000).unref();
 
+function readJsonBody(req) {
+    return new Promise((resolve, reject) => {
+        let raw = '';
+        req.on('data', chunk => { raw += chunk; });
+        req.on('end', () => {
+            if (!raw.trim()) return resolve({});
+            try { resolve(JSON.parse(raw)); }
+            catch (e) { reject(e); }
+        });
+        req.on('error', reject);
+    });
+}
+
 const server = http.createServer(async (req, res) => {
     const parsed = url.parse(req.url, true);
+
+    if (parsed.pathname === '/favicon.ico') {
+        res.writeHead(204);
+        return res.end();
+    }
 
     if (parsed.pathname === '/' || parsed.pathname === '/index.html') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(HTML_CONTENT);
+    }
+
+    if (parsed.pathname === '/api/accounts/manage') {
+        try {
+            let result;
+            if (req.method === 'GET') {
+                result = await WindowsController.getManageAccounts();
+            } else if (req.method === 'POST') {
+                const body = await readJsonBody(req);
+                result = await WindowsController.createAccount(body);
+            } else if (req.method === 'PUT') {
+                const body = await readJsonBody(req);
+                result = await WindowsController.updateAccount(parsed.query.email, body);
+            } else if (req.method === 'DELETE') {
+                result = await WindowsController.deleteAccount(parsed.query.email);
+            } else {
+                res.writeHead(405);
+                return res.end('Method Not Allowed');
+            }
+            res.writeHead(result?.success === false ? 400 : 200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(result));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: error.message }));
+        }
+    }
+
+    if (parsed.pathname === '/api/accounts/bulk-import' && req.method === 'POST') {
+        try {
+            const body = await readJsonBody(req);
+            const result = await WindowsController.bulkImportAccounts(body);
+            res.writeHead(result?.success === false ? 400 : 200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(result));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: error.message }));
+        }
+    }
+
+    if (parsed.pathname === '/api/accounts/session' && req.method === 'DELETE') {
+        try {
+            const result = await WindowsController.deleteSession(parsed.query.email);
+            res.writeHead(result?.success === false ? 400 : 200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(result));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: error.message }));
+        }
     }
 
     if (parsed.pathname === '/api/local-status') {
@@ -621,6 +869,8 @@ const server = http.createServer(async (req, res) => {
                 result = WindowsController.setAutostart(parsed.query.enabled === 'true' || parsed.query.enabled === '1');
             } else if (action === 'logs') {
                 result = await WindowsController.getVPSLogs();
+            } else if (action === 'interactive-login') {
+                result = WindowsController.launchInteractiveLogin(parsed.query.email);
             } else {
                 throw new Error('Unknown action: ' + action);
             }

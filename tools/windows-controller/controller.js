@@ -309,6 +309,46 @@ class WindowsController {
         return await this.vpsRequest('/api/logs', 'GET');
     }
 
+    static async getManageAccounts() {
+        return await this.vpsRequest('/api/accounts/manage', 'GET');
+    }
+
+    static async createAccount(payload) {
+        return await this.vpsRequest('/api/accounts/manage', 'POST', payload);
+    }
+
+    static async bulkImportAccounts(payload) {
+        return await this.vpsRequest('/api/accounts/bulk-import', 'POST', payload);
+    }
+
+    static async updateAccount(email, payload) {
+        return await this.vpsRequest(`/api/accounts/manage/${encodeURIComponent(email)}`, 'PUT', payload);
+    }
+
+    static async toggleAccount(email, enabled) {
+        return await this.vpsRequest(`/api/accounts/manage/${encodeURIComponent(email)}/toggle`, 'PATCH', { enabled });
+    }
+
+    static async deleteAccount(email) {
+        return await this.vpsRequest(`/api/accounts/manage/${encodeURIComponent(email)}`, 'DELETE');
+    }
+
+    static async deleteSession(email) {
+        return await this.vpsRequest(`/api/sessions/${encodeURIComponent(email)}`, 'DELETE');
+    }
+
+    static launchInteractiveLogin(email) {
+        if (!email || !email.includes('@')) throw new Error('Email không hợp lệ.');
+        const script = path.join(__dirname, 'interactiveLogin.js');
+        const child = spawn(process.execPath, [script, email], {
+            detached: true,
+            stdio: 'ignore',
+            cwd: path.resolve(__dirname, '../../')
+        });
+        child.unref();
+        return { success: true, message: `Đã mở cửa sổ trình duyệt đăng nhập thủ công cho ${email}.` };
+    }
+
     static getAutostartStatus() {
         try {
             const out = execSync('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "AutoRewardPlus"', {

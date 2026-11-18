@@ -235,6 +235,67 @@ export class AccountService {
         return true
     }
 
+    async bulkImport(
+        rawText: string,
+        defaults: { geoLocale?: string; langCode?: string; tag?: string; enabled?: boolean } = {}
+    ): Promise<{ added: number; skipped: number; errors: string[] }> {
+        const lines = rawText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'))
+
+        if (lines.length === 0) {
+            throw new Error('Danh sách import trống.')
+        }
+
+        const current = this.readRawAccounts()
+        const existingSet = new Set(current.map(a => a.email.toLowerCase()))
+        const toAdd: Account[] = []
+        const errors: string[] = []
+        let skipped = 0
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]!
+            const sep = line.includes('|') ? '|' : line.includes('\t') ? '\t' : line.includes(',') ? ',' : ':'
+            const parts = line.split(sep).map(p => p.trim())
+            const email = parts[0] || ''
+            const password = parts[1] || ''
+            const totpSecret = parts[2] || ''
+            const recoveryEmail = parts[3] || ''
+
+            if (!email.includes('@') || !password) {
+                errors.push(`Dòng ${i + 1}: thiếu email hoặc mật khẩu`)
+                continue
+            }
+            if (existingSet.has(email.toLowerCase())) {
+                skipped++
+                continue
+            }
+
+            existingSet.add(email.toLowerCase())
+            toAdd.push(
+                AccountSchema.parse({
+                    email,
+                    password,
+                    ...(totpSecret ? { totpSecret } : {}),
+                    recoveryEmail,
+                    geoLocale: (defaults.geoLocale?.trim() || 'vn').toLowerCase(),
+                    langCode: (defaults.langCode?.trim() || 'vi').toLowerCase(),
+                    ...(defaults.tag?.trim() ? { tag: defaults.tag.trim() } : {}),
+                    enabled: defaults.enabled !== false,
+                    proxy: { proxyAxios: true, url: '', port: 0, username: '', password: '' },
+                    saveFingerprint: { mobile: true, desktop: true }
+                })
+            )
+        }
+
+        if (toAdd.length > 0) {
+            await this.persistAccounts([...current, ...toAdd])
+        }
+
+        return { added: toAdd.length, skipped, errors }
+    }
+
     private async persistAccounts(accounts: Account[]): Promise<void> {
         const validated = validateAccounts(accounts)
         const serialized = `${JSON.stringify(validated, null, 4)}\n`

@@ -3,17 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoRewardPlus - Command & Settings Dashboard</title>
+    <title>AutoRewardPlus - Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace']
+                    },
                     colors: {
-                        darkBg: '#090d16',
-                        cardBg: '#11192b',
-                        borderBg: '#1e293b'
+                        canvas: '#070a10',
+                        surface: '#0d1320',
+                        surfaceElevated: '#121a2b'
                     }
                 }
             }
@@ -21,499 +25,592 @@
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body {
+            background-color: #070a10;
+            background-image:
+                radial-gradient(ellipse 80% 50% at 20% -10%, rgba(16, 185, 129, 0.08), transparent),
+                radial-gradient(ellipse 60% 40% at 85% 0%, rgba(6, 182, 212, 0.06), transparent);
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+        }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        .panel {
+            background: rgba(13, 19, 32, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+        }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0b1120; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #263248; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3b4b6b; }
     </style>
 </head>
-<body class="bg-darkBg text-slate-100 min-h-screen p-3 sm:p-4 md:p-6 antialiased">
-    <div class="max-w-[1740px] w-full mx-auto space-y-4">
-        <!-- Top Command Header -->
-        <header class="bg-cardBg/95 backdrop-blur border border-slate-800 p-4 sm:p-5 rounded-2xl shadow-2xl space-y-3">
-            <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-emerald-500/20 shrink-0">
-                        R+
-                    </div>
-                    <div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h1 class="text-xl sm:text-2xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">AutoRewardPlus Command Center</h1>
-                            <span id="engineStateBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">IDLE</span>
-                            <button onclick="switchTab('settings')" id="proxyHeaderBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800/90 text-slate-300 border border-slate-700 hover:border-cyan-500/50 transition">
-                                🌐 Proxy: checking...
-                            </button>
-                            <span id="wsBadge" class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700">WS: ...</span>
-                        </div>
-                        <p class="text-xs text-slate-400 mt-0.5">Điều khiển, cấu hình hệ thống, proxy tunnel &amp; chạy đa luồng (tối đa 2 acc đơn + hàng đợi)</p>
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2">
-                    <button id="btnStart" onclick="startBot()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-emerald-950 flex items-center gap-1.5">
-                        ▶ Chạy Tất Cả
-                    </button>
-                    <button id="btnRunUnfinished" onclick="runUnfinished()" class="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-cyan-950 flex items-center gap-1.5" title="Chạy tối đa 2 acc/lượt, tự xếp hàng đợi các acc còn lại">
-                        ⚡ Chạy Lỗi/Chờ
-                    </button>
-                    <button id="btnStop" onclick="stopBot()" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-xs sm:text-sm font-semibold rounded-xl transition shadow-lg shadow-rose-950 flex items-center gap-1.5">
-                        ■ Dừng Bot
-                    </button>
-                    <button onclick="refreshAllAccounts()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium rounded-xl transition flex items-center gap-1.5" title="Quét lại điểm thật từ Microsoft API cho toàn bộ acc có session">
-                        🔄 Đồng bộ điểm API
-                    </button>
-                    <button onclick="syncSheets()" class="px-3 py-2 bg-indigo-600/80 hover:bg-indigo-500 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
-                        ☁ Sheets
-                    </button>
-                    <button id="btnShowBanned" onclick="toggleBanned()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium rounded-xl transition">
-                        👁 Acc bị ban (0)
-                    </button>
-                </div>
-            </div>
-
-            <!-- Navigation Tabs -->
-            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-                <div class="flex items-center gap-1.5">
-                    <button onclick="switchTab('accounts')" data-tab="accounts" class="nav-tab px-3.5 py-1.5 rounded-xl text-xs font-bold bg-cyan-600 text-white transition">📊 Tài khoản &amp; Vận hành</button>
-                    <button onclick="switchTab('settings')" data-tab="settings" class="nav-tab px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800/80 text-slate-300 hover:bg-slate-700 transition">⚙️ Cài đặt &amp; Proxy</button>
-                    <button onclick="switchTab('ops')" data-tab="ops" class="nav-tab px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800/80 text-slate-300 hover:bg-slate-700 transition">💻 Console, Lịch sử &amp; Diagnostics</button>
-                </div>
-                <div class="text-[11px] text-slate-400 font-mono" id="autoRefreshLabel">Auto-refresh: 8s</div>
-            </div>
-        </header>
-
-        <!-- Resume Hint & Active Single-Account Pool Bar -->
-        <div id="resumeHintRow" class="hidden flex items-center justify-between gap-2 text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/40 px-4 py-2 rounded-xl">
-            <span id="resumeHint"></span>
-            <button onclick="clearCheckpoint()" class="px-2.5 py-0.5 rounded-lg bg-cyan-900/60 hover:bg-cyan-800 border border-cyan-700/50 text-[11px] font-semibold">↺ Reset Checkpoint</button>
-        </div>
-
-        <div id="singlePoolBar" class="hidden bg-slate-900/90 border border-cyan-500/35 px-4 py-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
-            <div id="singlePoolContent" class="flex flex-wrap items-center gap-2 text-xs"></div>
-            <button onclick="stopBot()" class="px-3 py-1 bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg">■ Dừng toàn bộ đơn &amp; hàng đợi</button>
-        </div>
-
-        <!-- TAB 1: ACCOUNTS & OPERATIONS -->
-        <section id="tab-accounts" class="space-y-4">
-            <!-- KPI Summary Cards -->
-            <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tài khoản</span>
-                    <div class="text-2xl font-bold text-white mt-0.5" id="totalAccounts">0</div>
-                    <div class="text-[11px] text-slate-500" id="disabledHint">0 đã tắt</div>
-                </div>
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-cyan-400">Slot chạy đơn</span>
-                    <div class="text-2xl font-bold text-cyan-300 mt-0.5" id="kpiSingleSlots">0 / 2</div>
-                    <div class="text-[11px] text-slate-500" id="kpiQueuedCount">0 trong hàng đợi</div>
-                </div>
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">Hoạt động / OK</span>
-                    <div class="text-2xl font-bold text-emerald-400 mt-0.5" id="activeAccounts">0</div>
-                    <div class="text-[11px] text-slate-500">Hoàn thành tốt</div>
-                </div>
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-rose-400">Lỗi / Cần xử lý</span>
-                    <div class="text-2xl font-bold text-rose-400 mt-0.5" id="errorAccounts">0</div>
-                    <div class="text-[11px] text-slate-500">OTP / Proxy / Cookie</div>
-                </div>
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-amber-400">Điểm ngày</span>
-                    <div class="text-2xl font-bold text-amber-400 mt-0.5" id="totalDailyPoints">+0</div>
-                    <div class="text-[11px] text-slate-500">Thu hoạch hôm nay</div>
-                </div>
-                <div class="bg-cardBg/80 border border-slate-800 p-3.5 rounded-xl">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-sky-400">Tổng tích lũy</span>
-                    <div class="text-2xl font-bold text-sky-300 mt-0.5" id="totalAccumulatedPoints">0</div>
-                    <div class="text-[11px] text-slate-500">Toàn bộ tài khoản</div>
-                </div>
-            </div>
-
-            <!-- Filter, Sort & Add Account Toolbar -->
-            <div class="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center bg-cardBg/70 border border-slate-800 p-3.5 rounded-xl">
-                <div class="flex flex-wrap items-center gap-2">
-                    <input id="searchInput" type="text" oninput="filterAccounts()" placeholder="🔍 Tìm email, tag, proxy, level, lỗi..." class="w-full sm:w-72 bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
-                    <select id="sortSelect" onchange="filterAccounts()" class="bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
-                        <option value="default">Sắp xếp: Mặc định</option>
-                        <option value="pointsDesc">Tổng điểm: Cao → Thấp</option>
-                        <option value="dailyDesc">Điểm ngày: Cao → Thấp</option>
-                        <option value="streakDesc">Chuỗi: Cao → Thấp</option>
-                        <option value="status">Trạng thái (Lỗi/Chạy lên đầu)</option>
-                    </select>
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between lg:justify-end gap-2">
-                    <div class="flex items-center gap-1 overflow-x-auto">
-                        <button onclick="setStatusFilter('ALL')" class="filter-btn active px-2.5 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white" data-filter="ALL">Tất cả</button>
-                        <button onclick="setStatusFilter('RUNNING')" class="filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="RUNNING">Đang chạy</button>
-                        <button onclick="setStatusFilter('OK')" class="filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="OK">OK</button>
-                        <button onclick="setStatusFilter('ERROR')" class="filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="ERROR">Lỗi</button>
-                        <button onclick="setStatusFilter('IDLE')" class="filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="IDLE">Chờ</button>
-                        <button onclick="setStatusFilter('DISABLED')" class="filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="DISABLED">Đã tắt</button>
-                        <button id="filterSuspended" onclick="setStatusFilter('SUSPENDED')" class="filter-btn hidden px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700" data-filter="SUSPENDED">Bị đình chỉ</button>
-                    </div>
-                    <button onclick="openAccountModal()" class="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition shrink-0">
-                        + Thêm Acc
-                    </button>
-                </div>
-            </div>
-
-            <!-- Main Account Table -->
-            <div class="bg-cardBg/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-slate-900/95 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px] sticky top-0 z-10">
-                            <tr>
-                                <th class="py-2.5 px-3">Bật</th>
-                                <th class="py-2.5 px-3">Tài khoản &amp; Session</th>
-                                <th class="py-2.5 px-2">Level</th>
-                                <th class="py-2.5 px-2.5 text-right">Tổng điểm</th>
-                                <th class="py-2.5 px-2.5 text-right">Hôm nay</th>
-                                <th class="py-2.5 px-2.5">PC / Mobile</th>
-                                <th class="py-2.5 px-2 text-center">Chuỗi</th>
-                                <th class="py-2.5 px-2">Tuổi</th>
-                                <th class="py-2.5 px-2.5">Mục tiêu</th>
-                                <th class="py-2.5 px-2">Proxy</th>
-                                <th class="py-2.5 px-2.5 text-center">Trạng thái</th>
-                                <th class="py-2.5 px-2 text-right">Cập nhật</th>
-                                <th class="py-2.5 px-2.5 text-center sticky right-0 bg-slate-900/95 shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.35)]">Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody id="accountTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Compact Live Console -->
-            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-2xl font-mono text-xs">
-                <div class="flex flex-wrap justify-between items-center gap-2 pb-2.5 border-b border-slate-800 mb-2.5">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                        <span class="text-slate-300 font-semibold">Live System Console</span>
-                        <select id="logLevelFilter" onchange="renderLogs()" class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[11px] text-slate-300">
-                            <option value="all">Tất cả level</option>
-                            <option value="info">Info+</option>
-                            <option value="warn">Warn+</option>
-                            <option value="error">Error only</option>
-                        </select>
-                        <input id="logSearchInput" oninput="renderLogs()" placeholder="Lọc log..." class="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[11px] text-slate-300 w-36 sm:w-48">
-                    </div>
+<body class="text-slate-100 min-h-[100dvh] antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div class="min-h-[100dvh] flex flex-col lg:flex-row">
+        <!-- Left Sidebar Rail -->
+        <aside class="lg:w-64 lg:shrink-0 lg:sticky lg:top-0 lg:h-[100dvh] bg-[#0a0f1a]/95 border-b lg:border-b-0 lg:border-r border-white/[0.07] flex flex-col justify-between z-30">
+            <div class="p-4 space-y-5">
+                <!-- Brand -->
+                <div class="flex items-center justify-between lg:justify-start gap-3">
                     <div class="flex items-center gap-3">
-                        <label class="flex items-center gap-1 text-[11px] text-slate-400 cursor-pointer">
-                            <input id="autoScrollLogs" type="checkbox" checked class="accent-cyan-500"> Auto-scroll
-                        </label>
-                        <button onclick="downloadLogs()" class="text-cyan-400 hover:text-cyan-300 text-[11px] underline">Tải log</button>
-                        <button onclick="clearLogs()" class="text-slate-400 hover:text-slate-200 text-[11px] underline">Xoá log</button>
+                        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center font-extrabold text-slate-950 text-base shadow-lg shadow-emerald-500/20">
+                            R+
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold tracking-tight text-white">AutoRewardPlus</div>
+                            <div class="text-[11px] text-slate-400 font-mono">VPS Control &bull; v7.2.2</div>
+                        </div>
+                    </div>
+                    <span id="wsBadge" class="lg:hidden px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-400 border border-white/10">WS</span>
+                </div>
+
+                <!-- Navigation -->
+                <nav class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-1 gap-1.5" aria-label="Dashboard Navigation">
+                    <button onclick="switchTab('accounts')" data-tab="accounts" class="nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        <span class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+                            <span>Tài khoản</span>
+                        </span>
+                        <span id="navAccountCount" class="px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-emerald-500/20 text-emerald-200">0</span>
+                    </button>
+
+                    <button onclick="switchTab('proxy')" data-tab="proxy" class="nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition text-slate-300 hover:bg-white/[0.04] border border-transparent">
+                        <span class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
+                            <span>Proxy &amp; Tunnel</span>
+                        </span>
+                        <span id="navProxyDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                    </button>
+
+                    <button onclick="switchTab('config')" data-tab="config" class="nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition text-slate-300 hover:bg-white/[0.04] border border-transparent">
+                        <span class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>Cấu hình Bot</span>
+                        </span>
+                    </button>
+
+                    <button onclick="switchTab('ops')" data-tab="ops" class="nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition text-slate-300 hover:bg-white/[0.04] border border-transparent">
+                        <span class="flex items-center gap-2.5">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg>
+                            <span>Lịch sử &amp; Lỗi</span>
+                        </span>
+                        <span id="navErrorBadge" class="hidden px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-rose-500/20 text-rose-300">0</span>
+                    </button>
+                </nav>
+
+                <!-- Quick Actions in Sidebar -->
+                <div class="hidden lg:block pt-4 border-t border-white/[0.06] space-y-2">
+                    <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 px-1">Tiện ích nhanh</div>
+                    <button onclick="refreshAllAccounts()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.05] transition text-left">
+                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+                        <span>Đồng bộ điểm API</span>
+                    </button>
+                    <button onclick="syncSheets()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.05] transition text-left">
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+                        <span>Đẩy lên Google Sheets</span>
+                    </button>
+                    <button id="btnShowBanned" onclick="toggleBanned()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.05] transition text-left">
+                        <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span id="btnShowBannedLabel">Acc bị ban (0)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer Health -->
+            <div class="hidden lg:block p-4 border-t border-white/[0.06] space-y-2.5 text-[11px]">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Engine</span>
+                    <span id="sidebarEngineText" class="font-mono font-semibold text-slate-200">IDLE</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Slot chạy đơn</span>
+                    <span id="sidebarSlotText" class="font-mono font-semibold text-emerald-300">0 / 2</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">Realtime WS</span>
+                    <span id="wsBadgeDesktop" class="font-mono text-emerald-400">● Live</span>
+                </div>
+                <div class="text-[10px] text-slate-500 font-mono pt-1" id="autoRefreshLabel">Auto-refresh: 8s</div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <div class="flex-1 min-w-0 flex flex-col">
+            <!-- Top Action Bar -->
+            <header class="sticky top-0 z-20 bg-[#070a10]/85 backdrop-blur-xl border-b border-white/[0.06] px-4 sm:px-6 py-3.5">
+                <div class="max-w-[1580px] mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <h1 id="pageTitle" class="text-base sm:text-lg font-bold tracking-tight text-white">Tổng quan &amp; Tài khoản</h1>
+                        <span id="engineStateBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800/90 text-slate-300 border border-white/10">IDLE</span>
+                        <button onclick="switchTab('proxy')" id="proxyHeaderBadge" class="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/80 text-slate-300 border border-white/10 hover:border-emerald-500/40 transition">
+                            Proxy: checking...
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="openAccountModal()" class="px-3.5 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-emerald-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                            <span>Thêm Tài Khoản</span>
+                        </button>
+                        <button id="btnRunUnfinished" onclick="runUnfinished()" class="px-3.5 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-slate-200 text-xs font-semibold rounded-xl transition flex items-center gap-1.5" title="Chạy tối đa 2 acc/lượt, tự xếp hàng đợi các acc lỗi/chờ">
+                            <span>Chạy Lỗi/Chờ</span>
+                        </button>
+                        <button id="btnStart" onclick="startBot()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            <span>Chạy Tất Cả</span>
+                        </button>
+                        <button id="btnStop" onclick="stopBot()" class="px-3.5 py-2 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+                            <span>Dừng Bot</span>
+                        </button>
                     </div>
                 </div>
-                <div id="terminalLogs" class="h-56 overflow-y-auto space-y-1 text-slate-300"></div>
-            </div>
-        </section>
+            </header>
 
-        <!-- TAB 2: SETTINGS & PROXY -->
-        <section id="tab-settings" class="hidden space-y-5">
-            <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
-                <!-- Proxy & Dashboard Runtime Settings -->
-                <div class="xl:col-span-5 bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                        <div>
-                            <h2 class="text-sm font-bold text-emerald-400">🌐 Proxy Tunnel &amp; Cài đặt Dashboard</h2>
-                            <p class="text-[11px] text-slate-400">Áp dụng ngay cho các lần chạy tiếp theo không cần restart PM2</p>
+            <!-- Page Body -->
+            <main class="flex-1 p-4 sm:p-6 space-y-5 max-w-[1580px] w-full mx-auto">
+                <!-- Resume & Active Single-Run Status Banners -->
+                <div id="resumeHintRow" class="hidden flex items-center justify-between gap-3 text-xs text-cyan-200 bg-cyan-950/35 border border-cyan-500/25 px-4 py-2.5 rounded-xl">
+                    <span id="resumeHint"></span>
+                    <button onclick="clearCheckpoint()" class="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-[11px] font-semibold">Reset Checkpoint</button>
+                </div>
+
+                <div id="singlePoolBar" class="hidden panel rounded-2xl p-3.5 border-emerald-500/30 flex flex-wrap items-center justify-between gap-3">
+                    <div id="singlePoolContent" class="flex flex-wrap items-center gap-2 text-xs"></div>
+                    <button onclick="stopBot()" class="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold rounded-lg">Dừng toàn bộ đơn &amp; hàng đợi</button>
+                </div>
+
+                <!-- VIEW 1: ACCOUNTS & LIVE OPERATIONS -->
+                <section id="tab-accounts" class="space-y-5">
+                    <!-- KPI Bento Strip -->
+                    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tổng tài khoản</div>
+                            <div class="text-2xl font-bold text-white mt-1 tabular-nums" id="totalAccounts">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5" id="disabledHint">0 đã tắt</div>
                         </div>
-                        <button onclick="testProxyFromVps()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-xl transition">🔍 Test Proxy</button>
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">Slot chạy đơn</div>
+                            <div class="text-2xl font-bold text-emerald-300 mt-1 tabular-nums" id="kpiSingleSlots">0 / 2</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5" id="kpiQueuedCount">0 trong hàng đợi</div>
+                        </div>
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Hoạt động / OK</div>
+                            <div class="text-2xl font-bold text-emerald-400 mt-1 tabular-nums" id="activeAccounts">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">Hoàn thành tốt</div>
+                        </div>
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Cần xử lý</div>
+                            <div class="text-2xl font-bold text-rose-400 mt-1 tabular-nums" id="errorAccounts">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">OTP / Proxy / Cookie</div>
+                        </div>
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Điểm hôm nay</div>
+                            <div class="text-2xl font-bold text-amber-300 mt-1 tabular-nums" id="totalDailyPoints">+0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">Thu hoạch trong ngày</div>
+                        </div>
+                        <div class="panel rounded-2xl p-4">
+                            <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tổng tích lũy</div>
+                            <div class="text-2xl font-bold text-cyan-300 mt-1 tabular-nums" id="totalAccumulatedPoints">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">Toàn bộ tài khoản</div>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                        <div class="sm:col-span-2">
-                            <label class="block text-slate-400 mb-1">Default Proxy URL (để trống = Direct)</label>
-                            <input id="setProxyUrl" type="text" placeholder="http://100.74.159.41" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Port</label>
-                            <input id="setProxyPort" type="number" min="0" max="65535" placeholder="10808" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Proxy Username</label>
-                            <input id="setProxyUser" type="text" placeholder="(tuỳ chọn)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-slate-400 mb-1">Proxy Password</label>
-                            <div class="flex gap-2">
-                                <input id="setProxyPass" type="password" placeholder="Giữ nguyên nếu không đổi" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                                <label class="flex items-center gap-1 text-[11px] text-slate-400 whitespace-nowrap">
-                                    <input id="setClearProxyPass" type="checkbox" class="accent-rose-500"> Xoá pass
-                                </label>
+                    <!-- Accounts Table Panel -->
+                    <div class="panel rounded-2xl overflow-hidden">
+                        <div class="p-4 border-b border-white/[0.06] flex flex-col xl:flex-row gap-3 justify-between xl:items-center">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="relative flex-1 sm:flex-initial">
+                                    <input id="searchInput" type="text" oninput="filterAccounts()" placeholder="Tìm email, tag, proxy, lỗi..." class="w-full sm:w-64 bg-[#070a10] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60">
+                                </div>
+                                <select id="sortSelect" onchange="filterAccounts()" class="bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none">
+                                    <option value="default">Mặc định</option>
+                                    <option value="pointsDesc">Tổng điểm: Cao → Thấp</option>
+                                    <option value="dailyDesc">Điểm ngày: Cao → Thấp</option>
+                                    <option value="streakDesc">Chuỗi: Cao → Thấp</option>
+                                    <option value="status">Ưu tiên Lỗi / Đang chạy</option>
+                                </select>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between xl:justify-end gap-2">
+                                <div class="flex items-center gap-1 bg-[#070a10] p-1 rounded-xl border border-white/[0.06] overflow-x-auto">
+                                    <button onclick="setStatusFilter('ALL')" class="filter-btn active px-2.5 py-1 text-[11px] rounded-lg font-semibold transition bg-emerald-500/20 text-emerald-300" data-filter="ALL">Tất cả</button>
+                                    <button onclick="setStatusFilter('RUNNING')" class="filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="RUNNING">Đang chạy</button>
+                                    <button onclick="setStatusFilter('OK')" class="filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="OK">OK</button>
+                                    <button onclick="setStatusFilter('ERROR')" class="filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="ERROR">Lỗi</button>
+                                    <button onclick="setStatusFilter('IDLE')" class="filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="IDLE">Chờ</button>
+                                    <button onclick="setStatusFilter('DISABLED')" class="filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="DISABLED">Đã tắt</button>
+                                    <button id="filterSuspended" onclick="setStatusFilter('SUSPENDED')" class="filter-btn hidden px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200" data-filter="SUSPENDED">Bị đình chỉ</button>
+                                </div>
+                                <div class="flex items-center gap-1.5 lg:hidden">
+                                    <button onclick="toggleBanned()" class="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded-xl text-[11px] text-slate-300">Ban (<span id="mobileBannedCount">0</span>)</button>
+                                    <button onclick="refreshAllAccounts()" class="px-2.5 py-1.5 bg-white/[0.05] border border-white/10 rounded-xl text-[11px] text-cyan-300">Sync API</button>
+                                </div>
+                                <button onclick="openAccountModal()" class="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-xl transition shrink-0">
+                                    + Thêm Acc
+                                </button>
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Acc đơn song song (1–2)</label>
-                            <input id="setMaxSingle" type="number" min="1" max="2" value="2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Auto-refresh UI (giây)</label>
-                            <input id="setAutoRefresh" type="number" min="3" max="120" value="8" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">Proxy Check Timeout (ms)</label>
-                            <input id="setProxyTimeout" type="number" min="1000" max="15000" value="4000" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono text-slate-100">
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-[#090e19] text-slate-400 font-semibold border-b border-white/[0.06] uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                        <th class="py-3 px-3.5 w-10">Bật</th>
+                                        <th class="py-3 px-3">Tài khoản</th>
+                                        <th class="py-3 px-2.5">Level</th>
+                                        <th class="py-3 px-3 text-right">Điểm số</th>
+                                        <th class="py-3 px-3 min-w-[140px]">Tiến độ Search</th>
+                                        <th class="py-3 px-2.5 text-center">Chuỗi / Tuổi</th>
+                                        <th class="py-3 px-2.5">Mục tiêu &amp; Proxy</th>
+                                        <th class="py-3 px-3 text-center">Trạng thái</th>
+                                        <th class="py-3 px-2.5 text-right">Cập nhật</th>
+                                        <th class="py-3 px-3 text-center sticky right-0 bg-[#090e19] shadow-[-8px_0_16px_-4px_rgba(0,0,0,0.6)]">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="accountTableBody" class="divide-y divide-white/[0.04] font-mono"></tbody>
+                            </table>
                         </div>
                     </div>
 
-                    <div class="flex justify-end pt-2">
-                        <button onclick="saveRuntimeSettings()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition">💾 Lưu Cài đặt Proxy &amp; Dashboard</button>
+                    <!-- Live Console Drawer -->
+                    <div class="panel rounded-2xl overflow-hidden">
+                        <div class="px-4 py-3 border-b border-white/[0.06] flex flex-wrap justify-between items-center gap-2 bg-[#0a0f1a]">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span class="text-xs font-bold text-slate-200">Live System Console</span>
+                                <select id="logLevelFilter" onchange="renderLogs()" class="bg-[#070a10] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-slate-300">
+                                    <option value="all">Tất cả level</option>
+                                    <option value="info">Info+</option>
+                                    <option value="warn">Warn+</option>
+                                    <option value="error">Error only</option>
+                                </select>
+                                <input id="logSearchInput" oninput="renderLogs()" placeholder="Lọc log..." class="bg-[#070a10] border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 w-36 sm:w-52">
+                            </div>
+                            <div class="flex items-center gap-3 text-[11px]">
+                                <label class="flex items-center gap-1.5 text-slate-400 cursor-pointer">
+                                    <input id="autoScrollLogs" type="checkbox" checked class="accent-emerald-500"> Auto-scroll
+                                </label>
+                                <button onclick="downloadLogs()" class="text-cyan-400 hover:text-cyan-300 font-medium">Tải log</button>
+                                <button onclick="clearLogs()" class="text-slate-400 hover:text-slate-200 font-medium">Xoá</button>
+                                <button onclick="toggleConsoleBody()" id="btnConsoleCollapse" class="text-slate-400 hover:text-white font-medium">Thu gọn</button>
+                            </div>
+                        </div>
+                        <div id="terminalLogs" class="h-52 overflow-y-auto p-3.5 space-y-1 font-mono text-[11px] text-slate-300 bg-[#06090f]"></div>
+                    </div>
+                </section>
+
+                <!-- VIEW 2: PROXY & RUNTIME SETTINGS -->
+                <section id="tab-proxy" class="hidden grid grid-cols-1 xl:grid-cols-12 gap-5">
+                    <div class="xl:col-span-6 panel rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-white/[0.06] pb-3.5">
+                            <div>
+                                <h2 class="text-sm font-bold text-white">Cấu hình Proxy mặc định &amp; Dashboard</h2>
+                                <p class="text-xs text-slate-400 mt-0.5">Áp dụng tức thì cho các lượt chạy tiếp theo, không cần restart PM2</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">
+                            <div class="sm:col-span-2">
+                                <label class="block text-slate-400 mb-1.5 font-medium">Default Proxy URL (để trống = Direct)</label>
+                                <input id="setProxyUrl" type="text" placeholder="http://100.74.159.41" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100 focus:outline-none focus:border-emerald-500/60">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5 font-medium">Port</label>
+                                <input id="setProxyPort" type="number" min="0" max="65535" placeholder="10808" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100 focus:outline-none focus:border-emerald-500/60">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5 font-medium">Username</label>
+                                <input id="setProxyUser" type="text" placeholder="(tuỳ chọn)" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-slate-400 mb-1.5 font-medium">Password</label>
+                                <div class="flex gap-2.5 items-center">
+                                    <input id="setProxyPass" type="password" placeholder="Giữ nguyên nếu không đổi" class="flex-1 bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100">
+                                    <label class="flex items-center gap-1.5 text-[11px] text-slate-400 whitespace-nowrap cursor-pointer">
+                                        <input id="setClearProxyPass" type="checkbox" class="accent-rose-500"> Xoá pass
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5 font-medium">Acc đơn song song</label>
+                                <input id="setMaxSingle" type="number" min="1" max="2" value="2" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5 font-medium">Auto-refresh UI (s)</label>
+                                <input id="setAutoRefresh" type="number" min="3" max="120" value="8" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5 font-medium">Proxy Timeout (ms)</label>
+                                <input id="setProxyTimeout" type="number" min="1000" max="15000" value="4000" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-100">
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-white/[0.06]">
+                            <button onclick="testProxyFromVps()" class="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-cyan-300 text-xs font-semibold rounded-xl transition">Test Proxy từ VPS</button>
+                            <button onclick="saveRuntimeSettings()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl transition">Lưu Cài đặt Proxy</button>
+                        </div>
                     </div>
 
-                    <!-- Live Proxy Test Result & Windows Stats -->
-                    <div id="proxyDiagBox" class="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 text-xs font-mono space-y-2">
-                        <div class="text-slate-400 font-semibold">Trạng thái Tunnel &amp; Thống kê Windows Proxy:</div>
-                        <div id="proxyDiagContent" class="text-slate-300">Đang kiểm tra...</div>
+                    <div class="xl:col-span-6 panel rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-white/[0.06] pb-3.5">
+                            <div>
+                                <h2 class="text-sm font-bold text-white">Chẩn đoán Tunnel &amp; Telemetry</h2>
+                                <p class="text-xs text-slate-400 mt-0.5">Kiểm tra luồng VPS → Tailscale → Windows Proxy (:10808) → Bing Rewards</p>
+                            </div>
+                            <button onclick="loadProxyStatus()" class="px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl text-xs text-slate-300">Làm mới</button>
+                        </div>
+                        <div id="proxyDiagContent" class="bg-[#070a10] border border-white/[0.06] rounded-xl p-4 text-xs font-mono text-slate-300 space-y-2.5 min-h-[190px]">
+                            Đang kiểm tra trạng thái proxy...
+                        </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- Bot Config (config.json) -->
-                <div class="xl:col-span-7 bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <!-- VIEW 3: BOT CONFIG (config.json) -->
+                <section id="tab-config" class="hidden panel rounded-2xl p-5 space-y-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] pb-3.5">
                         <div>
-                            <h2 class="text-sm font-bold text-cyan-400">⚙️ Cấu hình Bot (config.json)</h2>
-                            <p class="text-[11px] text-slate-400">Đồng bộ atomically ra cả src/config.json và dist/config.json (bí mật [REDACTED] được bảo toàn)</p>
+                            <h2 class="text-sm font-bold text-white">Cấu hình Bot (config.json)</h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Đồng bộ atomic ra cả src/config.json và dist/config.json — bảo toàn secret [REDACTED]</p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button onclick="toggleRawConfigMode()" id="btnRawConfig" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs rounded-xl">📝 Chế độ Raw JSON</button>
-                            <button onclick="saveBotConfig()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-xl">💾 Lưu Config Bot</button>
+                            <button onclick="toggleRawConfigMode()" id="btnRawConfig" class="px-3.5 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-semibold rounded-xl">Chế độ Raw JSON</button>
+                            <button onclick="saveBotConfig()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl">Lưu Config Bot</button>
                         </div>
                     </div>
 
-                    <!-- Structured Form -->
-                    <div id="configFormContainer" class="space-y-4 text-xs">
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div id="configFormContainer" class="space-y-5 text-xs">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
                             <div>
-                                <label class="block text-slate-400 mb-1">Clusters (luồng batch)</label>
-                                <input id="cfgClusters" type="number" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Clusters (luồng batch)</label>
+                                <input id="cfgClusters" type="number" min="1" max="10" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Max Retry / Acc</label>
-                                <input id="cfgMaxRetries" type="number" min="1" max="10" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Max Retry / Acc</label>
+                                <input id="cfgMaxRetries" type="number" min="1" max="10" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Global Timeout</label>
-                                <input id="cfgGlobalTimeout" type="text" placeholder="60sec" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Global Timeout</label>
+                                <input id="cfgGlobalTimeout" type="text" placeholder="60sec" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Visit Time</label>
-                                <input id="cfgVisitTime" type="text" placeholder="10sec" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div>
-                                <label class="block text-slate-400 mb-1">Search Delay Min</label>
-                                <input id="cfgSearchDelayMin" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Visit Time</label>
+                                <input id="cfgVisitTime" type="text" placeholder="10sec" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Search Delay Max</label>
-                                <input id="cfgSearchDelayMax" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Search Delay Min</label>
+                                <input id="cfgSearchDelayMin" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Read Delay Min</label>
-                                <input id="cfgReadDelayMin" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Search Delay Max</label>
+                                <input id="cfgSearchDelayMax" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Read Delay Max</label>
-                                <input id="cfgReadDelayMax" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                                <label class="block text-slate-400 mb-1.5">Read Delay Min</label>
+                                <input id="cfgReadDelayMin" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1.5">Read Delay Max</label>
+                                <input id="cfgReadDelayMax" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                             </div>
                         </div>
 
-                        <!-- Flags -->
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgHeadless" type="checkbox" class="accent-cyan-500"> Headless Browser</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgParallelSearch" type="checkbox" class="accent-cyan-500"> Parallel Search</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgScrollRandom" type="checkbox" class="accent-cyan-500"> Scroll Random</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgClickRandom" type="checkbox" class="accent-cyan-500"> Click Random</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgProxyQuery" type="checkbox" class="accent-cyan-500"> Proxy QueryEngine</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgIgnoreCert" type="checkbox" class="accent-cyan-500"> Ignore SSL Proxy</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgDebugLogs" type="checkbox" class="accent-cyan-500"> Debug Logs</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input id="cfgErrDiag" type="checkbox" class="accent-cyan-500"> Error Diagnostics</label>
-                        </div>
-
-                        <!-- Workers -->
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Workers (Nhiệm vụ chạy)</div>
-                            <div id="workersGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800"></div>
-                        </div>
-
-                        <!-- Query Engines -->
-                        <div>
-                            <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Query Engines</div>
-                            <div id="queryEnginesGrid" class="flex flex-wrap gap-4 bg-slate-900/60 p-3 rounded-xl border border-slate-800"></div>
-                        </div>
-
-                        <!-- Integrations -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-2">
-                                <div class="font-bold text-slate-300">🤖 AI Endpoint</div>
-                                <input id="cfgAiBaseUrl" type="text" placeholder="Base URL" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <input id="cfgAiModel" type="text" placeholder="Model" class="bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
-                                    <input id="cfgAiKey" type="text" placeholder="API Key ([REDACTED] giữ cũ)" class="bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tuỳ chọn trình duyệt &amp; tìm kiếm</div>
+                                <div class="grid grid-cols-2 gap-2.5">
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgHeadless" type="checkbox" class="accent-emerald-500"> Headless Browser</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgParallelSearch" type="checkbox" class="accent-emerald-500"> Parallel Search</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgScrollRandom" type="checkbox" class="accent-emerald-500"> Scroll Random</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgClickRandom" type="checkbox" class="accent-emerald-500"> Click Random</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgProxyQuery" type="checkbox" class="accent-emerald-500"> Proxy QueryEngine</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgIgnoreCert" type="checkbox" class="accent-emerald-500"> Ignore SSL Proxy</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgDebugLogs" type="checkbox" class="accent-emerald-500"> Debug Logs</label>
+                                    <label class="flex items-center gap-2 cursor-pointer"><input id="cfgErrDiag" type="checkbox" class="accent-emerald-500"> Error Diagnostics</label>
+                                </div>
+                                <div class="pt-2 border-t border-white/[0.06]">
+                                    <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Query Engines</div>
+                                    <div id="queryEnginesGrid" class="flex flex-wrap gap-4"></div>
                                 </div>
                             </div>
-                            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-2">
+
+                            <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-4 space-y-3">
+                                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Workers (Nhiệm vụ cày điểm)</div>
+                                <div id="workersGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5"></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-[#070a10] border border-white/[0.06] p-4 rounded-xl space-y-2.5">
+                                <div class="font-bold text-slate-200">AI Query Generator</div>
+                                <input id="cfgAiBaseUrl" type="text" placeholder="Base URL" class="w-full bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
+                                <div class="grid grid-cols-2 gap-2.5">
+                                    <input id="cfgAiModel" type="text" placeholder="Model" class="bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
+                                    <input id="cfgAiKey" type="text" placeholder="API Key ([REDACTED] giữ cũ)" class="bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
+                                </div>
+                            </div>
+                            <div class="bg-[#070a10] border border-white/[0.06] p-4 rounded-xl space-y-2.5">
                                 <div class="flex items-center justify-between">
-                                    <span class="font-bold text-slate-300">🔔 Discord &amp; Google Sheets</span>
-                                    <div class="flex gap-3">
-                                        <label class="flex items-center gap-1 cursor-pointer"><input id="cfgDiscordEnabled" type="checkbox" class="accent-cyan-500"> Discord</label>
-                                        <label class="flex items-center gap-1 cursor-pointer"><input id="cfgSheetsEnabled" type="checkbox" class="accent-cyan-500"> Sheets</label>
+                                    <span class="font-bold text-slate-200">Discord Webhook &amp; Google Sheets</span>
+                                    <div class="flex gap-4">
+                                        <label class="flex items-center gap-1.5 cursor-pointer"><input id="cfgDiscordEnabled" type="checkbox" class="accent-emerald-500"> Discord</label>
+                                        <label class="flex items-center gap-1.5 cursor-pointer"><input id="cfgSheetsEnabled" type="checkbox" class="accent-emerald-500"> Sheets</label>
                                     </div>
                                 </div>
-                                <input id="cfgDiscordUrl" type="text" placeholder="Discord Webhook URL" class="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <input id="cfgSheetId" type="text" placeholder="Spreadsheet ID" class="bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
-                                    <input id="cfgSheetName" type="text" placeholder="Sheet Name" class="bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 font-mono">
+                                <input id="cfgDiscordUrl" type="text" placeholder="Discord Webhook URL" class="w-full bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
+                                <div class="grid grid-cols-2 gap-2.5">
+                                    <input id="cfgSheetId" type="text" placeholder="Spreadsheet ID" class="bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
+                                    <input id="cfgSheetName" type="text" placeholder="Sheet Name" class="bg-[#0d1320] border border-white/10 rounded-lg px-3 py-2 font-mono">
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Raw JSON Editor -->
                     <div id="configRawContainer" class="hidden">
-                        <textarea id="configRawTextarea" rows="22" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-emerald-300 focus:outline-none focus:border-cyan-500"></textarea>
+                        <textarea id="configRawTextarea" rows="22" class="w-full bg-[#070a10] border border-white/10 rounded-xl p-4 font-mono text-xs text-emerald-300 focus:outline-none focus:border-emerald-500/60"></textarea>
                     </div>
-                </div>
-            </div>
-        </section>
+                </section>
 
-        <!-- TAB 3: CONSOLE, HISTORY, SESSIONS & DIAGNOSTICS -->
-        <section id="tab-ops" class="hidden space-y-5">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <!-- Run History -->
-                <div class="bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-3">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-sm font-bold text-cyan-400">📜 Lịch sử chạy gần đây</h2>
-                        <button onclick="loadOpsData()" class="text-xs px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg">🔄 Tải lại</button>
+                <!-- VIEW 4: HISTORY, ERRORS, SESSIONS & DIAGNOSTICS -->
+                <section id="tab-ops" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div class="panel rounded-2xl p-5 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-sm font-bold text-white">Lịch sử chạy gần đây</h2>
+                            <button onclick="loadOpsData()" class="text-xs px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 rounded-xl">Tải lại</button>
+                        </div>
+                        <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                            <table class="w-full text-left text-xs font-mono">
+                                <thead class="text-slate-400 border-b border-white/[0.06] text-[11px]">
+                                    <tr>
+                                        <th class="py-2 px-2">Chế độ / Email</th>
+                                        <th class="py-2 px-2">Kết quả</th>
+                                        <th class="py-2 px-2">Bắt đầu</th>
+                                        <th class="py-2 px-2">Kết thúc</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyBody" class="divide-y divide-white/[0.04]"></tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto max-h-72 overflow-y-auto">
-                        <table class="w-full text-left text-xs font-mono">
-                            <thead class="text-slate-400 border-b border-slate-800 text-[11px]">
-                                <tr>
-                                    <th class="py-2 px-2">Loại / Email</th>
-                                    <th class="py-2 px-2">Kết quả</th>
-                                    <th class="py-2 px-2">Bắt đầu</th>
-                                    <th class="py-2 px-2">Kết thúc</th>
-                                </tr>
-                            </thead>
-                            <tbody id="historyBody" class="divide-y divide-slate-800/50"></tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <!-- Recent Errors -->
-                <div class="bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-3">
-                    <h2 class="text-sm font-bold text-rose-400">🚨 Lỗi gần nhất trong phiên</h2>
-                    <div id="errorsBox" class="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-72 overflow-y-auto space-y-1.5 font-mono text-[11px] text-rose-300"></div>
-                </div>
-            </div>
+                    <div class="panel rounded-2xl p-5 space-y-3">
+                        <h2 class="text-sm font-bold text-rose-300">Lỗi gần nhất trong phiên</h2>
+                        <div id="errorsBox" class="bg-[#070a10] border border-white/[0.06] rounded-xl p-3.5 h-72 overflow-y-auto space-y-1.5 font-mono text-[11px] text-rose-300"></div>
+                    </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <!-- Sessions Manager -->
-                <div class="bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-3">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-sm font-bold text-emerald-400">🍪 Quản lý Session Cookies (Đồng bộ cả 3 thư mục)</h2>
-                        <span id="sessionCountBadge" class="text-xs text-slate-400 font-mono">0</span>
+                    <div class="panel rounded-2xl p-5 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-sm font-bold text-emerald-300">Session Cookies (Đồng bộ 3 thư mục)</h2>
+                            <span id="sessionCountBadge" class="text-xs text-slate-400 font-mono">0</span>
+                        </div>
+                        <div class="overflow-x-auto max-h-72 overflow-y-auto">
+                            <table class="w-full text-left text-xs font-mono">
+                                <thead class="text-slate-400 border-b border-white/[0.06] text-[11px]">
+                                    <tr>
+                                        <th class="py-2 px-2">Tài khoản</th>
+                                        <th class="py-2 px-2">Thiết bị</th>
+                                        <th class="py-2 px-2">Cập nhật</th>
+                                        <th class="py-2 px-2 text-right">Xoá</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sessionsBody" class="divide-y divide-white/[0.04]"></tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto max-h-72 overflow-y-auto">
-                        <table class="w-full text-left text-xs font-mono">
-                            <thead class="text-slate-400 border-b border-slate-800 text-[11px]">
-                                <tr>
-                                    <th class="py-2 px-2">Tài khoản</th>
-                                    <th class="py-2 px-2">Thiết bị</th>
-                                    <th class="py-2 px-2">Cập nhật</th>
-                                    <th class="py-2 px-2 text-right">Xoá</th>
-                                </tr>
-                            </thead>
-                            <tbody id="sessionsBody" class="divide-y divide-slate-800/50"></tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <!-- Error Diagnostics Viewer -->
-                <div class="bg-cardBg/95 border border-slate-800 rounded-2xl p-5 space-y-3">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-sm font-bold text-amber-400">🩺 Error Diagnostics &amp; Ảnh chụp lỗi</h2>
-                        <button onclick="clearAllDiagnostics()" class="text-xs px-2.5 py-1 bg-rose-900/50 hover:bg-rose-800/70 text-rose-200 rounded-lg border border-rose-700/40">🗑 Xoá tất cả</button>
+                    <div class="panel rounded-2xl p-5 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-sm font-bold text-amber-300">Error Diagnostics &amp; Ảnh chụp lỗi</h2>
+                            <button onclick="clearAllDiagnostics()" class="text-xs px-3 py-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 rounded-xl border border-rose-500/30">Xoá tất cả</button>
+                        </div>
+                        <div id="diagnosticsBox" class="h-72 overflow-y-auto space-y-2 text-xs font-mono"></div>
                     </div>
-                    <div id="diagnosticsBox" class="max-h-72 overflow-y-auto space-y-2 text-xs font-mono"></div>
-                </div>
-            </div>
-        </section>
+                </section>
+            </main>
+        </div>
     </div>
 
-    <!-- Account Add/Edit Modal -->
+    <!-- Account Add/Edit/Bulk-Import Modal -->
     <div id="accountModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-cardBg border border-slate-700 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 id="accModalTitle" class="text-base font-bold text-cyan-400">Thêm tài khoản</h3>
-                <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+        <div class="panel bg-[#0e1525] border-white/15 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <div class="flex items-center gap-3">
+                    <h3 id="accModalTitle" class="text-base font-bold text-white">Thêm tài khoản</h3>
+                    <div id="accModalTabs" class="flex gap-1 text-xs bg-[#070a10] p-1 rounded-xl border border-white/[0.06]">
+                        <button onclick="switchAccountModalTab('single')" id="accTabSingle" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold">1 Tài khoản</button>
+                        <button onclick="switchAccountModalTab('bulk')" id="accTabBulk" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold">Import hàng loạt</button>
+                    </div>
+                </div>
+                <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white text-lg px-1">✕</button>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div id="accSingleForm" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div class="sm:col-span-2">
                     <label class="block text-slate-400 mb-1">Email *</label>
-                    <input id="accEmail" type="email" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accEmail" type="email" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">Mật khẩu <span id="accPassHint" class="text-slate-500"></span></label>
-                    <input id="accPassword" type="password" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accPassword" type="password" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">TOTP Secret (2FA)</label>
                     <div class="flex gap-2">
-                        <input id="accTotp" type="text" placeholder="Để trống nếu giữ cũ" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                        <input id="accTotp" type="text" placeholder="Để trống nếu giữ cũ" class="flex-1 bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                         <label class="flex items-center gap-1 text-[11px] text-slate-400"><input id="accClearTotp" type="checkbox" class="accent-rose-500"> Xoá</label>
                     </div>
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">Recovery Email</label>
-                    <input id="accRecovery" type="text" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accRecovery" type="text" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">Tag / Nhóm</label>
-                    <input id="accTag" type="text" placeholder="vd: main, clone, outlook" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accTag" type="text" placeholder="vd: main, clone, outlook" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">Geo Locale</label>
-                    <input id="accGeo" type="text" value="vn" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accGeo" type="text" value="vn" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
                 <div>
                     <label class="block text-slate-400 mb-1">Language Code</label>
-                    <input id="accLang" type="text" value="vi" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 font-mono">
+                    <input id="accLang" type="text" value="vi" class="w-full bg-[#070a10] border border-white/10 rounded-xl px-3 py-2 font-mono">
                 </div>
-                <div class="sm:col-span-2 border-t border-slate-800 pt-2">
-                    <div class="text-[11px] font-bold text-slate-400 mb-2">Proxy riêng cho tài khoản (để trống = dùng Default Proxy hoặc Direct)</div>
+                <div class="sm:col-span-2 border-t border-white/[0.06] pt-3">
+                    <div class="text-[11px] font-semibold text-slate-400 mb-2">Proxy riêng cho tài khoản (trống = dùng Default Proxy hoặc Direct)</div>
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                        <input id="accProxyUrl" type="text" placeholder="http://ip hoặc socks5://ip" class="sm:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
-                        <input id="accProxyPort" type="number" min="0" max="65535" placeholder="Port" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
-                        <label class="flex items-center gap-1.5 text-slate-300"><input id="accProxyAxios" type="checkbox" checked class="accent-cyan-500"> Proxy Axios</label>
-                        <input id="accProxyUser" type="text" placeholder="Proxy User" class="sm:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
-                        <input id="accProxyPass" type="password" placeholder="Proxy Pass (giữ cũ nếu trống)" class="sm:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono">
+                        <input id="accProxyUrl" type="text" placeholder="http://ip hoặc socks5://ip" class="sm:col-span-2 bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                        <input id="accProxyPort" type="number" min="0" max="65535" placeholder="Port" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                        <label class="flex items-center gap-1.5 text-slate-300"><input id="accProxyAxios" type="checkbox" checked class="accent-emerald-500"> Proxy Axios</label>
+                        <input id="accProxyUser" type="text" placeholder="Proxy User" class="sm:col-span-2 bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                        <input id="accProxyPass" type="password" placeholder="Proxy Pass (trống nếu giữ cũ)" class="sm:col-span-2 bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
                     </div>
                 </div>
                 <div class="sm:col-span-2 flex flex-wrap gap-4 pt-1">
                     <label class="flex items-center gap-2"><input id="accEnabled" type="checkbox" checked class="accent-emerald-500"> Kích hoạt (enabled)</label>
-                    <label class="flex items-center gap-2"><input id="accFpDesktop" type="checkbox" checked class="accent-cyan-500"> Lưu Fingerprint Desktop</label>
-                    <label class="flex items-center gap-2"><input id="accFpMobile" type="checkbox" checked class="accent-cyan-500"> Lưu Fingerprint Mobile</label>
+                    <label class="flex items-center gap-2"><input id="accFpDesktop" type="checkbox" checked class="accent-emerald-500"> Lưu Fingerprint Desktop</label>
+                    <label class="flex items-center gap-2"><input id="accFpMobile" type="checkbox" checked class="accent-emerald-500"> Lưu Fingerprint Mobile</label>
                 </div>
             </div>
 
-            <div class="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-slate-800">
+            <div id="accBulkForm" class="hidden space-y-3 text-xs">
+                <div class="text-slate-400">Dán mỗi dòng 1 tài khoản theo định dạng: <code class="text-emerald-300">email|password|totpSecret|recoveryEmail</code> (hoặc <code class="text-emerald-300">email|password</code>).</div>
+                <textarea id="accBulkText" rows="7" placeholder="user1@outlook.com|MatKhau123|JBSWY3DPEHPK3PXP|rec1@gmail.com&#10;user2@gmail.com|MatKhau456" class="w-full bg-[#070a10] border border-white/10 rounded-xl p-3 font-mono text-xs text-slate-200"></textarea>
+                <div class="grid grid-cols-3 gap-2">
+                    <input id="accBulkGeo" type="text" value="vn" placeholder="Geo (vn)" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                    <input id="accBulkLang" type="text" value="vi" placeholder="Lang (vi)" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                    <input id="accBulkTag" type="text" placeholder="Tag (tuỳ chọn)" class="bg-[#070a10] border border-white/10 rounded-xl px-2.5 py-2 font-mono">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-white/[0.08]">
                 <div id="accEditExtraBtns" class="hidden flex gap-2">
-                    <button onclick="deleteModalSession()" class="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold">🗑 Xoá Session</button>
-                    <button onclick="deleteModalAccount()" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/35 text-rose-300 border border-rose-500/40 rounded-lg text-xs font-semibold">❌ Xoá Tài Khoản</button>
+                    <button onclick="deleteModalSession()" class="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold">Xoá Session</button>
+                    <button onclick="deleteModalAccount()" class="px-3 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold">Xoá Tài Khoản</button>
                 </div>
                 <div class="flex gap-2 ml-auto">
-                    <button onclick="closeAccountModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs rounded-xl">Huỷ</button>
-                    <button onclick="saveAccountModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl">💾 Lưu Tài Khoản</button>
+                    <button onclick="closeAccountModal()" class="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.1] text-xs rounded-xl">Huỷ</button>
+                    <button onclick="saveAccountModal()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold rounded-xl">Lưu Tài Khoản</button>
                 </div>
             </div>
         </div>
@@ -521,17 +618,17 @@
 
     <!-- Diagnostic Preview Modal -->
     <div id="diagModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-cardBg border border-slate-700 rounded-2xl max-w-4xl w-full p-5 space-y-3 max-h-[90vh] overflow-y-auto">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                <h3 id="diagModalTitle" class="text-sm font-bold text-amber-400 font-mono">Chi tiết Diagnostic</h3>
+        <div class="panel bg-[#0e1525] border-white/15 rounded-2xl max-w-4xl w-full p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-2">
+                <h3 id="diagModalTitle" class="text-sm font-bold text-amber-300 font-mono">Chi tiết Diagnostic</h3>
                 <button onclick="document.getElementById('diagModal').classList.add('hidden')" class="text-slate-400 hover:text-white text-lg">✕</button>
             </div>
             <div id="diagModalBody" class="space-y-3 text-xs"></div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 border border-cyan-500/50 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition duration-300 z-50 pointer-events-none max-w-md">
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-[#121a2b] border border-emerald-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition duration-300 z-50 pointer-events-none max-w-md">
         <span id="toastIcon">ℹ️</span>
         <span id="toastMsg">Thông báo</span>
     </div>
@@ -549,8 +646,10 @@
         let botConfigSnapshot = null;
         let rawConfigMode = false;
         let editingEmail = null;
+        let accModalMode = 'single';
         let logEntries = [];
         let refreshTimer = null;
+        let consoleCollapsed = false;
 
         function esc(str) {
             return String(str ?? '')
@@ -568,6 +667,14 @@
             return (n / 1048576).toFixed(2) + ' MB';
         }
 
+        function parseRatio(text, defaultMax) {
+            const m = String(text || '').match(/(\d+)\s*\/\s*(\d+)/);
+            if (!m) return { cur: 0, max: defaultMax, pct: 0, label: text || `0/${defaultMax}` };
+            const cur = parseInt(m[1], 10);
+            const max = Math.max(1, parseInt(m[2], 10));
+            return { cur, max, pct: Math.min(100, Math.round((cur / max) * 100)), label: `${cur}/${max}` };
+        }
+
         let toastTimer = null;
         function showToast(msg, icon = 'ℹ️') {
             const toast = document.getElementById('toast');
@@ -578,45 +685,61 @@
             toastTimer = setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3800);
         }
 
+        const TAB_TITLES = {
+            accounts: 'Tổng quan & Tài khoản',
+            proxy: 'Proxy Tunnel & Runtime Settings',
+            config: 'Cấu hình Bot (config.json)',
+            ops: 'Lịch sử, Session & Diagnostics'
+        };
+
         function switchTab(tab) {
-            ['accounts', 'settings', 'ops'].forEach(t => {
+            ['accounts', 'proxy', 'config', 'ops'].forEach(t => {
                 document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
             });
+            document.getElementById('pageTitle').textContent = TAB_TITLES[tab] || 'Dashboard';
             document.querySelectorAll('.nav-tab').forEach(btn => {
                 const active = btn.getAttribute('data-tab') === tab;
                 btn.className = active
-                    ? 'nav-tab px-3.5 py-1.5 rounded-xl text-xs font-bold bg-cyan-600 text-white transition'
-                    : 'nav-tab px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800/80 text-slate-300 hover:bg-slate-700 transition';
+                    ? 'nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                    : 'nav-tab flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition text-slate-300 hover:bg-white/[0.04] border border-transparent';
             });
-            if (tab === 'settings') {
+            if (tab === 'proxy') {
                 loadSettingsAndConfig();
                 loadProxyStatus();
+            } else if (tab === 'config') {
+                loadSettingsAndConfig();
             } else if (tab === 'ops') {
                 loadOpsData();
             }
         }
 
-        // WebSocket with auto-reconnect
+        function toggleConsoleBody() {
+            consoleCollapsed = !consoleCollapsed;
+            document.getElementById('terminalLogs').classList.toggle('hidden', consoleCollapsed);
+            document.getElementById('btnConsoleCollapse').textContent = consoleCollapsed ? 'Mở rộng' : 'Thu gọn';
+        }
+
         let ws = null;
         function connectWebSocket() {
             const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsBadge = document.getElementById('wsBadge');
+            const wsDesktop = document.getElementById('wsBadgeDesktop');
             ws = new WebSocket(`${wsProtocol}//${location.host}/ws/logs`);
 
             ws.onopen = () => {
-                wsBadge.textContent = '● WS Live';
-                wsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950/60 text-emerald-400 border border-emerald-500/30';
+                if (wsBadge) wsBadge.textContent = '● Live';
+                if (wsDesktop) { wsDesktop.textContent = '● Live'; wsDesktop.className = 'font-mono text-emerald-400'; }
             };
             ws.onclose = () => {
-                wsBadge.textContent = '○ Reconnecting';
-                wsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-400 border border-amber-500/30';
+                if (wsBadge) wsBadge.textContent = '○ Retry';
+                if (wsDesktop) { wsDesktop.textContent = '○ Reconnecting'; wsDesktop.className = 'font-mono text-amber-400'; }
                 setTimeout(connectWebSocket, 3000);
             };
             ws.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'LOG') {
-                        const entry = msg.entry || { level: 'info', message: msg.data, timestamp: new Date().toISOString() };
+                        const entry = msg.entry || { level: 'info', message: msg.data };
                         logEntries.push({ display: msg.data, level: entry.level || 'info', message: entry.message || msg.data });
                         if (logEntries.length > 600) logEntries.splice(0, logEntries.length - 600);
                         renderLogs();
@@ -645,7 +768,7 @@
             }).slice(-250);
 
             container.innerHTML = filtered.map(item => {
-                const cls = item.level === 'error' ? 'text-rose-400' : item.level === 'warn' ? 'text-amber-400' : 'text-slate-300';
+                const cls = item.level === 'error' ? 'text-rose-400' : item.level === 'warn' ? 'text-amber-300' : 'text-slate-300';
                 return `<div class="${cls} break-all">${esc(item.display)}</div>`;
             }).join('');
 
@@ -654,10 +777,7 @@
             }
         }
 
-        function clearLogs() {
-            logEntries = [];
-            renderLogs();
-        }
+        function clearLogs() { logEntries = []; renderLogs(); }
 
         function downloadLogs() {
             const text = logEntries.map(e => e.display).join('\n');
@@ -688,6 +808,8 @@
                 }
 
                 document.getElementById('disabledHint').textContent = `${disabledCount} đã tắt`;
+                document.getElementById('navAccountCount').textContent = allAccounts.length + (showBanned ? 0 : hiddenBannedCount);
+                document.getElementById('mobileBannedCount').textContent = hiddenBannedCount;
 
                 const resumeRow = document.getElementById('resumeHintRow');
                 const resumeEl = document.getElementById('resumeHint');
@@ -696,9 +818,9 @@
                     resumeRow.classList.toggle('hidden', !resumeEmail);
                 }
 
-                const bannedBtn = document.getElementById('btnShowBanned');
-                if (bannedBtn) {
-                    bannedBtn.textContent = showBanned ? '🙈 Ẩn acc bị ban' : `👁 Acc bị ban (${hiddenBannedCount})`;
+                const bannedLabel = document.getElementById('btnShowBannedLabel');
+                if (bannedLabel) {
+                    bannedLabel.textContent = showBanned ? 'Ẩn acc bị ban' : `Acc bị ban (${hiddenBannedCount})`;
                 }
                 const suspendedTab = document.getElementById('filterSuspended');
                 if (suspendedTab) suspendedTab.classList.toggle('hidden', !showBanned);
@@ -713,15 +835,22 @@
 
         function renderEngineStatus() {
             const badge = document.getElementById('engineStateBadge');
+            const sideText = document.getElementById('sidebarEngineText');
             if (batchStatus.active) {
-                badge.textContent = `BATCH ${batchStatus.state} (${batchStatus.uptimeSec || 0}s)`;
-                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse';
+                const txt = `BATCH ${batchStatus.state} (${batchStatus.uptimeSec || 0}s)`;
+                badge.textContent = txt;
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse';
+                if (sideText) sideText.textContent = 'BATCH RUNNING';
             } else if (singlePool.activeCount > 0 || singlePool.queuedCount > 0) {
-                badge.textContent = `SINGLE ${singlePool.activeCount}/${singlePool.maxConcurrent}` + (singlePool.queuedCount ? ` (+${singlePool.queuedCount} chờ)` : '');
-                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+                const txt = `SINGLE ${singlePool.activeCount}/${singlePool.maxConcurrent}` + (singlePool.queuedCount ? ` (+${singlePool.queuedCount} chờ)` : '');
+                badge.textContent = txt;
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+                if (sideText) sideText.textContent = txt;
             } else {
-                badge.textContent = batchStatus.state || 'IDLE';
-                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700';
+                const txt = batchStatus.state || 'IDLE';
+                badge.textContent = txt;
+                badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800/90 text-slate-300 border border-white/10';
+                if (sideText) sideText.textContent = txt;
             }
         }
 
@@ -731,8 +860,11 @@
             const active = singlePool.active || [];
             const queue = singlePool.queue || [];
 
-            document.getElementById('kpiSingleSlots').textContent = `${active.length} / ${singlePool.maxConcurrent || 2}`;
+            const slotStr = `${active.length} / ${singlePool.maxConcurrent || 2}`;
+            document.getElementById('kpiSingleSlots').textContent = slotStr;
             document.getElementById('kpiQueuedCount').textContent = `${queue.length} trong hàng đợi`;
+            const sideSlot = document.getElementById('sidebarSlotText');
+            if (sideSlot) sideSlot.textContent = slotStr;
 
             if (active.length === 0 && queue.length === 0) {
                 bar.classList.add('hidden');
@@ -741,18 +873,18 @@
             bar.classList.remove('hidden');
 
             const items = [];
-            items.push(`<span class="font-bold text-cyan-300">⚡ Đang chạy đơn (${active.length}/${singlePool.maxConcurrent}):</span>`);
+            items.push(`<span class="font-bold text-emerald-300">Chạy đơn (${active.length}/${singlePool.maxConcurrent}):</span>`);
             for (const run of active) {
-                items.push(`<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-200 font-mono">
-                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                items.push(`<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                     <span>${esc(run.email)} (${run.uptimeSec}s)</span>
-                    <button onclick="stopSingleAccount('${esc(run.email)}')" class="px-1.5 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white text-[10px] font-bold">■ Dừng</button>
+                    <button onclick="stopSingleAccount('${esc(run.email)}')" class="px-1.5 py-0.5 rounded bg-rose-500/80 hover:bg-rose-400 text-white text-[10px] font-bold">Dừng</button>
                 </span>`);
             }
             queue.forEach((q, idx) => {
-                items.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-200 font-mono">
-                    <span>⏳ #${idx + 1}: ${esc(q.email)}</span>
-                    <button onclick="stopSingleAccount('${esc(q.email)}')" class="text-rose-400 hover:text-rose-200 font-bold" title="Huỷ khỏi hàng đợi">✕</button>
+                items.push(`<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 font-mono">
+                    <span>#${idx + 1} ${esc(q.email)}</span>
+                    <button onclick="stopSingleAccount('${esc(q.email)}')" class="text-rose-300 hover:text-white font-bold" title="Huỷ">✕</button>
                 </span>`);
             });
             content.innerHTML = items.join('');
@@ -769,8 +901,8 @@
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 const active = btn.getAttribute('data-filter') === filter;
                 btn.className = active
-                    ? 'filter-btn active px-2.5 py-1 text-xs rounded-lg font-medium transition bg-cyan-600 text-white'
-                    : 'filter-btn px-2.5 py-1 text-xs rounded-lg font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+                    ? 'filter-btn active px-2.5 py-1 text-[11px] rounded-lg font-semibold transition bg-emerald-500/20 text-emerald-300'
+                    : 'filter-btn px-2.5 py-1 text-[11px] rounded-lg font-medium transition text-slate-400 hover:text-slate-200';
             });
             filterAccounts();
         }
@@ -825,34 +957,36 @@
             document.getElementById('totalDailyPoints').textContent = `+${totalDaily.toLocaleString('vi-VN')}`;
             document.getElementById('totalAccumulatedPoints').textContent = totalAccumulated.toLocaleString('vi-VN');
 
+            const navErr = document.getElementById('navErrorBadge');
+            if (navErr) {
+                navErr.textContent = errors;
+                navErr.classList.toggle('hidden', errors === 0);
+            }
+
             if (accounts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="13" class="p-8 text-center text-slate-500 font-sans">Không tìm thấy tài khoản nào phù hợp</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="p-10 text-center text-slate-500 font-sans">Không tìm thấy tài khoản nào phù hợp</td></tr>';
                 return;
             }
 
             tbody.innerHTML = accounts.map(acc => {
-                const statusColor = acc.status === 'OK' ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' :
-                    acc.status === 'RUNNING' ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 animate-pulse' :
-                    acc.status === 'SUSPENDED' ? 'text-rose-400 bg-rose-500/20 border border-rose-500/40 font-bold' :
-                    acc.status === 'ERROR' ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20' :
-                    'text-slate-400 bg-slate-500/10 border border-slate-500/20';
+                const statusColor = acc.status === 'OK' ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30' :
+                    acc.status === 'RUNNING' ? 'text-cyan-300 bg-cyan-500/15 border-cyan-500/40 animate-pulse' :
+                    acc.status === 'SUSPENDED' ? 'text-rose-300 bg-rose-500/20 border-rose-500/40 font-bold' :
+                    acc.status === 'ERROR' ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' :
+                    'text-slate-400 bg-white/[0.04] border-white/10';
 
                 const levelBadge = acc.level?.includes('Gold') || acc.level?.includes('3')
-                    ? 'text-amber-300 bg-amber-400/10 border border-amber-500/20' :
+                    ? 'text-amber-300 bg-amber-500/10 border-amber-500/20' :
                     acc.level?.includes('Silver') || acc.level?.includes('2')
-                    ? 'text-slate-300 bg-slate-600/30 border border-slate-500/20'
-                    : 'text-slate-400 bg-slate-800/50 border border-slate-700/30';
+                    ? 'text-slate-300 bg-slate-500/15 border-slate-500/20'
+                    : 'text-slate-400 bg-white/[0.04] border-white/10';
 
-                const streakVal = acc.streak && acc.streak !== '0' && acc.streak !== 'N/A'
-                    ? `<span class="text-orange-400 font-bold">🔥 ${esc(acc.streak)}</span>`
-                    : '<span class="text-slate-600">0</span>';
+                const pc = parseRatio(acc.pcProgress, 90);
+                const mob = parseRatio(acc.mobileProgress, 60);
 
                 let goalTitleText = acc.redeemGoalTitle;
                 if (goalTitleText === '000100000002') goalTitleText = 'Thẻ quà tặng';
                 else if (goalTitleText && goalTitleText.includes('{0}')) goalTitleText = 'Quyên góp';
-                const goalDisplay = goalTitleText && goalTitleText !== 'None'
-                    ? `<span class="text-slate-300 truncate max-w-[100px] inline-block font-sans text-[11px]" title="${esc(acc.redeemGoalTitle)}">${esc(goalTitleText)}</span>`
-                    : '<span class="text-slate-600 text-[11px]">—</span>';
 
                 let proxyShort = 'Direct';
                 if (acc.proxy && acc.proxy !== 'Direct') {
@@ -863,13 +997,10 @@
                         proxyShort = acc.proxy.length > 10 ? acc.proxy.slice(-6) : acc.proxy;
                     }
                 }
-                const proxyDisplay = acc.proxy && acc.proxy !== 'Direct'
-                    ? `<span class="text-cyan-400 font-mono text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/40 whitespace-nowrap" title="${esc(acc.proxy)}">🌐 ${esc(proxyShort)}</span>`
-                    : '<span class="text-slate-500 text-[10px]">Direct</span>';
 
                 const sessBadge = acc.hasSession
-                    ? `<span class="px-1 py-0.2 rounded text-[9px] bg-emerald-950/70 text-emerald-300 border border-emerald-700/40">${acc.hasDesktopSession && acc.hasMobileSession ? 'D+M' : acc.hasDesktopSession ? 'D' : 'M'}</span>`
-                    : '<span class="px-1 py-0.2 rounded text-[9px] bg-rose-950/60 text-rose-300 border border-rose-700/40">NoSess</span>';
+                    ? `<span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">${acc.hasDesktopSession && acc.hasMobileSession ? 'D+M' : acc.hasDesktopSession ? 'D' : 'M'}</span>`
+                    : '<span class="px-1.5 py-0.5 rounded text-[9px] bg-rose-500/15 text-rose-300 border border-rose-500/25">NoSess</span>';
 
                 let timePart = acc.updatedAt || '—', datePart = '';
                 if (acc.updatedAt && acc.updatedAt.includes(' ')) {
@@ -879,49 +1010,67 @@
                 }
 
                 const runActionBtn = acc.singleRunning
-                    ? `<button onclick="stopSingleAccount('${esc(acc.email)}')" title="Dừng tài khoản đang chạy đơn" class="px-1.5 py-1 bg-rose-600/25 hover:bg-rose-600/45 text-rose-300 rounded-lg border border-rose-500/40 text-[11px] font-bold">■</button>`
+                    ? `<button onclick="stopSingleAccount('${esc(acc.email)}')" title="Dừng" class="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 rounded-lg border border-rose-500/35 text-[10px] font-bold">Dừng</button>`
                     : acc.queued
-                      ? `<button onclick="stopSingleAccount('${esc(acc.email)}')" title="Đang chờ hàng đợi #${acc.queuePosition} — Bấm để huỷ" class="px-1.5 py-1 bg-amber-600/25 hover:bg-amber-600/45 text-amber-300 rounded-lg border border-amber-500/40 text-[10px] font-bold">⏳#${acc.queuePosition}</button>`
-                      : `<button onclick="runSingleAccount('${esc(acc.email)}')" title="Chạy đơn tài khoản này (tối đa 2 cùng lúc, dư sẽ tự xếp hàng đợi)" class="p-1 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition border border-emerald-500/20 hover:border-emerald-500/40 text-xs leading-none">⚡</button>`;
+                      ? `<button onclick="stopSingleAccount('${esc(acc.email)}')" title="Đang chờ #${acc.queuePosition} — Bấm để huỷ" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 rounded-lg border border-amber-500/35 text-[10px] font-bold">#${acc.queuePosition}</button>`
+                      : `<button onclick="runSingleAccount('${esc(acc.email)}')" title="Chạy đơn (tối đa 2 cùng lúc)" class="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg transition border border-emerald-500/25 text-[10px] font-semibold">Chạy</button>`;
 
-                const rowOpacity = acc.enabled === false ? 'opacity-55' : '';
+                const rowOpacity = acc.enabled === false ? 'opacity-50' : '';
                 return `
-                    <tr class="group hover:bg-slate-800/50 transition border-b border-slate-800/40 ${rowOpacity}">
-                        <td class="py-2.5 px-3">
-                            <input type="checkbox" ${acc.enabled !== false ? 'checked' : ''} onchange="toggleAccountEnabled('${esc(acc.email)}', this.checked)" title="Bật/tắt tài khoản khi chạy Tất cả" class="accent-emerald-500 cursor-pointer">
+                    <tr class="group hover:bg-white/[0.025] transition ${rowOpacity}">
+                        <td class="py-3 px-3.5">
+                            <input type="checkbox" ${acc.enabled !== false ? 'checked' : ''} onchange="toggleAccountEnabled('${esc(acc.email)}', this.checked)" class="accent-emerald-500 cursor-pointer rounded">
                         </td>
-                        <td class="py-2.5 px-3 font-semibold text-slate-200">
+                        <td class="py-3 px-3">
                             <div class="flex items-center gap-1.5">
-                                <span class="max-w-[160px] xl:max-w-[210px] truncate text-xs" title="${esc(acc.email)}">${esc(acc.email)}</span>
-                                <span class="px-1 rounded text-[9px] bg-slate-800 text-slate-400 uppercase font-sans border border-slate-700/50">${esc(acc.geoLocale || 'vn')}</span>
+                                <span class="max-w-[190px] xl:max-w-[230px] truncate font-semibold text-slate-100 text-xs" title="${esc(acc.email)}">${esc(acc.email)}</span>
+                            </div>
+                            <div class="flex items-center gap-1.5 mt-1 font-sans">
+                                <span class="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.05] text-slate-400 uppercase border border-white/[0.06]">${esc(acc.geoLocale || 'vn')}</span>
                                 ${sessBadge}
-                                ${acc.tag ? `<span class="px-1 rounded text-[9px] bg-indigo-950/70 text-indigo-300 border border-indigo-700/40">${esc(acc.tag)}</span>` : ''}
+                                ${acc.tag ? `<span class="px-1.5 py-0.5 rounded text-[9px] bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">${esc(acc.tag)}</span>` : ''}
                             </div>
                         </td>
-                        <td class="py-2.5 px-2 whitespace-nowrap"><span class="px-1.5 py-0.5 rounded text-[10px] font-sans font-semibold ${levelBadge}">${esc(acc.level || 'Level 1')}</span></td>
-                        <td class="py-2.5 px-2.5 text-right font-bold text-amber-400 whitespace-nowrap">${Number(acc.totalPoints || 0).toLocaleString('vi-VN')}</td>
-                        <td class="py-2.5 px-2.5 text-right font-semibold text-emerald-400 whitespace-nowrap">+${Number(acc.dailyPoints || 0).toLocaleString('vi-VN')}</td>
-                        <td class="py-2.5 px-2.5 whitespace-nowrap">
-                            <div class="text-[11px] leading-tight text-slate-300">PC: <span class="font-semibold text-slate-200">${esc(acc.pcProgress || '0/90')}</span></div>
-                            <div class="text-[10px] leading-tight text-slate-400">Mob: <span>${esc(acc.mobileProgress || '0/60')}</span></div>
+                        <td class="py-3 px-2.5 whitespace-nowrap">
+                            <span class="px-2 py-0.5 rounded-md border text-[10px] font-sans font-semibold ${levelBadge}">${esc(acc.level || 'Level 1')}</span>
                         </td>
-                        <td class="py-2.5 px-2 text-center font-sans whitespace-nowrap text-xs">${streakVal}</td>
-                        <td class="py-2.5 px-2 text-slate-400 font-sans whitespace-nowrap text-[11px]">${esc(acc.accountAge || 'N/A')}</td>
-                        <td class="py-2.5 px-2.5 whitespace-nowrap">${goalDisplay}</td>
-                        <td class="py-2.5 px-2 whitespace-nowrap">${proxyDisplay}</td>
-                        <td class="py-2.5 px-2.5 text-center whitespace-nowrap">
-                            <span class="px-2 py-0.5 rounded-full font-sans font-semibold text-[10px] ${statusColor}" title="${esc(acc.lastError)}">${esc(acc.status)}</span>
-                            ${acc.lastError ? `<div onclick="alert(${JSON.stringify(acc.lastError)})" class="cursor-pointer text-[9px] text-rose-300/85 max-w-[140px] truncate mx-auto hover:underline" title="${esc(acc.lastError)}">${esc(acc.lastError)}</div>` : ''}
+                        <td class="py-3 px-3 text-right whitespace-nowrap tabular-nums">
+                            <div class="font-bold text-white text-xs">${Number(acc.totalPoints || 0).toLocaleString('vi-VN')}</div>
+                            <div class="text-[11px] font-semibold text-emerald-400">+${Number(acc.dailyPoints || 0).toLocaleString('vi-VN')}</div>
                         </td>
-                        <td class="py-2.5 px-2 whitespace-nowrap text-right" title="${esc(acc.updatedAt)}">
-                            <div class="text-[11px] text-slate-300 leading-tight">${esc(timePart)}</div>
-                            <div class="text-[10px] text-slate-500 leading-tight">${esc(datePart)}</div>
+                        <td class="py-3 px-3 whitespace-nowrap">
+                            <div class="space-y-1.5 w-32">
+                                <div>
+                                    <div class="flex justify-between text-[10px] text-slate-400"><span>PC</span><span class="text-slate-200">${esc(pc.label)}</span></div>
+                                    <div class="h-1.5 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-emerald-400 rounded-full" style="width:${pc.pct}%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-[10px] text-slate-400"><span>Mob</span><span class="text-slate-200">${esc(mob.label)}</span></div>
+                                    <div class="h-1.5 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-cyan-400 rounded-full" style="width:${mob.pct}%"></div></div>
+                                </div>
+                            </div>
                         </td>
-                        <td class="py-2 px-2.5 text-center sticky right-0 bg-cardBg/95 group-hover:bg-slate-800/90 backdrop-blur shadow-[-6px_0_10px_-2px_rgba(0,0,0,0.35)] whitespace-nowrap">
-                            <div class="flex items-center justify-center gap-1">
+                        <td class="py-3 px-2.5 text-center whitespace-nowrap font-sans">
+                            <div class="text-xs font-bold ${acc.streak && acc.streak !== '0' ? 'text-amber-300' : 'text-slate-500'}">${acc.streak && acc.streak !== '0' ? `${esc(acc.streak)} ngày` : '0'}</div>
+                            <div class="text-[10px] text-slate-500">${esc(acc.accountAge || 'N/A')}</div>
+                        </td>
+                        <td class="py-3 px-2.5 whitespace-nowrap font-sans">
+                            <div class="text-[11px] text-slate-300 max-w-[115px] truncate" title="${esc(acc.redeemGoalTitle)}">${goalTitleText && goalTitleText !== 'None' ? esc(goalTitleText) : '—'}</div>
+                            <div class="text-[10px] font-mono text-cyan-300/90 mt-0.5" title="${esc(acc.proxy)}">${esc(proxyShort)}</div>
+                        </td>
+                        <td class="py-3 px-3 text-center whitespace-nowrap">
+                            <span class="px-2.5 py-0.5 rounded-full border font-sans font-semibold text-[10px] ${statusColor}" title="${esc(acc.lastError)}">${esc(acc.status)}</span>
+                            ${acc.lastError ? `<div onclick="alert(${JSON.stringify(acc.lastError)})" class="cursor-pointer text-[9px] text-rose-300/85 max-w-[145px] truncate mx-auto mt-1 hover:underline" title="${esc(acc.lastError)}">${esc(acc.lastError)}</div>` : ''}
+                        </td>
+                        <td class="py-3 px-2.5 whitespace-nowrap text-right tabular-nums">
+                            <div class="text-[11px] text-slate-300">${esc(timePart)}</div>
+                            <div class="text-[10px] text-slate-500">${esc(datePart)}</div>
+                        </td>
+                        <td class="py-3 px-3 text-center sticky right-0 bg-[#0d1320]/95 group-hover:bg-[#121a2b] backdrop-blur shadow-[-8px_0_16px_-4px_rgba(0,0,0,0.6)] whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1.5">
                                 ${runActionBtn}
-                                <button onclick="refreshSingleAccount('${esc(acc.email)}')" title="Làm mới thông tin (API)" class="p-1 hover:bg-cyan-600/20 text-cyan-400 rounded-lg transition border border-cyan-500/20 hover:border-cyan-500/40 text-xs leading-none">🔄</button>
-                                <button onclick="openAccountModal('${esc(acc.email)}')" title="Cấu hình / Sửa tài khoản" class="p-1 hover:bg-slate-600/30 text-slate-300 rounded-lg transition border border-slate-600/30 text-xs leading-none">⚙️</button>
+                                <button onclick="refreshSingleAccount('${esc(acc.email)}')" title="Làm mới API" class="p-1.5 bg-white/[0.04] hover:bg-white/[0.1] text-cyan-300 rounded-lg border border-white/10 text-[11px]">↻</button>
+                                <button onclick="openAccountModal('${esc(acc.email)}')" title="Sửa / Xoá" class="p-1.5 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 rounded-lg border border-white/10 text-[11px]">⚙</button>
                             </div>
                         </td>
                     </tr>
@@ -930,101 +1079,71 @@
         }
 
         async function startBot() {
-            try {
-                const res = await fetch('/api/start', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message || 'Đã gửi lệnh chạy bot!', json.success ? '🚀' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch('/api/start', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message || 'Đã gửi lệnh chạy bot!', json.success ? '✅' : '⚠️');
+            fetchAccounts();
         }
-
         async function runUnfinished() {
-            try {
-                const res = await fetch('/api/run-unfinished', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message || 'Đã xếp hàng đợi!', json.success ? '⚡' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch('/api/run-unfinished', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message || 'Đã xếp hàng đợi!', json.success ? '⚡' : '⚠️');
+            fetchAccounts();
         }
-
         async function stopBot() {
-            try {
-                const res = await fetch('/api/stop', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message || 'Đã dừng bot!', json.success ? '🛑' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch('/api/stop', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message || 'Đã dừng bot!', json.success ? '🛑' : '⚠️');
+            fetchAccounts();
         }
-
         async function clearCheckpoint() {
-            try {
-                const res = await fetch('/api/checkpoint/clear', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message, '↺');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch('/api/checkpoint/clear', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message, '↺');
+            fetchAccounts();
         }
-
         async function syncSheets() {
-            try {
-                const res = await fetch('/api/sync-sheets', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message || 'Đồng bộ Sheets xong!', '☁️');
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch('/api/sync-sheets', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message || 'Đồng bộ xong!', '☁️');
         }
-
         async function runSingleAccount(email) {
-            try {
-                const res = await fetch(`/api/run-account/${encodeURIComponent(email)}`, { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message, json.success ? (json.queued ? '⏳' : '🚀') : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch(`/api/run-account/${encodeURIComponent(email)}`, { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message, json.success ? (json.queued ? '⏳' : '✅') : '⚠️');
+            fetchAccounts();
         }
-
         async function stopSingleAccount(email) {
-            try {
-                const res = await fetch(`/api/stop-account/${encodeURIComponent(email)}`, { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message, json.success ? '🛑' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch(`/api/stop-account/${encodeURIComponent(email)}`, { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message, json.success ? '🛑' : '⚠️');
+            fetchAccounts();
         }
-
         async function refreshSingleAccount(email) {
-            try {
-                showToast(`Đang cập nhật ${email}...`, '⏳');
-                const res = await fetch(`/api/refresh-account/${encodeURIComponent(email)}`, { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message, json.success ? '✅' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            showToast(`Đang cập nhật ${email}...`, '⏳');
+            const res = await fetch(`/api/refresh-account/${encodeURIComponent(email)}`, { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message, json.success ? '✅' : '⚠️');
+            fetchAccounts();
         }
-
         async function refreshAllAccounts() {
-            try {
-                showToast('Đang đồng bộ điểm thật từ Microsoft API...', '⏳');
-                const res = await fetch('/api/refresh-all', { method: 'POST' });
-                const json = await res.json();
-                showToast(json.message, json.success ? '✅' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            showToast('Đang đồng bộ điểm thật từ Microsoft API...', '⏳');
+            const res = await fetch('/api/refresh-all', { method: 'POST' });
+            const json = await res.json();
+            showToast(json.message, json.success ? '✅' : '⚠️');
+            fetchAccounts();
         }
-
         async function toggleAccountEnabled(email, enabled) {
-            try {
-                const res = await fetch(`/api/accounts/manage/${encodeURIComponent(email)}/toggle`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled })
-                });
-                const json = await res.json();
-                showToast(json.message, json.success ? '✅' : '⚠️');
-                fetchAccounts();
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch(`/api/accounts/manage/${encodeURIComponent(email)}/toggle`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            });
+            const json = await res.json();
+            showToast(json.message, json.success ? '✅' : '⚠️');
+            fetchAccounts();
         }
 
-        // Settings & Proxy
         async function loadProxyStatus() {
             try {
                 const res = await fetch('/api/proxy/status');
@@ -1032,24 +1151,32 @@
                 if (!json.success) return;
                 const d = json.data;
                 const badge = document.getElementById('proxyHeaderBadge');
+                const dot = document.getElementById('navProxyDot');
                 if (!d.configured) {
-                    badge.textContent = '🌐 Proxy: Direct';
-                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700';
+                    badge.textContent = 'Proxy: Direct';
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800/80 text-slate-300 border border-white/10';
+                    if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-400';
                 } else if (d.tcpReachable) {
-                    badge.textContent = `🟢 Proxy OK · ${d.latencyMs}ms`;
-                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-500/30';
+                    badge.textContent = `Proxy OK · ${d.latencyMs}ms`;
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+                    if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
                 } else {
-                    badge.textContent = '🔴 Proxy Offline';
-                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-950/60 text-rose-300 border border-rose-500/30';
+                    badge.textContent = 'Proxy Offline';
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30';
+                    if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-400';
                 }
 
                 const diagEl = document.getElementById('proxyDiagContent');
                 if (diagEl) {
                     const st = d.proxyStats;
                     diagEl.innerHTML = `
-                        <div>Server: <span class="text-cyan-300">${esc(d.defaultProxyUrl || 'Direct')}${d.defaultProxyPort ? ':' + d.defaultProxyPort : ''}</span> | Custom/Acc: ${d.customProxyAccounts}/${d.totalAccounts}</div>
+                        <div>Server: <span class="text-emerald-300">${esc(d.defaultProxyUrl || 'Direct')}${d.defaultProxyPort ? ':' + d.defaultProxyPort : ''}</span> | Custom/Acc: ${d.customProxyAccounts}/${d.totalAccounts}</div>
                         <div>TCP Probe: ${d.tcpReachable ? `<span class="text-emerald-400">OK (${d.latencyMs}ms)</span>` : `<span class="text-rose-400">${esc(d.error || 'Offline')}</span>`}</div>
-                        ${st ? `<div class="pt-1 text-slate-400">Windows Proxy Stats → PID ${st.pid} | Tunnels: ${st.activeTunnels} active / ${st.totalTunnels} total | Traffic: ↑ ${fmtBytes(st.bytesIn)} / ↓ ${fmtBytes(st.bytesOut)} | Errors: ${st.totalErrors} | Blocked: ${st.blockedRequests}</div>` : ''}
+                        ${st ? `<div class="pt-2 border-t border-white/[0.06] text-slate-300 space-y-1">
+                            <div>Windows Proxy PID <span class="text-cyan-300">${st.pid}</span> | Allowlist: <span class="text-emerald-300">${esc(st.allowlist)}</span> | Uptime: ${st.uptimeSec}s</div>
+                            <div>Tunnels: <span class="text-white">${st.activeTunnels}</span> active / <span class="text-white">${st.totalTunnels}</span> total | Errors: ${st.totalErrors} | Blocked: ${st.blockedRequests}</div>
+                            <div>Traffic: ↑ ${fmtBytes(st.bytesIn)} / ↓ ${fmtBytes(st.bytesOut)}</div>
+                        </div>` : ''}
                     `;
                 }
             } catch {}
@@ -1057,7 +1184,7 @@
 
         async function testProxyFromVps() {
             const diagEl = document.getElementById('proxyDiagContent');
-            if (diagEl) diagEl.innerHTML = '<span class="text-cyan-300">Đang test tunnel HTTPS từ VPS qua Proxy tới ipify &amp; rewards.bing.com...</span>';
+            if (diagEl) diagEl.innerHTML = '<span class="text-cyan-300">Đang test HTTPS tunnel từ VPS qua Proxy...</span>';
             try {
                 const payload = {
                     url: document.getElementById('setProxyUrl').value.trim(),
@@ -1076,9 +1203,9 @@
                 if (diagEl) {
                     diagEl.innerHTML = `
                         <div>Proxy: <span class="text-cyan-300">${esc(d.proxyServer)}</span></div>
-                        <div>Kết quả: ${d.ok ? `<span class="text-emerald-400 font-bold">THÀNH CÔNG (${d.latencyMs}ms)</span>` : `<span class="text-rose-400 font-bold">LỖI: ${esc(d.error || json.message)}</span>`}</div>
+                        <div>Kết quả: ${d.ok ? `<span class="text-emerald-400 font-bold">OK (${d.latencyMs}ms)</span>` : `<span class="text-rose-400 font-bold">LỖI: ${esc(d.error || json.message)}</span>`}</div>
                         <div>Exit IP: <span class="text-amber-300 font-bold">${esc(d.externalIp || '—')}</span> | Bing Rewards: ${d.rewardsReachable ? '<span class="text-emerald-400">OK</span>' : '<span class="text-rose-400">Unreachable</span>'}</div>
-                        ${d.proxyStats ? `<div class="text-slate-400">Windows Proxy: ${d.proxyStats.activeTunnels} active / ${d.proxyStats.totalTunnels} total | ↑ ${fmtBytes(d.proxyStats.bytesIn)} / ↓ ${fmtBytes(d.proxyStats.bytesOut)}</div>` : ''}
+                        ${d.proxyStats ? `<div class="pt-1 text-slate-400">Windows Proxy: ${d.proxyStats.activeTunnels} active / ${d.proxyStats.totalTunnels} total | ↑ ${fmtBytes(d.proxyStats.bytesIn)} / ↓ ${fmtBytes(d.proxyStats.bytesOut)}</div>` : ''}
                     `;
                 }
                 loadProxyStatus();
@@ -1097,7 +1224,7 @@
                     document.getElementById('setProxyPort').value = s.defaultProxyPort || 0;
                     document.getElementById('setProxyUser').value = s.defaultProxyUsername || '';
                     document.getElementById('setProxyPass').value = '';
-                    document.getElementById('setProxyPass').placeholder = s.hasDefaultProxyPassword ? '[Đã lưu - để trống để giữ]' : 'Nhập password nếu có';
+                    document.getElementById('setProxyPass').placeholder = s.hasDefaultProxyPassword ? '[Đã lưu - trống để giữ]' : 'Nhập password nếu có';
                     document.getElementById('setClearProxyPass').checked = false;
                     document.getElementById('setMaxSingle').value = s.maxConcurrentSingleRuns || 2;
                     document.getElementById('setAutoRefresh').value = s.autoRefreshSec || 8;
@@ -1143,8 +1270,7 @@
                 doMissions: 'Missions',
                 doClaimPoints: 'Claim Points'
             };
-            const workersGrid = document.getElementById('workersGrid');
-            workersGrid.innerHTML = Object.entries(workerLabels).map(([k, label]) => `
+            document.getElementById('workersGrid').innerHTML = Object.entries(workerLabels).map(([k, label]) => `
                 <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" data-worker="${k}" ${cfg.workers?.[k] !== false ? 'checked' : ''} class="worker-chk accent-emerald-500"> ${label}
                 </label>
@@ -1154,7 +1280,7 @@
             const currentEngines = cfg.searchSettings?.queryEngines || [];
             document.getElementById('queryEnginesGrid').innerHTML = engines.map(eng => `
                 <label class="flex items-center gap-2 cursor-pointer uppercase font-mono text-[11px]">
-                    <input type="checkbox" value="${eng}" ${currentEngines.includes(eng) ? 'checked' : ''} class="engine-chk accent-cyan-500"> ${eng}
+                    <input type="checkbox" value="${eng}" ${currentEngines.includes(eng) ? 'checked' : ''} class="engine-chk accent-emerald-500"> ${eng}
                 </label>
             `).join('');
 
@@ -1167,7 +1293,6 @@
             document.getElementById('cfgSheetsEnabled').checked = Boolean(cfg.googleSheets?.enabled);
             document.getElementById('cfgSheetId').value = cfg.googleSheets?.spreadsheetId || '';
             document.getElementById('cfgSheetName').value = cfg.googleSheets?.sheetName || 'Sheet1';
-
             document.getElementById('configRawTextarea').value = JSON.stringify(cfg, null, 4);
         }
 
@@ -1191,14 +1316,8 @@
             cfg.searchSettings.scrollRandomResults = document.getElementById('cfgScrollRandom').checked;
             cfg.searchSettings.clickRandomResults = document.getElementById('cfgClickRandom').checked;
             cfg.searchSettings.searchResultVisitTime = document.getElementById('cfgVisitTime').value.trim();
-            cfg.searchSettings.searchDelay = {
-                min: document.getElementById('cfgSearchDelayMin').value.trim(),
-                max: document.getElementById('cfgSearchDelayMax').value.trim()
-            };
-            cfg.searchSettings.readDelay = {
-                min: document.getElementById('cfgReadDelayMin').value.trim(),
-                max: document.getElementById('cfgReadDelayMax').value.trim()
-            };
+            cfg.searchSettings.searchDelay = { min: document.getElementById('cfgSearchDelayMin').value.trim(), max: document.getElementById('cfgSearchDelayMax').value.trim() };
+            cfg.searchSettings.readDelay = { min: document.getElementById('cfgReadDelayMin').value.trim(), max: document.getElementById('cfgReadDelayMax').value.trim() };
             const selectedEngines = Array.from(document.querySelectorAll('.engine-chk')).filter(e => e.checked).map(e => e.value);
             cfg.searchSettings.queryEngines = selectedEngines.length ? selectedEngines : ['local'];
 
@@ -1214,10 +1333,7 @@
             }
 
             cfg.webhook = cfg.webhook || {};
-            cfg.webhook.discord = {
-                enabled: document.getElementById('cfgDiscordEnabled').checked,
-                url: document.getElementById('cfgDiscordUrl').value.trim()
-            };
+            cfg.webhook.discord = { enabled: document.getElementById('cfgDiscordEnabled').checked, url: document.getElementById('cfgDiscordUrl').value.trim() };
 
             if (cfg.googleSheets || document.getElementById('cfgSheetId').value.trim()) {
                 cfg.googleSheets = cfg.googleSheets || { keyFilePath: 'service-account.json' };
@@ -1225,7 +1341,6 @@
                 cfg.googleSheets.spreadsheetId = document.getElementById('cfgSheetId').value.trim();
                 cfg.googleSheets.sheetName = document.getElementById('cfgSheetName').value.trim() || 'Sheet1';
             }
-
             return cfg;
         }
 
@@ -1233,7 +1348,7 @@
             rawConfigMode = !rawConfigMode;
             document.getElementById('configFormContainer').classList.toggle('hidden', rawConfigMode);
             document.getElementById('configRawContainer').classList.toggle('hidden', !rawConfigMode);
-            document.getElementById('btnRawConfig').textContent = rawConfigMode ? '🎛 Chế độ Form' : '📝 Chế độ Raw JSON';
+            document.getElementById('btnRawConfig').textContent = rawConfigMode ? 'Chế độ Form' : 'Chế độ Raw JSON';
             if (rawConfigMode) {
                 document.getElementById('configRawTextarea').value = JSON.stringify(readConfigFromForm(), null, 4);
             } else {
@@ -1245,53 +1360,50 @@
         }
 
         async function saveRuntimeSettings() {
-            try {
-                const payload = {
-                    defaultProxyUrl: document.getElementById('setProxyUrl').value.trim(),
-                    defaultProxyPort: Number(document.getElementById('setProxyPort').value || 0),
-                    defaultProxyUsername: document.getElementById('setProxyUser').value.trim(),
-                    defaultProxyPassword: document.getElementById('setProxyPass').value,
-                    clearProxyPassword: document.getElementById('setClearProxyPass').checked,
-                    maxConcurrentSingleRuns: Number(document.getElementById('setMaxSingle').value || 2),
-                    autoRefreshSec: Number(document.getElementById('setAutoRefresh').value || 8),
-                    proxyHealthTimeoutMs: Number(document.getElementById('setProxyTimeout').value || 4000)
-                };
-                const res = await fetch('/api/settings', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const json = await res.json();
-                showToast(json.message || 'Đã lưu!', json.success ? '✅' : '⚠️');
-                if (json.success) {
-                    loadSettingsAndConfig();
-                    loadProxyStatus();
-                    fetchAccounts();
-                }
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const payload = {
+                defaultProxyUrl: document.getElementById('setProxyUrl').value.trim(),
+                defaultProxyPort: Number(document.getElementById('setProxyPort').value || 0),
+                defaultProxyUsername: document.getElementById('setProxyUser').value.trim(),
+                defaultProxyPassword: document.getElementById('setProxyPass').value,
+                clearProxyPassword: document.getElementById('setClearProxyPass').checked,
+                maxConcurrentSingleRuns: Number(document.getElementById('setMaxSingle').value || 2),
+                autoRefreshSec: Number(document.getElementById('setAutoRefresh').value || 8),
+                proxyHealthTimeoutMs: Number(document.getElementById('setProxyTimeout').value || 4000)
+            };
+            const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const json = await res.json();
+            showToast(json.message || 'Đã lưu!', json.success ? '✅' : '⚠️');
+            if (json.success) { loadSettingsAndConfig(); loadProxyStatus(); fetchAccounts(); }
         }
 
         async function saveBotConfig() {
             try {
-                const payload = rawConfigMode
-                    ? JSON.parse(document.getElementById('configRawTextarea').value)
-                    : readConfigFromForm();
-                const res = await fetch('/api/config', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const payload = rawConfigMode ? JSON.parse(document.getElementById('configRawTextarea').value) : readConfigFromForm();
+                const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 const json = await res.json();
                 showToast(json.message || 'Đã lưu config!', json.success ? '✅' : '⚠️');
                 if (json.success) loadSettingsAndConfig();
             } catch (e) { showToast('Lỗi lưu config: ' + e.message, '⚠️'); }
         }
 
-        // Account CRUD Modal
+        function switchAccountModalTab(mode) {
+            accModalMode = mode;
+            const isBulk = mode === 'bulk';
+            document.getElementById('accSingleForm').classList.toggle('hidden', isBulk);
+            document.getElementById('accBulkForm').classList.toggle('hidden', !isBulk);
+            document.getElementById('accTabSingle').className = !isBulk
+                ? 'px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold'
+                : 'px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold';
+            document.getElementById('accTabBulk').className = isBulk
+                ? 'px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-semibold'
+                : 'px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold';
+        }
+
         async function openAccountModal(email = null) {
             editingEmail = email;
-            const modal = document.getElementById('accountModal');
-            modal.classList.remove('hidden');
+            document.getElementById('accountModal').classList.remove('hidden');
+            document.getElementById('accModalTabs').classList.toggle('hidden', Boolean(email));
+            switchAccountModalTab('single');
 
             try {
                 const res = await fetch('/api/accounts/manage');
@@ -1300,9 +1412,9 @@
             } catch {}
 
             const existing = email ? manageAccountsCache.find(a => a.email.toLowerCase() === email.toLowerCase()) : null;
-            document.getElementById('accModalTitle').textContent = existing ? `Sửa tài khoản: ${existing.email}` : 'Thêm tài khoản mới';
+            document.getElementById('accModalTitle').textContent = existing ? `Sửa: ${existing.email}` : 'Thêm tài khoản mới';
             document.getElementById('accEditExtraBtns').classList.toggle('hidden', !existing);
-            document.getElementById('accPassHint').textContent = existing ? '(để trống nếu giữ mật khẩu cũ)' : '*';
+            document.getElementById('accPassHint').textContent = existing ? '(trống nếu giữ cũ)' : '*';
 
             document.getElementById('accEmail').value = existing?.email || '';
             document.getElementById('accPassword').value = '';
@@ -1329,6 +1441,29 @@
         }
 
         async function saveAccountModal() {
+            if (!editingEmail && accModalMode === 'bulk') {
+                const rawText = document.getElementById('accBulkText').value.trim();
+                if (!rawText) return showToast('Hãy dán danh sách tài khoản.', '⚠️');
+                const res = await fetch('/api/accounts/bulk-import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rawText,
+                        geoLocale: document.getElementById('accBulkGeo').value.trim() || 'vn',
+                        langCode: document.getElementById('accBulkLang').value.trim() || 'vi',
+                        tag: document.getElementById('accBulkTag').value.trim()
+                    })
+                });
+                const json = await res.json();
+                showToast(json.message || 'Import xong', json.success ? '✅' : '⚠️');
+                if (json.success) {
+                    document.getElementById('accBulkText').value = '';
+                    closeAccountModal();
+                    fetchAccounts();
+                }
+                return;
+            }
+
             const payload = {
                 email: document.getElementById('accEmail').value.trim(),
                 password: document.getElementById('accPassword').value,
@@ -1352,24 +1487,12 @@
                 }
             };
 
-            const url = editingEmail
-                ? `/api/accounts/manage/${encodeURIComponent(editingEmail)}`
-                : '/api/accounts/manage';
+            const url = editingEmail ? `/api/accounts/manage/${encodeURIComponent(editingEmail)}` : '/api/accounts/manage';
             const method = editingEmail ? 'PUT' : 'POST';
-
-            try {
-                const res = await fetch(url, {
-                    method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const json = await res.json();
-                showToast(json.message || 'Xong', json.success ? '✅' : '⚠️');
-                if (json.success) {
-                    closeAccountModal();
-                    fetchAccounts();
-                }
-            } catch (e) { showToast('Lỗi: ' + e.message, '⚠️'); }
+            const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const json = await res.json();
+            showToast(json.message || 'Xong', json.success ? '✅' : '⚠️');
+            if (json.success) { closeAccountModal(); fetchAccounts(); }
         }
 
         async function deleteModalSession() {
@@ -1385,39 +1508,30 @@
             const res = await fetch(`/api/accounts/manage/${encodeURIComponent(editingEmail)}`, { method: 'DELETE' });
             const json = await res.json();
             showToast(json.message, json.success ? '🗑' : '⚠️');
-            if (json.success) {
-                closeAccountModal();
-                fetchAccounts();
-            }
+            if (json.success) { closeAccountModal(); fetchAccounts(); }
         }
 
-        // Ops Tab: History, Errors, Sessions, Diagnostics
         async function loadOpsData() {
             try {
                 const [hRes, eRes, sRes, dRes] = await Promise.all([
-                    fetch('/api/history'),
-                    fetch('/api/errors'),
-                    fetch('/api/sessions'),
-                    fetch('/api/diagnostics')
+                    fetch('/api/history'), fetch('/api/errors'), fetch('/api/sessions'), fetch('/api/diagnostics')
                 ]);
                 const [hJson, eJson, sJson, dJson] = await Promise.all([hRes.json(), eRes.json(), sRes.json(), dRes.json()]);
 
-                const hBody = document.getElementById('historyBody');
                 const hList = (hJson.data || []).slice().reverse();
-                hBody.innerHTML = hList.length === 0
+                document.getElementById('historyBody').innerHTML = hList.length === 0
                     ? '<tr><td colspan="4" class="p-4 text-center text-slate-500">Chưa có lịch sử chạy</td></tr>'
                     : hList.map(h => `
                         <tr>
-                            <td class="py-1.5 px-2">${h.mode === 'single' ? `⚡ ${esc(h.email)}` : '🚀 Batch'}</td>
+                            <td class="py-1.5 px-2">${h.mode === 'single' ? esc(h.email) : 'Batch'}</td>
                             <td class="py-1.5 px-2"><span class="${h.state === 'OK' ? 'text-emerald-400' : h.state === 'ERROR' ? 'text-rose-400' : 'text-amber-300'} font-bold">${esc(h.state)}</span></td>
                             <td class="py-1.5 px-2 text-slate-400">${esc((h.startedAt || '').slice(11, 19))}</td>
                             <td class="py-1.5 px-2 text-slate-400">${esc((h.endedAt || '').slice(11, 19))}</td>
                         </tr>
                     `).join('');
 
-                const errBox = document.getElementById('errorsBox');
                 const errList = (eJson.data || []).slice().reverse();
-                errBox.innerHTML = errList.length === 0
+                document.getElementById('errorsBox').innerHTML = errList.length === 0
                     ? '<div class="text-slate-500">Không có lỗi nào được ghi nhận.</div>'
                     : errList.map(e => `<div>[${esc((e.timestamp || '').slice(11, 19))}] ${esc(e.message)}</div>`).join('');
 
@@ -1438,12 +1552,12 @@
                 document.getElementById('diagnosticsBox').innerHTML = dList.length === 0
                     ? '<div class="text-slate-500">Chưa có diagnostic capture nào.</div>'
                     : dList.map(d => `
-                        <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                        <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5 flex items-center justify-between gap-2">
                             <div class="truncate">
                                 <div class="text-amber-300 font-bold truncate">${esc(d.relativePath)}</div>
                                 <div class="text-[10px] text-slate-500">${esc(d.files.join(', '))}</div>
                             </div>
-                            <button onclick="previewDiagnostic('${esc(d.relativePath)}', ${esc(JSON.stringify(d.files))})" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] shrink-0">Xem</button>
+                            <button onclick="previewDiagnostic('${esc(d.relativePath)}', ${esc(JSON.stringify(d.files))})" class="px-2.5 py-1 bg-white/[0.06] hover:bg-white/[0.1] rounded-lg text-[11px] shrink-0">Xem</button>
                         </div>
                     `).join('');
             } catch {}
@@ -1476,10 +1590,10 @@
             for (const f of files) {
                 const url = `/api/diagnostics/file?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(f)}`;
                 if (f.endsWith('.png')) {
-                    parts.push(`<div><div class="text-slate-400 mb-1">${esc(f)}</div><img src="${url}" class="rounded-xl border border-slate-700 max-h-[500px]"></div>`);
+                    parts.push(`<div><div class="text-slate-400 mb-1">${esc(f)}</div><img src="${url}" class="rounded-xl border border-white/10 max-h-[500px]"></div>`);
                 } else if (f.endsWith('.txt')) {
                     const txt = await fetch(url).then(r => r.text()).catch(() => '');
-                    parts.push(`<div><div class="text-slate-400 mb-1">${esc(f)}</div><pre class="bg-slate-950 p-3 rounded-xl border border-slate-800 overflow-x-auto text-rose-200">${esc(txt)}</pre></div>`);
+                    parts.push(`<div><div class="text-slate-400 mb-1">${esc(f)}</div><pre class="bg-[#070a10] p-3 rounded-xl border border-white/10 overflow-x-auto text-rose-200">${esc(txt)}</pre></div>`);
                 }
             }
             body.innerHTML = parts.join('') || '<div class="text-slate-500">Không có file xem trước.</div>';

@@ -87,6 +87,16 @@ test('SettingsService and AccountService handle CRUD, secret preservation, and v
 
         assert.equal(await accSvc.remove('tester@example.com'), true)
         assert.equal(accSvc.list().length, 0)
+
+        const imp = await accSvc.bulkImport(
+            'u1@example.com|pass1|JBSWY3DPEHPK3PXP|rec1@example.com\nu2@example.com|pass2\nbadline\nu1@example.com|dup',
+            { geoLocale: 'us', langCode: 'en', tag: 'batch1' }
+        )
+        assert.equal(imp.added, 2)
+        assert.equal(imp.skipped, 1)
+        assert.equal(imp.errors.length, 1)
+        assert.equal(accSvc.list().length, 2)
+        assert.equal(accSvc.getRawAccount('u1@example.com').tag, 'batch1')
     } finally {
         delete process.env.DASHBOARD_SETTINGS_PATH
         delete process.env.ACCOUNTS_PATH

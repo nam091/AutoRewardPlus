@@ -398,6 +398,8 @@ export class DashboardServer {
             this.app.register(fastifyStatic, { root: webDir, prefix: '/' })
         }
 
+        this.app.get('/favicon.ico', async (_request, reply) => reply.code(204).send())
+
         // Accounts list + runtime metadata
         this.app.get<{ Querystring: { showBanned?: string } }>('/api/accounts', async request => {
             await this.refreshSessionCache()
@@ -452,6 +454,38 @@ export class DashboardServer {
                 const message = error instanceof Error ? error.message : String(error)
                 const code = message.includes('đã tồn tại') ? 409 : 400
                 return reply.code(code).send({ success: false, message })
+            }
+        })
+
+        this.app.post<{
+            Body: { rawText?: string; geoLocale?: string; langCode?: string; tag?: string; enabled?: boolean }
+        }>('/api/accounts/bulk-import', async (request, reply) => {
+            if (!this.canWriteConfig(request)) {
+                return reply.code(403).send({ success: false, message: 'Account writes are restricted to trusted hosts.' })
+            }
+            if (this.processManager.getStatus().active) {
+                return reply.code(409).send({ success: false, message: 'Dừng bot chạy hàng loạt trước khi import.' })
+            }
+            try {
+                const body = request.body || {}
+                const res = await this.accountService.bulkImport(body.rawText || '', {
+                    geoLocale: body.geoLocale,
+                    langCode: body.langCode,
+                    tag: body.tag,
+                    enabled: body.enabled
+                })
+                this.loadAccounts()
+                this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+                return {
+                    success: true,
+                    data: res,
+                    message: `Import xong: +${res.added} mới, bỏ qua ${res.skipped} trùng${res.errors.length ? `, ${res.errors.length} lỗi` : ''}.`
+                }
+            } catch (error) {
+                return reply.code(400).send({
+                    success: false,
+                    message: error instanceof Error ? error.message : String(error)
+                })
             }
         })
 
