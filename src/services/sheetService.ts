@@ -27,8 +27,15 @@ export class SheetService {
 
     public loadConfig() {
         try {
-            const configPath = path.resolve('src/config.json');
-            if (fs.existsSync(configPath)) {
+            const candidates = [
+                process.env.CONFIG_PATH?.trim(),
+                path.resolve('dist/config.json'),
+                path.resolve('src/config.json')
+            ].filter((c): c is string => Boolean(c));
+            const configPath = candidates.find(c => fs.existsSync(c));
+            this.enabled = false;
+            this.sheets = null;
+            if (configPath) {
                 const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
                 if (config.googleSheets && config.googleSheets.enabled) {
                     this.enabled = true;
@@ -51,6 +58,7 @@ export class SheetService {
     }
 
     public async syncAccountsToSheet(rows: SheetAccountRow[]): Promise<boolean> {
+        this.loadConfig();
         if (!this.enabled || !this.sheets || !this.spreadsheetId) return false;
 
         try {

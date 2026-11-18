@@ -26,6 +26,33 @@ export class DiagnosticService {
         }
     }
 
+    async readFile(relativePath: string, filename: string): Promise<{ buffer: Buffer; contentType: string }> {
+        const cleanRel = (relativePath || '.').replace(/\\/g, '/')
+        if (cleanRel.includes('..') || path.isAbsolute(cleanRel) || !filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+            throw new Error('Invalid diagnostic path.')
+        }
+
+        const target = path.resolve(this.root, cleanRel, filename)
+        if (!target.startsWith(`${this.root}${path.sep}`)) {
+            throw new Error('Path traversal denied.')
+        }
+
+        const buffer = await fs.readFile(target)
+        const ext = path.extname(filename).toLowerCase()
+        const contentType =
+            ext === '.png'
+                ? 'image/png'
+                : ext === '.html'
+                  ? 'text/html; charset=utf-8'
+                  : 'text/plain; charset=utf-8'
+
+        return { buffer, contentType }
+    }
+
+    async clearAll(): Promise<void> {
+        await fs.rm(this.root, { recursive: true, force: true })
+    }
+
     private async walk(directory: string, output: DiagnosticEntry[], limit: number): Promise<void> {
         if (output.length >= limit) return
         let children
@@ -43,7 +70,7 @@ export class DiagnosticService {
             const stats = await Promise.all(files.map(file => fs.stat(path.join(directory, file)).catch(() => null)))
             const updatedAt = new Date(Math.max(...stats.filter(Boolean).map(stat => stat!.mtimeMs), 0)).toISOString()
             output.push({
-                relativePath: path.relative(this.root, directory) || '.',
+                relativePath: (path.relative(this.root, directory) || '.').replace(/\\/g, '/'),
                 files,
                 updatedAt
             })

@@ -95,6 +95,7 @@ export const ConfigSchema = z.object({
     sessionPath: z.string().min(1),
     headless: z.boolean(),
     clusters: z.number().int().positive(),
+    maxAccountRetries: z.number().int().min(1).max(10).optional(),
     errorDiagnostics: z.boolean(),
     workers: z.object({
         doDailySet: z.boolean(),

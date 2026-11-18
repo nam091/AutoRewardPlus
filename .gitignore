@@ -24,9 +24,14 @@ bun.lock
 *.key
 *.pem
 erudite-realm-*.json
-service-account.json# Local batch imports must never reach the remote (contains credentials)
+service-account.json
+# Local batch imports must never reach the remote (contains credentials)
 newaccounts.json
-# Runtime checkpoint for same-day resume
+# Runtime checkpoint & dashboard settings
 src/dashboard/run-checkpoint.json
+src/dashboard/settings.json
+*.bak
+*.tmp
+*.lock
 # Desktop build artifacts are retired; web control center replaces them
 *.exe

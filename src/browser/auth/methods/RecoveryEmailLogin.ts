@@ -68,6 +68,10 @@ export class RecoveryLogin {
                 return
             }
 
+            if (!process.stdin.isTTY) {
+                throw new Error('[RECOVERY-EMAIL-REQUIRED] Microsoft yêu cầu xác minh email khôi phục nhưng tài khoản chưa có recoveryEmail.')
+            }
+
             this.bot.logger.info(
                 this.bot.isMobile,
                 'LOGIN-RECOVERY',

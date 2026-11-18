@@ -73,6 +73,10 @@ export class TotpLogin {
                 return
             }
 
+            if (!process.stdin.isTTY) {
+                throw new Error('[TOTP-REQUIRED] Microsoft yêu cầu mã 2FA TOTP nhưng tài khoản chưa cấu hình totpSecret.')
+            }
+
             this.bot.logger.info(this.bot.isMobile, 'LOGIN-TOTP', 'No TOTP secret provided, awaiting manual input')
 
             for (let attempt = 1; attempt <= this.maxManualAttempts; attempt++) {

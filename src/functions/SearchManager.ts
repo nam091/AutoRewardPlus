@@ -179,7 +179,7 @@ export class SearchManager {
                 )
                 searchTypes.push('Mobile')
                 promises.push(
-                    this.doMobileSearch(data, missingSearchPoints, mobileSession, accountEmail, executionContext).then(
+                    this.doMobileSearch(data, missingSearchPoints, mobileSession, account, accountEmail, executionContext).then(
                         points => {
                             mobileContextClosed = true
                             this.bot.logger.info('main', 'SEARCH-MANAGER', `Mobile done | earned=${points}`)
@@ -211,7 +211,7 @@ export class SearchManager {
                     'SEARCH-MANAGER',
                     `Desktop login | account=${accountEmail} | proxy=${account.proxy ?? 'none'}`
                 )
-                desktopSession = await executionContext.run({ isMobile: false, accountEmail }, async () =>
+                desktopSession = await executionContext.run({ isMobile: false, account }, async () =>
                     this.createDesktopSession(account, accountEmail)
                 )
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Desktop login done')
@@ -233,6 +233,7 @@ export class SearchManager {
                             data,
                             missingSearchPoints,
                             desktopSession,
+                            account,
                             accountEmail,
                             executionContext
                         ).then(points => {
@@ -242,7 +243,7 @@ export class SearchManager {
                     )
                 } else {
                     promises.push(
-                        executionContext.run({ isMobile: false, accountEmail }, async () => {
+                        executionContext.run({ isMobile: false, account }, async () => {
                             try {
                                 if (this.bot.rewardsVersion === 'modern') {
                                     await this.runModernUITasks(data)
@@ -291,7 +292,7 @@ export class SearchManager {
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Cleanup: closing mobile session')
                 this.bot.logger.debug('main', 'SEARCH-MANAGER', `Cleanup mobile | account=${accountEmail}`)
                 try {
-                    await executionContext.run({ isMobile: true, accountEmail }, async () => {
+                    await executionContext.run({ isMobile: true, account }, async () => {
                         await this.bot.browser.func.closeBrowser(mobileSession.context, accountEmail)
                     })
                     this.bot.logger.info('main', 'SEARCH-MANAGER', 'Cleanup: mobile session closed')
@@ -343,6 +344,7 @@ export class SearchManager {
                 data,
                 missingSearchPoints,
                 mobileSession,
+                account,
                 accountEmail,
                 executionContext
             )
@@ -352,7 +354,7 @@ export class SearchManager {
             this.bot.logger.info('main', 'SEARCH-MANAGER', `Step 1: skip mobile (${reason}); closing mobile session`)
             this.bot.logger.debug('main', 'SEARCH-MANAGER', 'Closing unused mobile context')
             try {
-                await executionContext.run({ isMobile: true, accountEmail }, async () => {
+                await executionContext.run({ isMobile: true, account }, async () => {
                     await this.bot.browser.func.closeBrowser(mobileSession.context, accountEmail)
                 })
                 this.bot.logger.info('main', 'SEARCH-MANAGER', 'Unused mobile session closed')
@@ -472,6 +474,7 @@ export class SearchManager {
         data: DashboardData,
         missingSearchPoints: MissingSearchPoints,
         mobileSession: BrowserSession,
+        account: Account,
         accountEmail: string,
         executionContext: any
     ): Promise<number> {
@@ -481,7 +484,7 @@ export class SearchManager {
             `Start | account=${accountEmail} | target=${missingSearchPoints.mobilePoints}`
         )
 
-        return await executionContext.run({ isMobile: true, accountEmail }, async () => {
+        return await executionContext.run({ isMobile: true, account }, async () => {
             try {
                 if (!this.bot.config.workers.doMobileSearch) {
                     this.bot.logger.info('main', 'SEARCH-MOBILE-SEARCH', 'Skip: worker disabled in config')
@@ -540,6 +543,7 @@ export class SearchManager {
         data: DashboardData,
         missingSearchPoints: MissingSearchPoints,
         desktopSession: BrowserSession,
+        account: Account,
         accountEmail: string,
         executionContext: any
     ): Promise<number> {
@@ -549,7 +553,7 @@ export class SearchManager {
             `Start | account=${accountEmail} | target=${missingSearchPoints.desktopPoints}`
         )
 
-        return await executionContext.run({ isMobile: false, accountEmail }, async () => {
+        return await executionContext.run({ isMobile: false, account }, async () => {
             try {
                 // Run Modern UI tasks on desktop (Daily Set + Keep Earning)
                 if (this.bot.rewardsVersion === 'modern') {
@@ -610,7 +614,7 @@ export class SearchManager {
             `Start | account=${accountEmail} | target=${missingSearchPoints.desktopPoints}`
         )
 
-        return await executionContext.run({ isMobile: false, accountEmail }, async () => {
+        return await executionContext.run({ isMobile: false, account }, async () => {
             const needModernTasks =
                 this.bot.rewardsVersion === 'modern' &&
                 (this.bot.config.workers.doDailySet ||

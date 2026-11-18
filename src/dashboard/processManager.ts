@@ -25,6 +25,8 @@ export interface RunSummary {
     signal: NodeJS.Signals | null
     logCount: number
     errorCount: number
+    mode?: 'batch' | 'single'
+    email?: string
 }
 
 export interface ProcessStatus {
@@ -44,6 +46,7 @@ export interface ProcessManagerOptions {
     args?: string[]
     cwd: string
     env?: NodeJS.ProcessEnv
+    getEnv?: () => NodeJS.ProcessEnv
     stopTimeoutMs?: number
     logBufferSize?: number
     historySize?: number
@@ -62,6 +65,7 @@ export class ProcessManager extends EventEmitter {
     private readonly args: string[]
     private readonly cwd: string
     private readonly env?: NodeJS.ProcessEnv
+    private readonly getEnv?: () => NodeJS.ProcessEnv
     private readonly stopTimeoutMs: number
     private readonly logBufferSize: number
     private readonly historySize: number
@@ -92,6 +96,7 @@ export class ProcessManager extends EventEmitter {
         this.args = options.args ?? defaultArgs
         this.cwd = options.cwd
         this.env = options.env
+        this.getEnv = options.getEnv
         this.stopTimeoutMs = Math.max(1000, options.stopTimeoutMs ?? 15000)
         this.logBufferSize = Math.max(50, options.logBufferSize ?? 2000)
         this.historySize = Math.max(1, options.historySize ?? 20)
@@ -99,6 +104,20 @@ export class ProcessManager extends EventEmitter {
 
     public log(level: LogLevel, message: string): void {
         this.appendLog(level, message, 'controller')
+    }
+
+    public recordExternalLog(
+        level: LogLevel,
+        message: string,
+        source: RunLogEntry['source'] = 'stdout',
+        runId: string | null = null
+    ): void {
+        this.appendLog(level, message, source, runId)
+    }
+
+    public recordExternalHistory(summary: RunSummary): void {
+        this.history.push(summary)
+        if (this.history.length > this.historySize) this.history.splice(0, this.history.length - this.historySize)
     }
 
     getStatus(): ProcessStatus {
@@ -159,9 +178,10 @@ export class ProcessManager extends EventEmitter {
                 ? (isNpm ? [...this.args, '--', ...extraArgs] : [...this.args, ...extraArgs])
                 : this.args
             const isWindowsBatch = process.platform === 'win32' && /\.(bat|cmd)$/i.test(this.command)
+            const childEnv = this.getEnv ? this.getEnv() : { ...process.env, ...this.env }
             this.child = spawn(this.command, spawnArgs, {
                 cwd: this.cwd,
-                env: { ...process.env, ...this.env },
+                env: childEnv,
                 stdio: ['ignore', 'pipe', 'pipe'],
                 shell: isWindowsBatch
             })

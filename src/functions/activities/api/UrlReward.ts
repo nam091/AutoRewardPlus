@@ -64,9 +64,10 @@ export class UrlReward extends Workers {
         )
 
         try {
-            // Always use desktop cookies for UrlReward API — mobile cookies cause HTTP 400
+            // Prefer desktop cookies for UrlReward API, falling back to mobile cookies when called in mobile phase
+            const sourceCookies = this.bot.cookies.desktop.length > 0 ? this.bot.cookies.desktop : this.bot.cookies.mobile
             this.cookieHeader = this.bot.browser.func.buildCookieHeader(
-                this.bot.cookies.desktop,
+                sourceCookies,
                 ['bing.com', 'live.com', 'microsoftonline.com']
             )
 
@@ -74,14 +75,13 @@ export class UrlReward extends Workers {
                 this.bot.logger.warn(
                     this.bot.isMobile,
                     'URL-REWARD',
-                    'Skipping: No desktop cookies available'
+                    'Skipping: No session cookies available'
                 )
                 return
             }
 
-            // Fetch a fresh request token that matches the desktop session
-            // The current this.bot.requestToken may be from mobile context → causes 401
-            const requestToken = await this.fetchDesktopRequestToken()
+            // Fetch a fresh request token that matches the active session
+            const requestToken = (await this.fetchDesktopRequestToken()) || this.bot.requestToken
 
             if (!requestToken) {
                 this.bot.logger.warn(

@@ -24,10 +24,22 @@ async function main() {
         } else if (action === '--sync') {
             const res = WindowsController.syncToVPS();
             console.log(res.message || 'Sync completed');
+        } else if (action === '--run-unfinished') {
+            const res = await WindowsController.runUnfinishedAccounts();
+            console.log(res.message || 'Unfinished accounts queued');
+        } else if (action === '--test-proxy') {
+            const localRes = await WindowsController.testLocalProxyOutbound();
+            console.log('[Local Proxy]', localRes.message);
+            const vpsRes = await WindowsController.testVpsProxy();
+            console.log('[VPS -> Proxy]', vpsRes.message || vpsRes.data?.message);
         } else if (action.startsWith('--run-account=')) {
             const email = action.split('=')[1];
             const res = await WindowsController.runSingleAccount(email);
-            console.log(res.message || 'Account task completed');
+            console.log(res.message || 'Account task started');
+        } else if (action.startsWith('--stop-account=')) {
+            const email = action.split('=')[1];
+            const res = await WindowsController.stopSingleAccount(email);
+            console.log(res.message || 'Account task stopped');
         } else if (action.startsWith('--schedule=')) {
             const time = action.split('=')[1] || '07:30';
             const res = WindowsController.scheduleDailyTask(time);

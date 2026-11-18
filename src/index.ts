@@ -233,21 +233,31 @@ export class MicrosoftRewardsBot {
     async initialize(): Promise<void> {
         this.accounts = loadAccounts()
         const emailArgIdx = process.argv.findIndex(arg => arg === '-email' || arg === '--email')
+        let isSingleAccount = false
         if (emailArgIdx !== -1 && process.argv[emailArgIdx + 1]) {
             const targetEmail = process.argv[emailArgIdx + 1]!.trim().toLowerCase()
             const filtered = this.accounts.filter(a => a.email.toLowerCase() === targetEmail)
             if (filtered.length > 0) {
                 this.accounts = filtered
+                isSingleAccount = true
                 this.logger.info('main', 'FILTER', `Filtered for single account: ${targetEmail}`)
             } else {
                 this.logger.warn('main', 'FILTER', `Target account ${targetEmail} not found in accounts.json, running all`)
             }
         }
 
+        if (!isSingleAccount) {
+            const disabledCount = this.accounts.filter(a => a.enabled === false).length
+            if (disabledCount > 0) {
+                this.accounts = this.accounts.filter(a => a.enabled !== false)
+                this.logger.info('main', 'FILTER', `Skipped ${disabledCount} disabled account(s) (enabled=false)`)
+            }
+        }
+
         // A single-account run is an explicit user choice and must not move
         // the batch resume point. Batch runs resume from the last account they
         // reached on the same local day.
-        const batchRun = this.accounts.length > 1
+        const batchRun = !isSingleAccount && this.accounts.length > 1
         runCheckpointService.enabled = batchRun
         if (batchRun) {
             let resumeEmail = runCheckpointService.getResumeEmail()
@@ -268,6 +278,7 @@ export class MicrosoftRewardsBot {
             }
 
             if (resumeEmail) {
+                const totalBeforeResume = this.accounts.length
                 const idx = this.accounts.findIndex(a => a.email.toLowerCase() === resumeEmail.toLowerCase())
                 if (idx >= 0) {
                     // Only run this account and the ones after it. Accounts
@@ -276,7 +287,7 @@ export class MicrosoftRewardsBot {
                     this.logger.info(
                         'main',
                         'RESUME',
-                        `Same-day resume: starting from ${resumeEmail} (${idx + 1}/${this.accounts.length})`
+                        `Same-day resume: starting from ${resumeEmail} (${idx + 1}/${totalBeforeResume})`
                     )
                 }
             }
@@ -292,6 +303,12 @@ export class MicrosoftRewardsBot {
             'RUN-START',
             `Starting Microsoft Rewards Script | v${pkg.version} | Accounts: ${totalAccounts} | Clusters: ${this.config.clusters}`
         )
+
+        if (totalAccounts === 0) {
+            this.logger.warn('main', 'RUN-END', 'No enabled accounts to run. Exiting.')
+            await flushAllWebhooks()
+            process.exit(0)
+        }
 
         if (this.config.clusters > 1) {
             if (cluster.isPrimary) {
@@ -310,6 +327,12 @@ export class MicrosoftRewardsBot {
         const rawChunks = this.utils.chunkArray(this.accounts, this.config.clusters)
         const accountChunks = rawChunks.filter(c => c && c.length > 0)
         this.activeWorkers = accountChunks.length
+
+        if (accountChunks.length === 0) {
+            this.logger.warn('main', 'CLUSTER-PRIMARY', 'No account chunks to schedule. Exiting.')
+            await flushAllWebhooks()
+            process.exit(0)
+        }
 
         const allAccountStats: AccountStats[] = []
         let hadWorkerFailure = false
@@ -701,15 +724,16 @@ export class MicrosoftRewardsBot {
         accountEmail: string
     ): Promise<{ result?: AccountRunResult; lastError?: unknown }> {
         let lastError: unknown
+        const maxAttempts = Math.max(1, this.config.maxAccountRetries ?? ACCOUNT_MAX_ATTEMPTS)
 
-        for (let attempt = 1; attempt <= ACCOUNT_MAX_ATTEMPTS; attempt++) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 const result = await this.Main(account)
                 if (attempt > 1) {
                     this.logger.info(
                         'main',
                         'ACCOUNT-RETRY',
-                        `Succeeded for ${accountEmail} on attempt ${attempt}/${ACCOUNT_MAX_ATTEMPTS}`,
+                        `Succeeded for ${accountEmail} on attempt ${attempt}/${maxAttempts}`,
                         'green'
                     )
                 }
@@ -719,12 +743,12 @@ export class MicrosoftRewardsBot {
                 this.logger.error(
                     'main',
                     'FLOW',
-                    `Flow failed for ${accountEmail} (attempt ${attempt}/${ACCOUNT_MAX_ATTEMPTS}): ${errMsg(error)}`
+                    `Flow failed for ${accountEmail} (attempt ${attempt}/${maxAttempts}): ${errMsg(error)}`
                 )
 
-                const canRetry = attempt < ACCOUNT_MAX_ATTEMPTS && isRetryableAccountError(error)
+                const canRetry = attempt < maxAttempts && isRetryableAccountError(error)
                 if (!canRetry) {
-                    if (attempt < ACCOUNT_MAX_ATTEMPTS) {
+                    if (attempt < maxAttempts) {
                         this.logger.warn(
                             'main',
                             'ACCOUNT-RETRY',
@@ -738,7 +762,7 @@ export class MicrosoftRewardsBot {
                 this.logger.warn(
                     'main',
                     'ACCOUNT-RETRY',
-                    `Retrying ${accountEmail} in ${Math.round(backoffMs / 1000)}s (attempt ${attempt + 1}/${ACCOUNT_MAX_ATTEMPTS})`
+                    `Retrying ${accountEmail} in ${Math.round(backoffMs / 1000)}s (attempt ${attempt + 1}/${maxAttempts})`
                 )
                 await this.utils.wait(backoffMs)
 
@@ -947,12 +971,9 @@ export class MicrosoftRewardsBot {
                     }
                 }
 
-                // Sanity check: Daily points in Vietnam cannot realistically exceed 500 in one day
+                // Sanity check: Daily points realistically cannot exceed 500 in one day
                 if (collectedPoints > 500 && finalPoints > 500) {
-                    collectedPoints = Math.max(0, finalPoints - initialPoints)
-                    if (collectedPoints > 500) {
-                        collectedPoints = 225
-                    }
+                    collectedPoints = Math.min(500, Math.max(0, finalPoints - initialPoints))
                 }
 
                 // Real search progress, reported instead of the previous hardcoded 90/90 and 60/60.
@@ -1068,6 +1089,8 @@ async function main(): Promise<void> {
         await rewardsBot.run()
     } catch (error) {
         rewardsBot.logger.error('main', 'MAIN-ERROR', error as Error)
+        await flushAllWebhooks()
+        process.exit(1)
     }
 }
 

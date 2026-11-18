@@ -38,6 +38,51 @@ export function isStateUpdateMessage(msg: unknown): msg is StateUpdateMessage {
 export class StateService {
     private dbPath = path.resolve('src/dashboard/db.json')
 
+    private withFileLock<T>(fn: () => T): T {
+        const lockPath = `${this.dbPath}.lock`
+        const dir = path.dirname(lockPath)
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true })
+        }
+
+        const deadline = Date.now() + 4000
+        let acquired = false
+
+        while (Date.now() < deadline) {
+            try {
+                const fd = fs.openSync(lockPath, 'wx')
+                fs.writeFileSync(fd, `${process.pid}\n${Date.now()}`)
+                fs.closeSync(fd)
+                acquired = true
+                break
+            } catch (err: any) {
+                if (err?.code !== 'EEXIST') break
+                try {
+                    const stat = fs.statSync(lockPath)
+                    if (Date.now() - stat.mtimeMs > 15000) {
+                        fs.unlinkSync(lockPath)
+                        continue
+                    }
+                } catch {
+                    continue
+                }
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
+            }
+        }
+
+        try {
+            return fn()
+        } finally {
+            if (acquired) {
+                try {
+                    fs.unlinkSync(lockPath)
+                } catch {
+                    // Best-effort unlock
+                }
+            }
+        }
+    }
+
     public getStates(): AccountState[] {
         try {
             if (fs.existsSync(this.dbPath)) {
@@ -112,43 +157,45 @@ export class StateService {
         this.applyAccountState(email, update)
     }
 
-    /** Writes a state change to disk. Primary process only. */
+    /** Writes a state change to disk. Primary process only (locked across concurrent runs). */
     public applyAccountState(email: string, update: Partial<AccountState>) {
-        const states = this.getStates()
+        this.withFileLock(() => {
+            const states = this.getStates()
 
-        // Checkpoint writes are primary-only: workers forward their state
-        // updates here over IPC, so this is the single safe write point.
-        if (update.status === 'RUNNING') {
-            runCheckpointService.mark(email, 'started')
-        } else if (update.status === 'ERROR') {
-            runCheckpointService.mark(email, 'error')
-        }
+            // Checkpoint writes are primary-only: workers forward their state
+            // updates here over IPC, so this is the single safe write point.
+            if (update.status === 'RUNNING') {
+                runCheckpointService.mark(email, 'started')
+            } else if (update.status === 'ERROR') {
+                runCheckpointService.mark(email, 'error')
+            }
 
-        const idx = states.findIndex(s => s.email.toLowerCase() === email.toLowerCase())
-        if (idx !== -1) {
-            states[idx] = { ...states[idx]!, ...update, updatedAt: new Date().toLocaleString('vi-VN') }
-        } else {
-            states.push({
-                email,
-                totalPoints: update.totalPoints || 0,
-                dailyPoints: update.dailyPoints || 0,
-                pcProgress: update.pcProgress || '0/90',
-                mobileProgress: update.mobileProgress || '0/60',
-                status: update.status || 'IDLE',
-                accountAge: update.accountAge || 'N/A',
-                streak: update.streak || '0',
-                updatedAt: new Date().toLocaleString('vi-VN'),
-                level: update.level || 'Level 1',
-                lifetimePoints: update.lifetimePoints || 0,
-                questPoints: update.questPoints || 0,
-                redeemGoalTitle: update.redeemGoalTitle || 'None',
-                redeemGoalPrice: update.redeemGoalPrice || 0,
-                geoLocale: update.geoLocale || 'vn',
-                proxy: update.proxy || 'Direct',
-                lastError: update.lastError
-            })
-        }
-        this.saveStates(states)
+            const idx = states.findIndex(s => s.email.toLowerCase() === email.toLowerCase())
+            if (idx !== -1) {
+                states[idx] = { ...states[idx]!, ...update, updatedAt: new Date().toLocaleString('vi-VN') }
+            } else {
+                states.push({
+                    email,
+                    totalPoints: update.totalPoints || 0,
+                    dailyPoints: update.dailyPoints || 0,
+                    pcProgress: update.pcProgress || '0/90',
+                    mobileProgress: update.mobileProgress || '0/60',
+                    status: update.status || 'IDLE',
+                    accountAge: update.accountAge || 'N/A',
+                    streak: update.streak || '0',
+                    updatedAt: new Date().toLocaleString('vi-VN'),
+                    level: update.level || 'Level 1',
+                    lifetimePoints: update.lifetimePoints || 0,
+                    questPoints: update.questPoints || 0,
+                    redeemGoalTitle: update.redeemGoalTitle || 'None',
+                    redeemGoalPrice: update.redeemGoalPrice || 0,
+                    geoLocale: update.geoLocale || 'vn',
+                    proxy: update.proxy || 'Direct',
+                    lastError: update.lastError
+                })
+            }
+            this.saveStates(states)
+        })
     }
 
     /**

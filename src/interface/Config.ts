@@ -3,6 +3,7 @@ export interface Config {
     sessionPath: string
     headless: boolean
     clusters: number
+    maxAccountRetries?: number
     errorDiagnostics: boolean
     workers: ConfigWorkers
     searchOnBingLocalQueries: boolean
