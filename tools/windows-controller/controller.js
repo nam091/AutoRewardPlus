@@ -382,13 +382,13 @@ class WindowsController {
         if (enabled) {
             const cmd = `reg add "${regKey}" /v "AutoRewardPlus" /t REG_SZ /d "\"${launcher}\" --silent" /f`;
             execSync(cmd, { stdio: 'ignore', timeout: 5000 });
-            return { success: true, enabled: true, message: 'Đã kích hoạt tự động khởi động web control center cùng Windows.' };
+            return { success: true, enabled: true, message: 'Đã kích hoạt tự động bật Windows Proxy (:10808) cùng Windows.' };
         } else {
             try {
                 const cmd = `reg delete "${regKey}" /v "AutoRewardPlus" /f`;
                 execSync(cmd, { stdio: 'ignore', timeout: 5000 });
             } catch {}
-            return { success: true, enabled: false, message: 'Đã hủy kích hoạt tự động chạy cùng Windows.' };
+            return { success: true, enabled: false, message: 'Đã hủy kích hoạt tự động chạy Windows Proxy cùng Windows.' };
         }
     }
 
