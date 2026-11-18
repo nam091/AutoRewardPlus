@@ -443,11 +443,11 @@ const HTML_CONTENT = `<!DOCTYPE html>
             bar.classList.remove('hidden');
             const parts = ['<span class="font-bold text-emerald-300">Chạy đơn (' + active.length + '/' + (singlePool.maxConcurrent || 2) + '):</span>'];
             for (const r of active) {
-                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono">' + r.email + ' (' + r.uptimeSec + 's) <button onclick="stopSingleAccount(\'' + r.email + '\')" class="text-rose-300 font-bold">✕</button></span>');
+                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono">' + r.email + ' (' + r.uptimeSec + 's) <button onclick="stopSingleAccount(\\\'' + r.email + '\\\')" class="text-rose-300 font-bold">✕</button></span>');
             }
             for (let i = 0; i < queue.length; i++) {
                 const q = queue[i];
-                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 font-mono">#' + (i + 1) + ' ' + q.email + ' <button onclick="stopSingleAccount(\'' + q.email + '\')" class="text-rose-300 font-bold">✕</button></span>');
+                parts.push('<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 font-mono">#' + (i + 1) + ' ' + q.email + ' <button onclick="stopSingleAccount(\\\'' + q.email + '\\\')" class="text-rose-300 font-bold">✕</button></span>');
             }
             items.innerHTML = parts.join('');
         }
