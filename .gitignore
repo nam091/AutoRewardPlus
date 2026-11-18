@@ -30,6 +30,8 @@ newaccounts.json
 # Runtime checkpoint & dashboard settings
 src/dashboard/run-checkpoint.json
 src/dashboard/settings.json
+src/dashboard/scheduler-state.json
+scheduler-state.json
 *.bak
 *.tmp
 *.lock

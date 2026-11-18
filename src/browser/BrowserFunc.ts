@@ -3,6 +3,7 @@ import type { AxiosRequestConfig } from 'axios'
 
 import type { MicrosoftRewardsBot } from '../index'
 import { saveSessionData } from '../util/Load'
+import { parseOrderHistoryText } from '../util/RewardUtils'
 import { errMsg } from '../util/Utils'
 
 import type { Counters, DashboardData } from './../interface/DashboardData'
@@ -613,6 +614,113 @@ export default class BrowserFunc {
         } catch (error) {
             this.bot.logger.warn(this.bot.isMobile, 'MODERN-BREAKDOWN', `Failed to get points breakdown: ${errMsg(error)}`)
             return this.modernSearchBreakdown
+        }
+    }
+
+    /**
+     * Scrape total redemption order count and latest order metadata from /redeem/orderhistory.
+     */
+    async syncRedemptionCount(page: Page): Promise<{
+        redemptionCount: number | null
+        lastOrderTitle?: string
+        lastOrderDate?: string
+    }> {
+        try {
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'ORDER-HISTORY',
+                '[ORDER-HISTORY] Checking redemption order history...'
+            )
+
+            await page.goto('https://rewards.bing.com/redeem/orderhistory', {
+                waitUntil: 'domcontentloaded',
+                timeout: 30000
+            })
+
+            await page
+                .waitForFunction(
+                    () => {
+                        const body = document.body
+                        if (!body) return false
+                        const hasBusy = Boolean(
+                            document.querySelector('[aria-busy="true"], [class*="skeleton" i], [class*="spinner" i]')
+                        )
+                        const text = (body.innerText || body.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+                        if (!text || text.startsWith('loading') || text.includes('đang tải')) return false
+                        const hasOrderMarker =
+                            /results?|orders?|order\s+no\.|no\s+orders|haven't\s+placed|kết\s*quả|đơn\s*hàng|mã\s+đơn/i.test(
+                                text
+                            )
+                        return hasOrderMarker && !hasBusy
+                    },
+                    { timeout: 8000 }
+                )
+                .catch(() => {})
+
+            await this.bot.utils.wait(800)
+
+            const extracted = await page.evaluate(() => {
+                const main = document.querySelector('main') || document.body
+                const mainText = ((main as HTMLElement)?.innerText || main?.textContent || '').trim()
+
+                let lastOrderTitle: string | undefined
+                let lastOrderDate: string | undefined
+
+                const firstRow =
+                    document.querySelector(
+                        'table tbody tr, [role="row"]:not(:first-child), [class*="order" i][class*="item" i], [class*="order" i][class*="card" i]'
+                    ) ?? null
+                if (firstRow) {
+                    const cells = Array.from(firstRow.querySelectorAll('td, [role="cell"], p, span, h3, h4'))
+                        .map(el => (el.textContent || '').trim())
+                        .filter(Boolean)
+
+                    for (const cell of cells) {
+                        if (
+                            !lastOrderDate &&
+                            /\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b/i.test(
+                                cell
+                            )
+                        ) {
+                            lastOrderDate = cell
+                            continue
+                        }
+                        if (
+                            !lastOrderTitle &&
+                            cell.length >= 3 &&
+                            cell.length <= 120 &&
+                            !/^(?:order\s*no\.|mã\s+đơn|sent|shipped|completed|pending|canceled|cancelled|đã\s+gửi|hoàn\s+thành|\d+\s*(?:pts|points|điểm))$/i.test(
+                                cell
+                            ) &&
+                            !/^\d{4,}$/.test(cell)
+                        ) {
+                            lastOrderTitle = cell
+                        }
+                    }
+                }
+
+                return { mainText, lastOrderTitle, lastOrderDate }
+            })
+
+            const redemptionCount = parseOrderHistoryText(extracted.mainText)
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'ORDER-HISTORY',
+                `[ORDER-HISTORY] Parsed redemptionCount=${redemptionCount ?? 'unknown'}${extracted.lastOrderTitle ? ` | lastOrder="${extracted.lastOrderTitle}"` : ''}`
+            )
+
+            return {
+                redemptionCount,
+                ...(extracted.lastOrderTitle ? { lastOrderTitle: extracted.lastOrderTitle } : {}),
+                ...(extracted.lastOrderDate ? { lastOrderDate: extracted.lastOrderDate } : {})
+            }
+        } catch (error) {
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'ORDER-HISTORY',
+                `[ORDER-HISTORY] Failed to scrape order history: ${errMsg(error)}`
+            )
+            return { redemptionCount: null }
         }
     }
 

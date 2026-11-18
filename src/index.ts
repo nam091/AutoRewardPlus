@@ -13,9 +13,15 @@ import BrowserUtils from './browser/BrowserUtils'
 
 import { IpcLog, Logger } from './logging/Logger'
 import Utils, { errMsg } from './util/Utils'
-import { loadAccounts, loadConfig } from './util/Load'
+import { loadAccounts, loadConfig, saveSessionData } from './util/Load'
 import { checkNodeVersion } from './util/Validator'
-import { calculateAccountAge, extractStreak } from './util/RewardUtils'
+import {
+    calculateAccountAge,
+    extractStreak,
+    hasZeroRedemptionEvidence,
+    isNewAccountAge,
+    syncNewTagByAge
+} from './util/RewardUtils'
 
 import { Login } from './browser/auth/Login'
 import { Workers } from './functions/Workers'
@@ -23,6 +29,7 @@ import Activities from './functions/Activities'
 import { SearchManager } from './functions/SearchManager'
 
 import type { Account } from './interface/Account'
+import type { ExecutionMode } from './interface/Config'
 import AxiosClient from './util/Axios'
 import { sendDiscord, sendDiscordSummary, sendDiscordAccountNotification, flushDiscordQueue } from './logging/Discord'
 import { sendNtfy, sendNtfyAccountNotification, flushNtfyQueue } from './logging/Ntfy'
@@ -30,9 +37,17 @@ import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
 import type { AppEarnablePoints } from './interface/Points'
 import { sheetService } from './services/sheetService'
-import { isStateUpdateMessage, stateService } from './services/stateService'
+import {
+    isAccountTagSyncMessage,
+    isStateUpdateMessage,
+    stateService,
+    type AccountTagSyncMessage
+} from './services/stateService'
 import { runCheckpointService } from './services/runCheckpointService'
+import { AccountService } from './dashboard/accountService'
 import { getAccountStartDelayMs, maskAccount } from './browser/humanize/BehaviorPolicy'
+import { resolveExecutionProfile, type ResolvedExecutionProfile } from './browser/humanize/ExecutionProfile'
+import { SeededRandom } from './browser/humanize/SeededRandom'
 
 interface ExecutionContext {
     isMobile: boolean
@@ -66,6 +81,13 @@ interface AccountStats {
     redeemGoalPrice?: number
     proxy?: string
     geoLocale?: string
+    tag?: string
+    redemptionCount?: number
+    lifetimePointsRedeemed?: number
+    syncedLifetimeRedeemed?: number
+    lastOrderTitle?: string
+    lastOrderDate?: string
+    executionMode?: ExecutionMode
 }
 
 interface AccountRunResult {
@@ -83,6 +105,13 @@ interface AccountRunResult {
     lifetimePoints?: number
     redeemGoalTitle?: string
     redeemGoalPrice?: number
+    tag?: string
+    redemptionCount?: number
+    lifetimePointsRedeemed?: number
+    syncedLifetimeRedeemed?: number
+    lastOrderTitle?: string
+    lastOrderDate?: string
+    executionMode?: ExecutionMode
 }
 
 /** Retries per account for transient infrastructure failures. */
@@ -168,6 +197,7 @@ interface UserData {
     currentPoints: number
     gainedPoints: number
     claimedPoints: number
+    modernQuestPoints?: number
 }
 
 export class MicrosoftRewardsBot {
@@ -181,6 +211,7 @@ export class MicrosoftRewardsBot {
     public mainDesktopPage!: Page
 
     public userData: UserData
+    public currentExecutionProfile: ResolvedExecutionProfile
 
     public rewardsVersion: 'legacy' | 'modern' = 'legacy'
 
@@ -209,7 +240,8 @@ export class MicrosoftRewardsBot {
             initialPoints: 0,
             currentPoints: 0,
             gainedPoints: 0,
-            claimedPoints: 0
+            claimedPoints: 0,
+            modernQuestPoints: 0
         }
         this.logger = new Logger(this)
         this.accounts = []
@@ -222,6 +254,7 @@ export class MicrosoftRewardsBot {
             utils: new BrowserUtils(this)
         }
         this.config = loadConfig()
+        this.currentExecutionProfile = resolveExecutionProfile({ config: this.config })
         this.activeWorkers = this.config.clusters
         this.exitedWorkers = []
     }
@@ -341,6 +374,7 @@ export class MicrosoftRewardsBot {
         const execFile = fs.existsSync(distEntry) ? distEntry : (process.argv[1] || path.resolve('src/index.ts'))
         cluster.setupPrimary({ exec: execFile })
 
+        const accountService = new AccountService()
         for (const chunk of accountChunks) {
             const worker = cluster.fork()
             worker.send?.({ chunk, runStartTime })
@@ -355,6 +389,10 @@ export class MicrosoftRewardsBot {
                 if (isStateUpdateMessage(msg)) {
                     const { email, update } = msg.__stateUpdate
                     stateService.applyAccountState(email, update)
+                }
+
+                if (isAccountTagSyncMessage(msg)) {
+                    accountService.syncNewTagByEmailSync(msg.__accountAgeSync.email, msg.__accountAgeSync.isNew)
                 }
 
                 const log = msg.__ipcLog
@@ -507,6 +545,7 @@ export class MicrosoftRewardsBot {
 
             this.userData.userName = this.utils.getEmailUsername(accountEmail)
             this.userData.claimedPoints = 0 // Reset for each account
+            this.userData.modernQuestPoints = 0
 
             try {
                 const startDelay = this.config.behavior?.accountStartDelay
@@ -572,7 +611,14 @@ export class MicrosoftRewardsBot {
                         redeemGoalTitle: result.redeemGoalTitle,
                         redeemGoalPrice: result.redeemGoalPrice,
                         proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
-                        geoLocale: account.geoLocale
+                        geoLocale: account.geoLocale,
+                        tag: result.tag,
+                        redemptionCount: result.redemptionCount,
+                        lifetimePointsRedeemed: result.lifetimePointsRedeemed,
+                        syncedLifetimeRedeemed: result.syncedLifetimeRedeemed,
+                        lastOrderTitle: result.lastOrderTitle,
+                        lastOrderDate: result.lastOrderDate,
+                        executionMode: result.executionMode
                     })
 
                     stateService.updateAccountState(accountEmail, {
@@ -590,6 +636,13 @@ export class MicrosoftRewardsBot {
                         redeemGoalPrice: result.redeemGoalPrice,
                         proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
                         geoLocale: account.geoLocale,
+                        tag: result.tag,
+                        redemptionCount: result.redemptionCount,
+                        lifetimePointsRedeemed: result.lifetimePointsRedeemed,
+                        syncedLifetimeRedeemed: result.syncedLifetimeRedeemed,
+                        lastOrderTitle: result.lastOrderTitle,
+                        lastOrderDate: result.lastOrderDate,
+                        executionMode: result.executionMode,
                         lastError: ''
                     })
 
@@ -771,6 +824,7 @@ export class MicrosoftRewardsBot {
                 this.accessToken = ''
                 this.cookies = { mobile: [], desktop: [] }
                 this.userData.claimedPoints = 0
+                this.userData.modernQuestPoints = 0
             }
         }
 
@@ -828,11 +882,15 @@ export class MicrosoftRewardsBot {
                     )
                 }
 
-                // Set geo
+                // Set geo & language
                 this.userData.geoLocale =
                     account.geoLocale && account.geoLocale !== 'auto'
                         ? account.geoLocale.toLowerCase()
                         : (data.userProfile?.attributes?.country?.toLowerCase() || 'vn')
+                this.userData.langCode = (
+                    account.langCode || (this.userData.geoLocale === 'vn' ? 'vi' : 'en')
+                ).toLowerCase()
+                this.userData.modernQuestPoints = 0
                 if (this.userData.geoLocale.length > 2) {
                     this.logger.warn(
                         'main',
@@ -846,12 +904,105 @@ export class MicrosoftRewardsBot {
                 this.userData.currentPoints = initialPoints
 
                 const streak = extractStreak(data)
-                const accountCreated = data.created || data.userProfile?.attributes?.created || appData?.response?.profile?.attributes?.created
+                const accountCreated =
+                    data.created || data.userProfile?.attributes?.created || appData?.response?.profile?.attributes?.created
                 const accountAge = calculateAccountAge(accountCreated)
-                const level = data.userStatus?.levelInfo?.activeLevelName || data.userStatus?.levelInfo?.activeLevel || data.userProfile?.attributes?.level || 'Level 1'
+                const level =
+                    data.userStatus?.levelInfo?.activeLevelName ||
+                    data.userStatus?.levelInfo?.activeLevel ||
+                    data.userProfile?.attributes?.level ||
+                    'Level 1'
                 const lifetimePoints = data.userStatus?.lifetimePoints || 0
                 const redeemGoalTitle = data.userStatus?.redeemGoal?.title || appData?.response?.goal_item?.name || 'None'
                 const redeemGoalPrice = data.userStatus?.redeemGoal?.price || appData?.response?.goal_item?.price || 0
+
+                // Sync 'new' tag based on account creation/age (< 90 days)
+                const isNew = isNewAccountAge(accountCreated || accountAge)
+                if (isNew !== null) {
+                    if (cluster.isWorker && process.send) {
+                        const msg: AccountTagSyncMessage = { __accountAgeSync: { email: accountEmail, isNew } }
+                        process.send(msg)
+                    } else {
+                        new AccountService().syncNewTagByEmailSync(accountEmail, isNew)
+                    }
+                }
+                const effectiveTag = syncNewTagByAge(account.tag, isNew).tag
+
+                const existingState = stateService
+                    .getStates()
+                    .find(s => s.email.toLowerCase() === accountEmail.toLowerCase())
+                const lifetimePointsRedeemed = Number(
+                    data.userStatus?.lifetimePointsRedeemed ?? existingState?.lifetimePointsRedeemed ?? 0
+                )
+                let lastOrderTitle = data.userStatus?.lastOrder?.catalogItem?.title || existingState?.lastOrderTitle
+                let lastOrderDate = data.userStatus?.lastOrder?.timestamp
+                    ? String(data.userStatus.lastOrder.timestamp)
+                    : existingState?.lastOrderDate
+
+                let redemptionCount: number | undefined = existingState?.redemptionCount
+                let syncedLifetimeRedeemed: number | undefined = existingState?.syncedLifetimeRedeemed
+
+                if (hasZeroRedemptionEvidence(data.userStatus)) {
+                    redemptionCount = 0
+                    syncedLifetimeRedeemed = 0
+                } else if (
+                    existingState?.redemptionCount !== undefined &&
+                    existingState?.syncedLifetimeRedeemed === lifetimePointsRedeemed
+                ) {
+                    redemptionCount = existingState.redemptionCount
+                } else {
+                    await saveSessionData(this.config.sessionPath, this.cookies.mobile, accountEmail, true)
+                    let orderSession: BrowserSession | null = null
+                    try {
+                        orderSession = await executionContext.run({ isMobile: false, account }, async () =>
+                            this.browserFactory.createBrowser(account)
+                        )
+                        const orderResult = await executionContext.run({ isMobile: false, account }, async () => {
+                            if (this.cookies.mobile.length > 0) {
+                                await orderSession!.context.addCookies(this.cookies.mobile).catch(() => {})
+                            }
+                            const tmpPage = await orderSession!.context.newPage()
+                            try {
+                                return await this.browser.func.syncRedemptionCount(tmpPage)
+                            } finally {
+                                await tmpPage.close().catch(() => {})
+                            }
+                        })
+                        if (orderResult.redemptionCount !== null) {
+                            redemptionCount = orderResult.redemptionCount
+                            syncedLifetimeRedeemed = lifetimePointsRedeemed
+                        }
+                        if (orderResult.lastOrderTitle) lastOrderTitle = orderResult.lastOrderTitle
+                        if (orderResult.lastOrderDate) lastOrderDate = orderResult.lastOrderDate
+                    } catch (orderErr) {
+                        this.logger.warn(
+                            'main',
+                            'ORDER-HISTORY',
+                            `Could not scrape redemption count for ${accountEmail}: ${errMsg(orderErr)}`
+                        )
+                    } finally {
+                        if (orderSession) {
+                            await executionContext
+                                .run({ isMobile: false, account }, async () => {
+                                    await this.browser.func.closeBrowser(orderSession!.context, accountEmail)
+                                })
+                                .catch(() => {})
+                        }
+                    }
+                }
+
+                const profile = resolveExecutionProfile({
+                    tag: effectiveTag,
+                    redemptionCount,
+                    config: this.config,
+                    random: SeededRandom.fromParts(accountEmail, new Date().toISOString().slice(0, 10), 'profile')
+                })
+                this.currentExecutionProfile = profile
+                this.logger.info(
+                    'main',
+                    'PROFILE',
+                    `[PROFILE] mode=${profile.mode} | tag="${effectiveTag}" | redemptions=${redemptionCount ?? '?'}`
+                )
 
                 stateService.updateAccountState(accountEmail, {
                     totalPoints: data.userStatus.availablePoints,
@@ -862,7 +1013,14 @@ export class MicrosoftRewardsBot {
                     redeemGoalTitle,
                     redeemGoalPrice,
                     geoLocale: this.userData.geoLocale,
-                    proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct'
+                    proxy: account.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct',
+                    tag: effectiveTag,
+                    redemptionCount,
+                    lifetimePointsRedeemed,
+                    syncedLifetimeRedeemed,
+                    lastOrderTitle,
+                    lastOrderDate,
+                    executionMode: profile.mode
                 })
 
                 const browserEarnable = await this.browser.func.getBrowserEarnablePoints()
@@ -918,13 +1076,13 @@ export class MicrosoftRewardsBot {
                 if (this.config.workers.doDailyCheckIn) await this.activities.doDailyCheckIn()
                 if (this.config.workers.doReadToEarn) await this.activities.doReadToEarn()
 
-                // Track points after quest activities
+                // Track points after mobile quest activities
                 const pointsAfterQuests = await this.browser.func.getCurrentPoints()
-                const questPoints = pointsAfterQuests - pointsBeforeQuests
+                const mobileQuestPoints = Math.max(0, pointsAfterQuests - pointsBeforeQuests)
                 this.logger.info(
                     'main',
                     'QUEST-TRACK',
-                    `Points after quests: ${pointsAfterQuests} | Quest earned: +${questPoints} | ${accountEmail}`
+                    `Points after quests: ${pointsAfterQuests} | Mobile quest earned: +${mobileQuestPoints} | ${accountEmail}`
                 )
 
                 const searchPoints = await this.browser.func.getSearchPoints()
@@ -948,11 +1106,18 @@ export class MicrosoftRewardsBot {
 
                 let finalPoints = 0
                 try {
-                    finalPoints = await this.browser.func.getCurrentPoints()
+                    finalPoints = await this.browser.func.getCurrentPoints(true)
                 } catch {
                     finalPoints = Number(this.userData.currentPoints ?? initialPoints)
                 }
                 let collectedPoints = Math.max(0, finalPoints - initialPoints)
+
+                let modernQuestPoints = this.userData.modernQuestPoints ?? 0
+                if (this.config.searchSettings.parallelSearching && finalPoints > initialPoints) {
+                    const maxNonSearch = Math.max(0, finalPoints - initialPoints - mobilePoints - desktopPoints)
+                    modernQuestPoints = Math.min(modernQuestPoints, Math.max(0, maxNonSearch - mobileQuestPoints))
+                }
+                const questPoints = mobileQuestPoints + modernQuestPoints
 
                 // Authoritative today's points from Bing Modern Breakdown
                 const breakdown = this.browser.func.getSearchBreakdown()
@@ -1008,7 +1173,14 @@ export class MicrosoftRewardsBot {
                     level,
                     lifetimePoints,
                     redeemGoalTitle,
-                    redeemGoalPrice
+                    redeemGoalPrice,
+                    tag: effectiveTag,
+                    redemptionCount,
+                    lifetimePointsRedeemed,
+                    syncedLifetimeRedeemed,
+                    lastOrderTitle,
+                    lastOrderDate,
+                    executionMode: profile.mode
                 }
             })
         } finally {
@@ -1043,9 +1215,19 @@ export class MicrosoftRewardsBot {
                 accountAge: s.accountAge || 'N/A',
                 updatedAt: new Date().toLocaleString('vi-VN'),
                 streak: s.streak || '0',
-                onlineStatus: s.success ? 'ONLINE' : 'OFFLINE'
+                onlineStatus: s.success ? 'ONLINE' : 'OFFLINE',
+                tag: s.tag,
+                redemptionCount: s.redemptionCount,
+                executionMode: s.executionMode,
+                level: s.level,
+                lifetimePoints: s.lifetimePoints,
+                geoLocale: s.geoLocale,
+                proxy: s.proxy,
+                redeemGoalTitle: s.redeemGoalTitle,
+                lastError: s.error
             }))
-            await sheetService.syncAccountsToSheet(rows)
+            const onlineEmails = new Set(stats.filter(s => s.success).map(s => s.email.toLowerCase()))
+            await sheetService.syncAllFromDisk({ onlineEmails, statsOverride: rows })
             this.logger.info('main', 'SHEETS', `Successfully synchronized ${rows.length} accounts to Google Sheets.`)
         } catch (e) {
             this.logger.error('main', 'SHEETS', `Failed to sync to Google Sheets: ${(e as Error).message}`)

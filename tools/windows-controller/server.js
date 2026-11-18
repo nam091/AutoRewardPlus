@@ -57,7 +57,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 <div>
                     <div class="flex flex-wrap items-center gap-2">
                         <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">AutoRewardPlus Windows Center</h1>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/10">v7.2.2</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/10">v8.0.0</span>
                     </div>
                     <p class="text-xs text-slate-400 mt-0.5">Windows Residential Proxy (:10808) &bull; Oracle Cloud VPS (:3030)</p>
                 </div>
@@ -145,6 +145,31 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     </div>
                 </div>
 
+                <!-- VPS Smart Auto-Scheduler (:3030) -->
+                <div class="panel rounded-2xl p-5 space-y-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-300">VPS Smart Auto-Scheduler (:3030)</h2>
+                        <span id="winSchPhaseBadge" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-white/[0.06] text-slate-300 border border-white/10">CHECKING</span>
+                    </div>
+                    <div class="bg-[#070a10] border border-white/[0.06] rounded-xl p-2.5 space-y-1 text-[11px] font-mono">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-400 font-sans">Next Run:</span>
+                            <span id="winSchCountdown" class="text-emerald-300 font-bold">--</span>
+                        </div>
+                        <div id="winSchTimes" class="text-[10px] text-slate-400 truncate">VPS/Local: --</div>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 text-[10px]">
+                        <span id="winSchCondDay" class="px-2 py-0.5 rounded-md bg-white/[0.05] text-slate-400 border border-white/10">Ngày mới</span>
+                        <span id="winSchCondHour" class="px-2 py-0.5 rounded-md bg-white/[0.05] text-slate-400 border border-white/10">Giờ Local OK</span>
+                        <span id="winSchCondProxy" class="px-2 py-0.5 rounded-md bg-white/[0.05] text-slate-400 border border-white/10">Proxy OK</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <button id="winSchToggleBtn" onclick="toggleVpsScheduler()" class="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-xl font-semibold transition">Bật/Tắt</button>
+                        <button onclick="rerollVpsScheduler()" class="px-3 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-cyan-300 rounded-xl font-semibold transition">🎲 Đổi giờ</button>
+                    </div>
+                    <p class="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-2.5 py-2">Khi VPS Auto-Scheduler BẬT, không cần đặt Task Scheduler Windows trùng giờ</p>
+                </div>
+
                 <!-- Windows Automation -->
                 <div class="panel rounded-2xl p-5 space-y-4">
                     <div class="flex items-center justify-between">
@@ -173,8 +198,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
             <!-- Right Accounts & Logs Column -->
             <div class="xl:col-span-8 space-y-5">
-                <!-- 4 KPI Cards -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <!-- 5 KPI Cards -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
                     <div class="panel rounded-2xl p-4">
                         <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tổng điểm</div>
                         <div id="kpiTotalPoints" class="text-2xl font-bold text-cyan-300 mt-1 font-mono tabular-nums">--</div>
@@ -194,6 +219,11 @@ const HTML_CONTENT = `<!DOCTYPE html>
                         <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Lỗi / Đình chỉ</div>
                         <div id="kpiErrorSuspended" class="text-2xl font-bold text-amber-300 mt-1 font-mono tabular-nums">-- / --</div>
                         <div class="text-[11px] text-slate-500">Cần xử lý / Ban</div>
+                    </div>
+                    <div class="panel rounded-2xl p-4 col-span-2 sm:col-span-1">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-violet-400">Quà / Fast 6+</div>
+                        <div id="kpiGiftsFast" class="text-2xl font-bold text-violet-300 mt-1 font-mono tabular-nums">--</div>
+                        <div id="kpiModeHint" class="text-[11px] text-slate-500">Fast 6+: 0 &bull; Safe: 0</div>
                     </div>
                 </div>
 
@@ -218,12 +248,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
                                     <th class="py-3 px-2.5 text-right">Điểm</th>
                                     <th class="py-3 px-3">PC / Mobile</th>
                                     <th class="py-3 px-2.5 text-center">Chuỗi</th>
+                                    <th class="py-3 px-2.5 text-center">Quà / Mode</th>
                                     <th class="py-3 px-2.5 text-center">Trạng thái</th>
                                     <th class="py-3 px-3.5 text-center">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody id="accountsBody" class="divide-y divide-white/[0.04] font-mono text-slate-300">
-                                <tr><td colspan="6" class="py-8 text-center text-slate-500 font-sans">Đang tải dữ liệu từ VPS...</td></tr>
+                                <tr><td colspan="7" class="py-8 text-center text-slate-500 font-sans">Đang tải dữ liệu từ VPS...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -338,6 +369,194 @@ const HTML_CONTENT = `<!DOCTYPE html>
         let singlePool = { maxConcurrent: 2, activeCount: 0, queuedCount: 0, active: [], queue: [] };
         let editingEmail = null;
         let modalMode = 'single';
+        let winSchedulerState = null;
+
+        function esc(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function escAttrJs(str) {
+            return esc(String(str ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/'/g, '\\\\x27'));
+        }
+
+        function resolveClientMode(acc) {
+            if (acc && acc.executionMode) return acc.executionMode;
+            return /(^|[^a-z0-9_])new([^a-z0-9_]|$)/i.test(acc?.tag || '') ? 'safe' : Number(acc?.redemptionCount || 0) >= 6 ? 'fast' : 'standard';
+        }
+
+        function renderModeBadge(mode) {
+            if (mode === 'safe') {
+                return '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Tag new (&lt;3m): Search 22-45s, Đọc 20-40s, dừng 70-85%">🛡 Safe</span>';
+            }
+            if (mode === 'fast') {
+                return '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-500/15 text-violet-300 border border-violet-500/30" title="Hết new &amp; 6+ quà: Search 6-12s, Đọc 5-10s, cày kỹ 100%">⚡ Fast</span>';
+            }
+            return '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/[0.05] text-slate-400 border border-white/10">Std</span>';
+        }
+
+        function fmtWinDuration(totalSec) {
+            const s = Math.max(0, Math.floor(Number(totalSec || 0)));
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const r = s % 60;
+            return [h, m, r].map(v => String(v).padStart(2, '0')).join(':');
+        }
+
+        function fmtWinInTz(dateInput, timeZone) {
+            if (!dateInput) return '--';
+            const dt = new Date(dateInput);
+            if (Number.isNaN(dt.getTime())) return String(dateInput);
+            try {
+                return new Intl.DateTimeFormat('vi-VN', {
+                    timeZone: timeZone || undefined,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour12: false
+                }).format(dt);
+            } catch {
+                return dt.toLocaleTimeString('vi-VN');
+            }
+        }
+
+        function renderWinScheduler() {
+            const d = winSchedulerState;
+            const phaseEl = document.getElementById('winSchPhaseBadge');
+            const cdEl = document.getElementById('winSchCountdown');
+            const timesEl = document.getElementById('winSchTimes');
+            const condDayEl = document.getElementById('winSchCondDay');
+            const condHourEl = document.getElementById('winSchCondHour');
+            const condProxyEl = document.getElementById('winSchCondProxy');
+            const toggleBtn = document.getElementById('winSchToggleBtn');
+
+            if (!d) {
+                if (phaseEl) phaseEl.textContent = 'OFFLINE';
+                if (cdEl) cdEl.textContent = 'Chưa kết nối VPS';
+                return;
+            }
+
+            const cfg = (d.config && typeof d.config === 'object') ? d.config : d;
+            const enabled = cfg.enabled !== false && d.phase !== 'DISABLED';
+            const phase = d.phase || (enabled ? 'WAITING_NEW_DAY' : 'DISABLED');
+            const localTz = cfg.localTimezone || cfg.localTz || 'Asia/Ho_Chi_Minh';
+            const vpsTz = cfg.vpsTimezone || cfg.vpsTz || 'UTC';
+
+            let remSec = 0;
+            if (d.plannedTargetAt) {
+                const msLeft = new Date(d.plannedTargetAt).getTime() - Date.now();
+                remSec = Number.isFinite(msLeft) ? Math.max(0, Math.floor(msLeft / 1000)) : 0;
+            } else if (d.countdownSec !== undefined && d.countdownSec !== null) {
+                remSec = Math.max(0, Math.floor(Number(d.countdownSec)));
+            } else if (d.remainingSec !== undefined && d.remainingSec !== null) {
+                remSec = Math.max(0, Math.floor(Number(d.remainingSec)));
+            }
+
+            if (phaseEl) {
+                phaseEl.textContent = phase;
+                phaseEl.className = phase === 'COUNTDOWN'
+                    ? 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                    : (phase === 'DONE_TODAY' || phase === 'RUNNING')
+                        ? 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        : phase === 'DISABLED'
+                            ? 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-white/[0.06] text-slate-400 border border-white/10'
+                            : 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30';
+            }
+
+            if (cdEl) {
+                if (phase === 'COUNTDOWN') {
+                    cdEl.textContent = fmtWinDuration(remSec) + ' (' + fmtWinInTz(d.plannedTargetAt, localTz) + ')';
+                } else if (phase === 'DONE_TODAY') {
+                    cdEl.textContent = 'Xong hôm nay';
+                } else if (phase === 'DISABLED') {
+                    cdEl.textContent = 'Đang tắt';
+                } else if (phase === 'RUNNING') {
+                    cdEl.textContent = 'Đang chạy Batch';
+                } else {
+                    cdEl.textContent = d.plannedTargetAt ? fmtWinInTz(d.plannedTargetAt, localTz) : phase;
+                }
+            }
+
+            if (timesEl) {
+                const lStr = d.localDate ? (d.localDate + ' ' + (d.localTime || '')) : fmtWinInTz(Date.now(), localTz);
+                const vStr = d.vpsDate ? (d.vpsDate + ' ' + (d.vpsTime || '')) : fmtWinInTz(Date.now(), vpsTz);
+                timesEl.textContent = 'Local: ' + lStr.trim() + ' • VPS: ' + vStr.trim();
+            }
+
+            const cond = d.conditions || d.checks || d;
+            const setPill = (el, label, val) => {
+                if (!el) return;
+                if (val === true) {
+                    el.textContent = '✓ ' + label;
+                    el.className = 'px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold';
+                } else if (val === false) {
+                    el.textContent = '○ ' + label;
+                    el.className = 'px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/25';
+                } else {
+                    el.textContent = label;
+                    el.className = 'px-2 py-0.5 rounded-md bg-white/[0.05] text-slate-400 border border-white/10';
+                }
+            };
+
+            const vpsDay = cond.vpsNewDay ?? cond.isVpsNewDay;
+            const locDay = cond.localNewDay ?? cond.isLocalNewDay;
+            const bothDay = (vpsDay === true && locDay === true) ? true : (vpsDay === false || locDay === false) ? false : undefined;
+            setPill(condDayEl, 'Ngày mới (VPS+Local)', bothDay);
+            setPill(condHourEl, 'Giờ Local OK', cond.localHourReady ?? cond.localHourOk ?? cond.localAfterMinHour ?? cond.withinLocalWindow);
+            setPill(condProxyEl, 'Proxy OK', cond.proxyReady ?? cond.proxyOk);
+
+            if (toggleBtn) {
+                toggleBtn.textContent = enabled ? 'Bật/Tắt (Đang BẬT)' : 'Bật/Tắt (Đang TẮT)';
+                toggleBtn.className = enabled
+                    ? 'px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-xl font-semibold transition'
+                    : 'px-3 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-slate-300 rounded-xl font-semibold transition';
+            }
+        }
+
+        async function toggleVpsScheduler() {
+            const cfg = (winSchedulerState && winSchedulerState.config) ? winSchedulerState.config : (winSchedulerState || {});
+            const currentEnabled = cfg.enabled !== false && winSchedulerState?.phase !== 'DISABLED';
+            const nextEnabled = winSchedulerState ? !currentEnabled : true;
+            try {
+                const res = await fetch('/api/scheduler', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: nextEnabled })
+                });
+                const json = await res.json();
+                showToast(json.message || (nextEnabled ? 'Đã BẬT VPS Auto-Scheduler' : 'Đã TẮT VPS Auto-Scheduler'), json.success ? '⏰' : '⚠️');
+                if (json.data) {
+                    winSchedulerState = json.data;
+                    renderWinScheduler();
+                } else {
+                    refreshData();
+                }
+            } catch (err) {
+                showToast('Lỗi cập nhật scheduler: ' + err.message, '❌');
+            }
+        }
+
+        async function rerollVpsScheduler() {
+            try {
+                const res = await fetch('/api/scheduler/reroll', { method: 'POST' });
+                const json = await res.json();
+                showToast(json.message || 'Đã đổi giờ chạy ngẫu nhiên trên VPS!', json.success ? '🎲' : '⚠️');
+                if (json.data) {
+                    winSchedulerState = json.data;
+                    renderWinScheduler();
+                } else {
+                    refreshData();
+                }
+            } catch (err) {
+                showToast('Lỗi đổi giờ: ' + err.message, '❌');
+            }
+        }
 
         function fmtBytes(bytes) {
             const n = Number(bytes || 0);
@@ -422,6 +641,14 @@ const HTML_CONTENT = `<!DOCTYPE html>
                     filterAccountsTable();
                     updateKPIs(rawAccounts, meta);
                 }
+
+                const sch = data.scheduler?.data || data.scheduler || data.accounts?.meta?.scheduler || null;
+                if (sch && typeof sch === 'object') {
+                    winSchedulerState = sch;
+                    renderWinScheduler();
+                } else {
+                    renderWinScheduler();
+                }
             } catch (err) {
                 showToast('Lỗi tải dữ liệu: ' + err.message, '⚠️');
             } finally {
@@ -453,23 +680,31 @@ const HTML_CONTENT = `<!DOCTYPE html>
         }
 
         function updateKPIs(accounts, meta) {
-            let total = 0, today = 0, ok = 0, err = 0;
+            let total = 0, today = 0, ok = 0, err = 0, gifts = 0, fastCount = 0, safeCount = 0;
             for (const acc of accounts) {
                 total += (acc.totalPoints || 0);
                 today += (acc.dailyPoints || 0);
                 if (acc.status === 'OK' || acc.status === 'RUNNING') ok++;
                 if (acc.status === 'ERROR') err++;
+                gifts += Number(acc.redemptionCount || 0);
+                const mode = resolveClientMode(acc);
+                if (mode === 'fast') fastCount++;
+                else if (mode === 'safe') safeCount++;
             }
             document.getElementById('kpiTotalPoints').textContent = total.toLocaleString('vi-VN');
             document.getElementById('kpiTodayValue').textContent = '+' + today.toLocaleString('vi-VN');
             document.getElementById('kpiActiveAccounts').textContent = ok + ' / ' + accounts.length;
             document.getElementById('kpiErrorSuspended').textContent = err + ' / ' + Number(meta?.bannedCount || 0);
+            const giftsEl = document.getElementById('kpiGiftsFast');
+            if (giftsEl) giftsEl.textContent = gifts.toLocaleString('vi-VN') + ' (' + fastCount + ')';
+            const modeHintEl = document.getElementById('kpiModeHint');
+            if (modeHintEl) modeHintEl.textContent = 'Fast 6+: ' + fastCount + ' • Safe: ' + safeCount;
         }
 
         function renderAccountsTable(accounts) {
             const tbody = document.getElementById('accountsBody');
             if (!accounts || accounts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-500 font-sans">Không có tài khoản nào.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500 font-sans">Không có tài khoản nào.</td></tr>';
                 return;
             }
             tbody.innerHTML = accounts.map(acc => {
@@ -480,21 +715,32 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
                 const pc = parseRatio(acc.pcProgress, 90);
                 const mob = parseRatio(acc.mobileProgress, 60);
+                const mode = resolveClientMode(acc);
+                const hasGift = acc.redemptionCount !== undefined && acc.redemptionCount !== null;
+                const giftNum = hasGift ? Number(acc.redemptionCount) : null;
+                const giftDisplay = giftNum !== null && Number.isFinite(giftNum) ? giftNum : '—';
+                const giftCls = giftNum !== null && giftNum >= 6 ? 'text-emerald-300 font-bold' : 'text-slate-300 font-semibold';
+                const giftTitle = acc.lastOrderTitle ? ('Gần nhất: ' + acc.lastOrderTitle) : 'Tổng đơn đổi quà';
+                const isNewTag = /(^|[^a-z0-9_])new([^a-z0-9_]|$)/i.test(acc.tag || '');
+                const tagHtml = acc.tag
+                    ? (' <span class="px-1 py-0.2 rounded text-[9px] border ' + (isNewTag ? 'bg-amber-500/20 text-amber-300 border-amber-500/35' : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25') + '">' + esc(acc.tag) + '</span>')
+                    : '';
+                const emailSafe = escAttrJs(acc.email);
 
                 let actionHtml = '';
                 if (acc.singleRunning) {
-                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 rounded-lg text-[10px] font-bold border border-rose-500/35">Dừng</button>\`;
+                    actionHtml = \`<button onclick="stopSingleAccount('\${emailSafe}')" class="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/35 text-rose-300 rounded-lg text-[10px] font-bold border border-rose-500/35">Dừng</button>\`;
                 } else if (acc.queued) {
-                    actionHtml = \`<button onclick="stopSingleAccount('\${acc.email}')" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 rounded-lg text-[10px] font-bold border border-amber-500/35">#\${acc.queuePosition}</button>\`;
+                    actionHtml = \`<button onclick="stopSingleAccount('\${emailSafe}')" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 rounded-lg text-[10px] font-bold border border-amber-500/35">#\${esc(acc.queuePosition)}</button>\`;
                 } else {
-                    actionHtml = \`<button onclick="runSingleAccount('\${acc.email}')" class="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-[10px] font-semibold border border-emerald-500/25">Chạy</button>\`;
+                    actionHtml = \`<button onclick="runSingleAccount('\${emailSafe}')" class="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 rounded-lg text-[10px] font-semibold border border-emerald-500/25">Chạy</button>\`;
                 }
 
                 return \`
                     <tr class="hover:bg-white/[0.025] transition">
                         <td class="py-2.5 px-3.5">
-                            <div class="font-semibold text-slate-100">\${acc.email}</div>
-                            <div class="text-[10px] text-slate-500 font-sans">\${acc.level || 'Level 1'} &bull; \${acc.enabled === false ? 'DISABLED' : (acc.geoLocale || 'vn').toUpperCase()}</div>
+                            <div class="font-semibold text-slate-100">\${esc(acc.email)}</div>
+                            <div class="text-[10px] text-slate-500 font-sans">\${esc(acc.level || 'Level 1')} &bull; \${acc.enabled === false ? 'DISABLED' : esc((acc.geoLocale || 'vn').toUpperCase())}\${tagHtml}</div>
                         </td>
                         <td class="py-2.5 px-2.5 text-right tabular-nums">
                             <div class="font-bold text-white">\${(acc.totalPoints || 0).toLocaleString('vi-VN')}</div>
@@ -502,17 +748,21 @@ const HTML_CONTENT = `<!DOCTYPE html>
                         </td>
                         <td class="py-2.5 px-3">
                             <div class="space-y-1 w-28">
-                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>PC</span><span class="text-slate-200">\${pc.label}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-emerald-400" style="width:\${pc.pct}%"></div></div></div>
-                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>Mob</span><span class="text-slate-200">\${mob.label}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-cyan-400" style="width:\${mob.pct}%"></div></div></div>
+                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>PC</span><span class="text-slate-200">\${esc(pc.label)}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-emerald-400" style="width:\${pc.pct}%"></div></div></div>
+                                <div><div class="flex justify-between text-[10px] text-slate-400"><span>Mob</span><span class="text-slate-200">\${esc(mob.label)}</span></div><div class="h-1 bg-white/[0.06] rounded-full overflow-hidden"><div class="h-full bg-cyan-400" style="width:\${mob.pct}%"></div></div></div>
                             </div>
                         </td>
-                        <td class="py-2.5 px-2.5 text-center text-amber-300 font-bold font-sans">\${acc.streak ? acc.streak + 'd' : '0'}</td>
-                        <td class="py-2.5 px-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border \${statusClass}">\${acc.status}</span></td>
+                        <td class="py-2.5 px-2.5 text-center text-amber-300 font-bold font-sans">\${acc.streak ? esc(acc.streak) + 'd' : '0'}</td>
+                        <td class="py-2.5 px-2.5 text-center font-sans">
+                            <div class="text-xs \${giftCls}" title="\${esc(giftTitle)}">🎁 \${esc(giftDisplay)}</div>
+                            <div class="mt-0.5">\${renderModeBadge(mode)}</div>
+                        </td>
+                        <td class="py-2.5 px-2.5 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold border \${statusClass}">\${esc(acc.status)}</span></td>
                         <td class="py-2.5 px-3.5 text-center">
                             <div class="inline-flex items-center gap-1">
                                 \${actionHtml}
-                                <button onclick="interactiveLogin('\${acc.email}')" title="Đăng nhập lấy cookie trên Windows" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-amber-300 rounded-lg text-[10px] border border-white/10">🔑</button>
-                                <button onclick="openAccountModal('\${acc.email}')" title="Sửa / Xoá" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 rounded-lg text-[10px] border border-white/10">⚙</button>
+                                <button onclick="interactiveLogin('\${emailSafe}')" title="Đăng nhập lấy cookie trên Windows" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-amber-300 rounded-lg text-[10px] border border-white/10">🔑</button>
+                                <button onclick="openAccountModal('\${emailSafe}')" title="Sửa / Xoá" class="px-2 py-1 bg-white/[0.04] hover:bg-white/[0.1] text-slate-300 rounded-lg text-[10px] border border-white/10">⚙</button>
                             </div>
                         </td>
                     </tr>
@@ -523,7 +773,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
         function filterAccountsTable() {
             const query = (document.getElementById('accountFilter').value || '').toLowerCase().trim();
             const filtered = !query ? rawAccounts : rawAccounts.filter(a =>
-                (a.email || '').toLowerCase().includes(query) || (a.status || '').toLowerCase().includes(query)
+                (a.email || '').toLowerCase().includes(query) ||
+                (a.status || '').toLowerCase().includes(query) ||
+                (a.tag || '').toLowerCase().includes(query) ||
+                resolveClientMode(a).includes(query)
             );
             renderAccountsTable(filtered);
         }
@@ -726,19 +979,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
         fetchLogs();
         setInterval(refreshData, 10000);
         setInterval(fetchLogs, 5000);
+        setInterval(renderWinScheduler, 1000);
     </script>
 </body>
 </html>`;
-
-// Background watchdog: keeps local residential proxy healthy whenever Tailscale is up
-setInterval(async () => {
-    try {
-        const ts = WindowsController.getTailscaleStatus();
-        if (ts.active) {
-            await WindowsController.ensureProxyRunning();
-        }
-    } catch {}
-}, 30000).unref();
 
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
@@ -814,19 +1058,52 @@ const server = http.createServer(async (req, res) => {
         }
     }
 
+    if (parsed.pathname === '/api/scheduler') {
+        try {
+            let result;
+            if (req.method === 'GET') {
+                result = await WindowsController.getVPSScheduler();
+            } else if (req.method === 'PUT') {
+                const body = await readJsonBody(req);
+                result = await WindowsController.updateVPSScheduler(body);
+            } else {
+                res.writeHead(405);
+                return res.end('Method Not Allowed');
+            }
+            res.writeHead(result?.success === false ? 400 : 200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(result));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: error.message }));
+        }
+    }
+
+    if (parsed.pathname === '/api/scheduler/reroll' && req.method === 'POST') {
+        try {
+            const result = await WindowsController.rerollVPSScheduler();
+            res.writeHead(result?.success === false ? 400 : 200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(result));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ success: false, message: error.message }));
+        }
+    }
+
     if (parsed.pathname === '/api/local-status') {
         const tailscale = WindowsController.getTailscaleStatus();
         let proxy = { running: false, port: 10808, stats: null };
         let vps = { success: false, data: null };
         let accounts = { success: false, data: [], meta: {} };
+        let scheduler = null;
         const autostart = WindowsController.getAutostartStatus();
 
         proxy = await WindowsController.ensureProxyRunning();
         if (tailscale.active) {
             try {
-                [vps, accounts] = await Promise.all([
+                [vps, accounts, scheduler] = await Promise.all([
                     WindowsController.getVPSStatus(),
-                    WindowsController.getVPSAccounts()
+                    WindowsController.getVPSAccounts(),
+                    WindowsController.getVPSScheduler().catch(() => null)
                 ]);
             } catch (err) {
                 vps = { success: false, message: err.message };
@@ -834,7 +1111,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ tailscale, proxy, vps, accounts, autostart }));
+        return res.end(JSON.stringify({ tailscale, proxy, vps, accounts, scheduler, autostart }));
     }
 
     if (parsed.pathname.startsWith('/api/action/')) {
@@ -887,6 +1164,20 @@ const server = http.createServer(async (req, res) => {
     res.end('Not found');
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`[Windows Control Center] Running at http://127.0.0.1:${PORT}`);
-});
+if (require.main === module) {
+    // Background watchdog: keeps local residential proxy healthy whenever Tailscale is up
+    setInterval(async () => {
+        try {
+            const ts = WindowsController.getTailscaleStatus();
+            if (ts.active) {
+                await WindowsController.ensureProxyRunning();
+            }
+        } catch {}
+    }, 30000).unref();
+
+    server.listen(PORT, '127.0.0.1', () => {
+        console.log(`[Windows Control Center] Running at http://127.0.0.1:${PORT}`);
+    });
+}
+
+module.exports = { server, HTML_CONTENT };

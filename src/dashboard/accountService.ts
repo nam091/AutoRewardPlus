@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import type { Account } from '../interface/Account'
+import { atomicWriteFileAsync, atomicWriteFileSync, withFileLockAsync, withFileLockSync } from '../util/FileLock'
+import { isNewAccountAge, syncNewTagByAge } from '../util/RewardUtils'
 import { AccountSchema, validateAccounts } from '../util/Validator'
 
 export interface RedactedAccount extends Omit<Account, 'password' | 'totpSecret' | 'totp' | 'proxy'> {
@@ -111,41 +113,47 @@ export class AccountService {
             throw new Error('Mật khẩu không được để trống khi thêm tài khoản mới.')
         }
 
-        const current = this.readRawAccounts()
-        if (current.some(a => a.email.toLowerCase() === email.toLowerCase())) {
-            throw new Error(`Tài khoản ${email} đã tồn tại trong accounts.json.`)
-        }
-
-        const proxyUrl = payload.proxy?.url?.trim() || ''
-        const proxyPort = proxyUrl ? Number(payload.proxy?.port || 0) : 0
-        const nextAccount: Account = AccountSchema.parse({
-            email,
-            password: payload.password,
-            ...(payload.totpSecret?.trim() ? { totpSecret: payload.totpSecret.trim() } : {}),
-            recoveryEmail: payload.recoveryEmail?.trim() || '',
-            geoLocale: (payload.geoLocale?.trim() || 'vn').toLowerCase(),
-            langCode: (payload.langCode?.trim() || 'vi').toLowerCase(),
-            ...(payload.tag?.trim() ? { tag: payload.tag.trim() } : {}),
-            enabled: payload.enabled !== false,
-            proxy: {
-                proxyAxios: payload.proxy?.proxyAxios ?? true,
-                url: proxyUrl,
-                port: Number.isFinite(proxyPort) ? proxyPort : 0,
-                username: payload.proxy?.username?.trim() || '',
-                password: payload.proxy?.password || ''
-            },
-            saveFingerprint: {
-                mobile: payload.saveFingerprint?.mobile ?? true,
-                desktop: payload.saveFingerprint?.desktop ?? true
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const current = this.readRawAccounts()
+            if (current.some(a => a.email.toLowerCase() === email.toLowerCase())) {
+                throw new Error(`Tài khoản ${email} đã tồn tại trong accounts.json.`)
             }
-        })
 
-        const nextList = [...current, nextAccount]
-        await this.persistAccounts(nextList)
-        return this.list().find(a => a.email.toLowerCase() === email.toLowerCase())!
+            const proxyUrl = payload.proxy?.url?.trim() || ''
+            const proxyPort = proxyUrl ? Number(payload.proxy?.port || 0) : 0
+            const nextAccount: Account = AccountSchema.parse({
+                email,
+                password: payload.password,
+                ...(payload.totpSecret?.trim() ? { totpSecret: payload.totpSecret.trim() } : {}),
+                recoveryEmail: payload.recoveryEmail?.trim() || '',
+                geoLocale: (payload.geoLocale?.trim() || 'vn').toLowerCase(),
+                langCode: (payload.langCode?.trim() || 'vi').toLowerCase(),
+                ...(payload.tag?.trim() ? { tag: payload.tag.trim() } : {}),
+                enabled: payload.enabled !== false,
+                proxy: {
+                    proxyAxios: payload.proxy?.proxyAxios ?? true,
+                    url: proxyUrl,
+                    port: Number.isFinite(proxyPort) ? proxyPort : 0,
+                    username: payload.proxy?.username?.trim() || '',
+                    password: payload.proxy?.password || ''
+                },
+                saveFingerprint: {
+                    mobile: payload.saveFingerprint?.mobile ?? true,
+                    desktop: payload.saveFingerprint?.desktop ?? true
+                }
+            })
+
+            const nextList = [...current, nextAccount]
+            await this.persistAccounts(nextList)
+            return this.list().find(a => a.email.toLowerCase() === email.toLowerCase())!
+        })
     }
 
     async update(targetEmail: string, payload: AccountUpsertPayload): Promise<RedactedAccount> {
+        return withFileLockAsync(this.getLockTarget(), () => this.updateUnlocked(targetEmail, payload))
+    }
+
+    private async updateUnlocked(targetEmail: string, payload: AccountUpsertPayload): Promise<RedactedAccount> {
         const current = this.readRawAccounts()
         const idx = current.findIndex(a => a.email.toLowerCase() === targetEmail.trim().toLowerCase())
         if (idx === -1) {
@@ -219,20 +227,24 @@ export class AccountService {
     }
 
     async toggleEnabled(targetEmail: string, enabled?: boolean): Promise<RedactedAccount> {
-        const existing = this.getRawAccount(targetEmail)
-        if (!existing) {
-            throw new Error(`Không tìm thấy tài khoản ${targetEmail}.`)
-        }
-        const nextEnabled = enabled !== undefined ? enabled : existing.enabled === false
-        return this.update(targetEmail, { enabled: nextEnabled })
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const existing = this.getRawAccount(targetEmail)
+            if (!existing) {
+                throw new Error(`Không tìm thấy tài khoản ${targetEmail}.`)
+            }
+            const nextEnabled = enabled !== undefined ? enabled : existing.enabled === false
+            return this.updateUnlocked(targetEmail, { enabled: nextEnabled })
+        })
     }
 
     async remove(targetEmail: string): Promise<boolean> {
-        const current = this.readRawAccounts()
-        const filtered = current.filter(a => a.email.toLowerCase() !== targetEmail.trim().toLowerCase())
-        if (filtered.length === current.length) return false
-        await this.persistAccounts(filtered)
-        return true
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const current = this.readRawAccounts()
+            const filtered = current.filter(a => a.email.toLowerCase() !== targetEmail.trim().toLowerCase())
+            if (filtered.length === current.length) return false
+            await this.persistAccounts(filtered)
+            return true
+        })
     }
 
     async bulkImport(
@@ -248,52 +260,164 @@ export class AccountService {
             throw new Error('Danh sách import trống.')
         }
 
-        const current = this.readRawAccounts()
-        const existingSet = new Set(current.map(a => a.email.toLowerCase()))
-        const toAdd: Account[] = []
-        const errors: string[] = []
-        let skipped = 0
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const current = this.readRawAccounts()
+            const existingSet = new Set(current.map(a => a.email.toLowerCase()))
+            const toAdd: Account[] = []
+            const errors: string[] = []
+            let skipped = 0
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!
-            const sep = line.includes('|') ? '|' : line.includes('\t') ? '\t' : line.includes(',') ? ',' : ':'
-            const parts = line.split(sep).map(p => p.trim())
-            const email = parts[0] || ''
-            const password = parts[1] || ''
-            const totpSecret = parts[2] || ''
-            const recoveryEmail = parts[3] || ''
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i]!
+                const sep = line.includes('|') ? '|' : line.includes('\t') ? '\t' : line.includes(',') ? ',' : ':'
+                const parts = line.split(sep).map(p => p.trim())
+                const email = parts[0] || ''
+                const password = parts[1] || ''
+                const totpSecret = parts[2] || ''
+                const recoveryEmail = parts[3] || ''
 
-            if (!email.includes('@') || !password) {
-                errors.push(`Dòng ${i + 1}: thiếu email hoặc mật khẩu`)
-                continue
+                if (!email.includes('@') || !password) {
+                    errors.push(`Dòng ${i + 1}: thiếu email hoặc mật khẩu`)
+                    continue
+                }
+                if (existingSet.has(email.toLowerCase())) {
+                    skipped++
+                    continue
+                }
+
+                existingSet.add(email.toLowerCase())
+                toAdd.push(
+                    AccountSchema.parse({
+                        email,
+                        password,
+                        ...(totpSecret ? { totpSecret } : {}),
+                        recoveryEmail,
+                        geoLocale: (defaults.geoLocale?.trim() || 'vn').toLowerCase(),
+                        langCode: (defaults.langCode?.trim() || 'vi').toLowerCase(),
+                        ...(defaults.tag?.trim() ? { tag: defaults.tag.trim() } : {}),
+                        enabled: defaults.enabled !== false,
+                        proxy: { proxyAxios: true, url: '', port: 0, username: '', password: '' },
+                        saveFingerprint: { mobile: true, desktop: true }
+                    })
+                )
             }
-            if (existingSet.has(email.toLowerCase())) {
-                skipped++
-                continue
+
+            if (toAdd.length > 0) {
+                await this.persistAccounts([...current, ...toAdd])
             }
 
-            existingSet.add(email.toLowerCase())
-            toAdd.push(
-                AccountSchema.parse({
-                    email,
-                    password,
-                    ...(totpSecret ? { totpSecret } : {}),
-                    recoveryEmail,
-                    geoLocale: (defaults.geoLocale?.trim() || 'vn').toLowerCase(),
-                    langCode: (defaults.langCode?.trim() || 'vi').toLowerCase(),
-                    ...(defaults.tag?.trim() ? { tag: defaults.tag.trim() } : {}),
-                    enabled: defaults.enabled !== false,
-                    proxy: { proxyAxios: true, url: '', port: 0, username: '', password: '' },
-                    saveFingerprint: { mobile: true, desktop: true }
-                })
-            )
+            return { added: toAdd.length, skipped, errors }
+        })
+    }
+
+    /** Synchronizes the `'new'` tag for a single account asynchronously under file lock. */
+    async syncNewTagByEmail(
+        email: string,
+        isNew: boolean | null
+    ): Promise<{ tag: string; changed: boolean } | null> {
+        const normalized = email.trim().toLowerCase()
+        if (!normalized) return null
+
+        if (isNew === null) {
+            const existing = this.getRawAccount(normalized)
+            return existing ? syncNewTagByAge(existing.tag, null) : null
         }
 
-        if (toAdd.length > 0) {
-            await this.persistAccounts([...current, ...toAdd])
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const applied = this.applySyncedTag(this.readRawAccounts(), normalized, isNew)
+            if (!applied) return null
+            if (applied.result.changed) {
+                await this.persistAccounts(applied.nextList)
+            }
+            return applied.result
+        })
+    }
+
+    /** Synchronizes the `'new'` tag for a single account synchronously under file lock. */
+    syncNewTagByEmailSync(email: string, isNew: boolean | null): { tag: string; changed: boolean } | null {
+        const normalized = email.trim().toLowerCase()
+        if (!normalized) return null
+
+        if (isNew === null) {
+            const existing = this.getRawAccount(normalized)
+            return existing ? syncNewTagByAge(existing.tag, null) : null
         }
 
-        return { added: toAdd.length, skipped, errors }
+        return withFileLockSync(this.getLockTarget(), () => {
+            const applied = this.applySyncedTag(this.readRawAccounts(), normalized, isNew)
+            if (!applied) return null
+            if (applied.result.changed) {
+                this.persistAccountsSync(applied.nextList)
+            }
+            return applied.result
+        })
+    }
+
+    /** Reconciles `'new'` tags across accounts from persisted state `accountAge` labels. */
+    async reconcileNewTagsFromStates(states: Array<{ email: string; accountAge?: string }>): Promise<number> {
+        const updatesByEmail = new Map<string, boolean>()
+        for (const state of states) {
+            const emailKey = state.email?.trim().toLowerCase()
+            if (!emailKey) continue
+            const isNew = isNewAccountAge(state.accountAge)
+            if (isNew !== null) {
+                updatesByEmail.set(emailKey, isNew)
+            }
+        }
+
+        if (updatesByEmail.size === 0) return 0
+
+        return withFileLockAsync(this.getLockTarget(), async () => {
+            const current = this.readRawAccounts()
+            let changedCount = 0
+            const nextList = current.map(acc => {
+                const isNew = updatesByEmail.get(acc.email.toLowerCase())
+                if (isNew === undefined) return acc
+                const synced = syncNewTagByAge(acc.tag, isNew)
+                if (!synced.changed) return acc
+
+                changedCount++
+                return this.withUpdatedTag(acc, synced.tag)
+            })
+
+            if (changedCount > 0) {
+                await this.persistAccounts(nextList)
+            }
+            return changedCount
+        })
+    }
+
+    private applySyncedTag(
+        current: Account[],
+        normalizedEmail: string,
+        isNew: boolean | null
+    ): { nextList: Account[]; result: { tag: string; changed: boolean } } | null {
+        const idx = current.findIndex(a => a.email.toLowerCase() === normalizedEmail)
+        if (idx === -1) return null
+
+        const existing = current[idx]!
+        const synced = syncNewTagByAge(existing.tag, isNew)
+        if (!synced.changed) {
+            return { nextList: current, result: synced }
+        }
+
+        const nextList = [...current]
+        nextList[idx] = this.withUpdatedTag(existing, synced.tag)
+        return { nextList, result: synced }
+    }
+
+    private withUpdatedTag(account: Account, nextTag: string): Account {
+        const copy: Account = { ...account }
+        if (nextTag) {
+            copy.tag = nextTag
+        } else {
+            delete copy.tag
+        }
+        return copy
+    }
+
+    private getLockTarget(): string {
+        return this.findPrimaryReadPath() ?? this.resolveWriteTargets()[0] ?? path.resolve('src/accounts.json')
     }
 
     private async persistAccounts(accounts: Account[]): Promise<void> {
@@ -308,9 +432,23 @@ export class AccountService {
             } catch {
                 // Fresh install without existing file
             }
-            const tempPath = `${target}.${process.pid}.tmp`
-            await fs.writeFile(tempPath, serialized, { encoding: 'utf8', mode: 0o600 })
-            await fs.rename(tempPath, target)
+            await atomicWriteFileAsync(target, serialized, 0o600)
+        }
+    }
+
+    private persistAccountsSync(accounts: Account[]): void {
+        const validated = validateAccounts(accounts)
+        const serialized = `${JSON.stringify(validated, null, 4)}\n`
+        const writeTargets = this.resolveWriteTargets()
+
+        for (const target of writeTargets) {
+            mkdirSync(path.dirname(target), { recursive: true })
+            try {
+                copyFileSync(target, `${target}.bak`)
+            } catch {
+                // Fresh install without existing file
+            }
+            atomicWriteFileSync(target, serialized, 0o600)
         }
     }
 

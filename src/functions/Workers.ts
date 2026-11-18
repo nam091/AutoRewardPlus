@@ -130,10 +130,13 @@ export class Workers {
             return
         }
 
+        const waitMult = this.bot.currentExecutionProfile?.waitMultiplier ?? 1
         for (const reward of appRewards) {
             await this.bot.activities.doAppReward(reward)
             // A delay between completing each activity
-            await this.bot.utils.wait(this.bot.utils.randomDelay(5000, 15000))
+            await this.bot.utils.wait(
+                Math.max(500, Math.round(this.bot.utils.randomDelay(5000, 15000) * waitMult))
+            )
         }
 
         this.bot.logger.info(this.bot.isMobile, 'APP-PROMOTIONS', 'All "App Promotions" items have been completed')
@@ -336,7 +339,10 @@ export class Workers {
                 }
 
                 // Cooldown
-                await this.bot.utils.wait(this.bot.utils.randomDelay(5000, 15000))
+                const waitMult = this.bot.currentExecutionProfile?.waitMultiplier ?? 1
+                await this.bot.utils.wait(
+                    Math.max(500, Math.round(this.bot.utils.randomDelay(5000, 15000) * waitMult))
+                )
             } catch (error) {
                 this.bot.logger.error(
                     this.bot.isMobile,

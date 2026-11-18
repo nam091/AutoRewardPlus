@@ -3,13 +3,27 @@ import { SeededRandom } from './SeededRandom'
 
 export type ResultInteraction = 'read' | 'scroll' | 'click'
 
+export interface InteractionWeights {
+    read?: number
+    scroll?: number
+    click?: number
+}
+
+function sanitizeWeight(value: number | undefined, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
+}
+
 export function chooseResultInteraction(
     random: SeededRandom,
-    options: { allowScroll: boolean; allowClick: boolean }
+    options: { allowScroll: boolean; allowClick: boolean; weights?: InteractionWeights },
+    weights?: InteractionWeights
 ): ResultInteraction {
-    const choices: Array<{ value: ResultInteraction; weight: number }> = [{ value: 'read', weight: 5 }]
-    if (options.allowScroll) choices.push({ value: 'scroll', weight: 3 })
-    if (options.allowClick) choices.push({ value: 'click', weight: 2 })
+    const resolvedWeights = weights ?? options.weights
+    const choices: Array<{ value: ResultInteraction; weight: number }> = [
+        { value: 'read', weight: sanitizeWeight(resolvedWeights?.read, 5) }
+    ]
+    if (options.allowScroll) choices.push({ value: 'scroll', weight: sanitizeWeight(resolvedWeights?.scroll, 3) })
+    if (options.allowClick) choices.push({ value: 'click', weight: sanitizeWeight(resolvedWeights?.click, 2) })
     return random.weighted(choices) ?? 'read'
 }
 

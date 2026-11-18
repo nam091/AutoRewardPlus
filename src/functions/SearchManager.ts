@@ -436,35 +436,57 @@ export class SearchManager {
     private async runModernUITasks(data: DashboardData): Promise<void> {
         try {
             this.bot.logger.info('main', 'MODERN-UI-DESKTOP', 'Running Modern UI tasks on desktop browser')
+            const pointsBefore = await this.bot.browser.func
+                .getCurrentPoints(true)
+                .catch(() => Number(this.bot.userData.currentPoints ?? 0))
 
             const modernWorkers = new ModernUIWorkers(this.bot)
 
-            if (this.bot.config.workers.doDailySet) {
-                await modernWorkers.doDailySet(this.bot.mainDesktopPage)
-            }
+            const runTaskPass = async (isVerifyPass: boolean): Promise<void> => {
+                if (this.bot.config.workers.doDailySet) {
+                    await modernWorkers.doDailySet(this.bot.mainDesktopPage)
+                }
 
-            if (this.bot.config.workers.doMorePromotions) {
-                await modernWorkers.doKeepEarning(this.bot.mainDesktopPage)
-            }
+                if (this.bot.config.workers.doMorePromotions) {
+                    await modernWorkers.doKeepEarning(this.bot.mainDesktopPage)
+                }
 
-            if (this.bot.config.workers.doMissions) {
-                await modernWorkers.doMissions(this.bot.mainDesktopPage)
-            }
+                if (this.bot.config.workers.doMissions) {
+                    await modernWorkers.doMissions(this.bot.mainDesktopPage)
+                }
 
-            if (this.bot.config.workers.doClaimPoints) {
-                const claimResult = await modernWorkers.doClaimPoints(this.bot.mainDesktopPage)
-                if (claimResult.claimed) {
-                    this.bot.logger.info(
-                        'main',
-                        'MODERN-CLAIM',
-                        `✔ Claimed ${claimResult.points} points`,
-                        'green'
-                    )
-                    this.bot.userData.claimedPoints = (this.bot.userData.claimedPoints || 0) + claimResult.points
+                if (this.bot.config.workers.doClaimPoints) {
+                    const claimResult = await modernWorkers.doClaimPoints(this.bot.mainDesktopPage)
+                    if (claimResult.claimed) {
+                        this.bot.logger.info(
+                            'main',
+                            'MODERN-CLAIM',
+                            `${isVerifyPass ? '✔ Extra claim' : '✔ Claimed'} ${claimResult.points} points`,
+                            'green'
+                        )
+                        this.bot.userData.claimedPoints = (this.bot.userData.claimedPoints || 0) + claimResult.points
+                    }
                 }
             }
 
-            this.bot.logger.info('main', 'MODERN-UI-DESKTOP', 'Modern UI tasks completed')
+            await runTaskPass(false)
+
+            if (this.bot.currentExecutionProfile?.thoroughTasks) {
+                this.bot.logger.info(
+                    'main',
+                    'MODERN-UI-DESKTOP',
+                    '[FAST-MODE] Running thorough verification pass for Modern UI tasks'
+                )
+                await runTaskPass(true)
+            }
+
+            const pointsAfter = await this.bot.browser.func
+                .getCurrentPoints(true)
+                .catch(() => pointsBefore)
+            const modernGained = Math.max(0, pointsAfter - pointsBefore)
+            this.bot.userData.modernQuestPoints = (this.bot.userData.modernQuestPoints ?? 0) + modernGained
+
+            this.bot.logger.info('main', 'MODERN-UI-DESKTOP', `Modern UI tasks completed | gained=${modernGained}`)
         } catch (error) {
             this.bot.logger.error('main', 'MODERN-UI-DESKTOP', `Error: ${errMsg(error)}`)
         }

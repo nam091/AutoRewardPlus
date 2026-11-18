@@ -391,13 +391,14 @@ export class QueryCore {
 
     async getWikipediaTrending(langCode = 'en'): Promise<string[]> {
         try {
+            const wikiLang = (langCode || 'en').split(/[-_]/)[0]?.toLowerCase() || 'en'
             const date = new Date(Date.now() - 24 * 60 * 60 * 1000)
             const yyyy = date.getUTCFullYear()
             const mm = String(date.getUTCMonth() + 1).padStart(2, '0')
             const dd = String(date.getUTCDate()).padStart(2, '0')
 
             const request: AxiosRequestConfig = {
-                url: `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/${langCode}.wikipedia/all-access/${yyyy}/${mm}/${dd}`,
+                url: `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/${wikiLang}.wikipedia/all-access/${yyyy}/${mm}/${dd}`,
                 method: 'GET',
                 headers: {
                     ...(this.bot.fingerprint?.headers ?? {})
@@ -617,6 +618,103 @@ export class QueryCore {
     }
 
     /**
+     * Build the AI prompt for generating academic & technology research search sessions.
+     */
+    public buildAISessionPrompt(
+        sessionCount: number,
+        langCode: string = 'vi',
+        geo: string = 'VN',
+        trendingSeeds: string[] = []
+    ): string {
+        const normalizedLang = (langCode || 'vi').trim().toLowerCase()
+        const isVietnamese = normalizedLang === 'vi' || normalizedLang.startsWith('vi-') || normalizedLang.startsWith('vi_')
+
+        if (isVietnamese) {
+            const seedSection = trendingSeeds.length > 0
+                ? `CHỦ ĐỀ THỜI SỰ GỢI Ý (chỉ tham khảo khi có thể khai thác dưới góc độ học thuật, khoa học máy tính hoặc kỹ thuật công nghệ):\n${trendingSeeds.join('\n')}\n\n`
+                : ''
+
+            return `Bạn là một nghiên cứu sinh và kỹ sư khoa học máy tính tại khu vực ${geo}. Hãy tạo ${sessionCount} phiên tìm kiếm học thuật trên Bing, mỗi phiên gồm 6-10 câu truy vấn liên tiếp.
+
+${seedSection}TRỌNG TÂM NỘI DUNG (nghiên cứu học thuật & công nghệ chuyên sâu):
+- Học máy & kiến trúc Transformer (FlashAttention, KV cache quantization, Mixture-of-Experts, LoRA, RLHF)
+- Hệ thống phân tán & đồng thuận (thuật toán Raft, Paxos, Byzantine fault tolerance, vector clocks, CRDT)
+- Mật mã học & bằng chứng không tiết lộ (zk-SNARK, zk-STARK, mật mã hậu lượng tử Kyber/ML-KEM, TLS 1.3)
+- Nhân hệ điều hành & quản lý bộ nhớ (Linux eBPF, io_uring, slab allocator, page table, NUMA scheduling)
+- Trình biên dịch & tối ưu hóa LLVM IR (SSA form, loop vectorization, register allocation, JIT compilation)
+- Cơ sở dữ liệu nội tại (cấu trúc B+Tree, LSM-tree compaction, MVCC snapshot isolation, WAL durability)
+- Mạng máy tính & giao thức (QUIC, HTTP/3, BGP routing RPKI, TCP BBR congestion control, RDMA)
+- Vi mạch VLSI & kiến trúc bán dẫn RISC-V (out-of-order execution, branch prediction, EUV, FinFET vs GAAFET, HBM3E)
+- Kỹ nghệ phần mềm & xác minh hình thức (TLA+, chứng minh định lý Lean 4 / Coq, static taint analysis)
+- Đại số tuyến tính ứng dụng & tối ưu hóa (SVD, L-BFGS, tối ưu lồi, stochastic gradient descent)
+- Phân tích bài báo khoa học trên IEEE, ACM, arXiv (đọc ablation study, benchmark thực nghiệm, độ phức tạp thuật toán)
+
+QUY TẮC BẮT BUỘC:
+- Mỗi phiên PHẢI tiến triển tự nhiên theo luồng nghiên cứu: khái niệm học thuật rộng → cơ chế kỹ thuật / bài báo IEEE ACM arXiv / benchmark → so sánh đánh giá / chi tiết triển khai
+- Mỗi phiên PHẢI kết hợp: query ngắn (2-4 từ), query dài (8-15 từ) và ít nhất 1 query tinh chỉnh/mở rộng từ query ngay trước đó
+- Viết bằng tiếng Việt tự nhiên (có thể giữ thuật ngữ chuyên ngành tiếng Anh chuẩn như trong nghiên cứu thực tế)
+- KHÔNG đánh số, KHÔNG gạch đầu dòng, KHÔNG giải thích thêm
+- Mỗi dòng đúng 1 câu truy vấn, các phiên cách nhau bằng 1 dòng trống
+
+VÍ DỤ FORMAT ĐÚNG:
+kiến trúc flashattention
+cơ chế tiling giảm truy cập hbm trong flashattention 2
+bài báo flashattention 3 tối ưu hóa trên hopper gpu
+so sánh flashattention và pagedattention khi inference llm dài
+kv cache quantization int4 ảnh hưởng thế nào đến perplexity
+triển khai fused attention kernel bằng triton
+
+thuật toán đồng thuận raft
+cách raft xử lý leader election và split vote
+phân tích log replication safety proof trong paper raft
+so sánh độ trễ đuôi giữa raft và multi paxos
+tối ưu hóa batching và pipelining cho etcd raft
+mô hình hóa giao thức raft bằng tla plus`
+        }
+
+        const seedSection = trendingSeeds.length > 0
+            ? `OPTIONAL TRENDING SPARKS (only use if reframed through an academic, scientific, or computer-science/engineering lens):\n${trendingSeeds.join('\n')}\n\n`
+            : ''
+
+        return `You are a computer science researcher and systems engineer in region ${geo}. Generate ${sessionCount} realistic Bing academic search sessions, each containing 6-10 connected search queries.
+
+${seedSection}PRIMARY RESEARCH DOMAINS (scholarly & technical depth):
+- Machine learning & transformer architectures (FlashAttention, KV cache quantization, Mixture-of-Experts, LoRA, RLHF, state-space models)
+- Distributed systems & consensus protocols (Raft, Paxos, Byzantine fault tolerance, vector clocks, CRDTs, TrueTime)
+- Cryptography & zero-knowledge proofs (zk-SNARKs, Groth16, post-quantum lattice cryptography ML-KEM, TLS 1.3 handshake)
+- OS kernels & memory management (Linux eBPF verifier, io_uring, slab allocator, virtual memory page walk, NUMA scheduling)
+- Compiler optimization & LLVM IR (SSA form, polyhedral loop optimization, register allocation, JIT tiered compilation)
+- Database internals (B+Tree latch crabbing, LSM-tree write amplification, MVCC serializable snapshot isolation, WAL recovery)
+- Computer networks & transport protocols (QUIC 0-RTT, HTTP/3, BGP RPKI security, TCP BBRv3 congestion control, RoCE RDMA)
+- VLSI & RISC-V semiconductor architecture (RISC-V vector extension, out-of-order Tomasulo, EUV lithography, FinFET vs GAAFET, HBM3E)
+- Software engineering & formal verification (TLA+ temporal logic, Lean 4 / Coq proofs, static taint analysis, property-based testing)
+- Applied linear algebra & numerical optimization (SVD conditioning, L-BFGS-B, convex duality, Hessian-free optimization)
+- Empirical reading of IEEE, ACM, and arXiv papers (ablation studies, systems benchmarks, asymptotic complexity proofs)
+
+MANDATORY SESSION RULES:
+- Every session MUST progress naturally like a real scholar researching a topic: broad academic concept -> technical mechanism / IEEE or ACM or arXiv paper / benchmark -> comparative evaluation / implementation detail
+- Every session MUST mix short queries (2-4 words), long queries (8-15 words), and at least 1 refinement of an earlier query
+- Write in natural English matching real technical search typing
+- NO numbering, NO bullet points, NO commentary or explanations
+- Exactly one query per line, separated between sessions by a single blank line
+
+VALID OUTPUT EXAMPLE:
+transformer kv cache
+how flashattention reduces hbm memory bandwidth overhead
+flashattention 3 asynchronous warp specialization arxiv paper
+pagedattention vs ring attention long context throughput benchmark
+int4 kv cache quantization impact on needle in haystack recall
+implementing fused attention kernel in triton
+
+b plus tree concurrency
+latch crabbing vs optimistic lock coupling in b trees
+mvcc serializable snapshot isolation write skew anomaly detection
+lsm tree compaction write amplification leveled vs tiered
+rocksdb vs wiredtiger latency tail under mixed olap workload
+formal verification of lock free b tree in tla plus`
+    }
+
+    /**
      * Generate search query sessions using AI API.
      * Each session is a group of related queries simulating a real user's search flow.
      * Uses trending topics as seeds for authenticity.
@@ -627,12 +725,12 @@ export class QueryCore {
         const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
             this.getGoogleTrends(geo).catch(() => []),
             this.getWikipediaTrending(langCode).catch(() => []),
-            this.getRedditTopics().catch(() => [])
+            this.getRedditTopics('MachineLearning+compsci+programming').catch(() => [])
         ])
         const trendingSeeds = [
-            ...googleTrends.slice(0, 5),
-            ...wikiTrends.slice(0, 5),
-            ...redditTopics.slice(0, 5)
+            ...googleTrends.slice(0, 4),
+            ...wikiTrends.slice(0, 4),
+            ...redditTopics.slice(0, 7)
         ]
 
         this.bot.logger.info(
@@ -641,33 +739,7 @@ export class QueryCore {
             `[AI] Gathering trending seeds | google=${googleTrends.length} | wiki=${wikiTrends.length} | reddit=${redditTopics.length} | seedsUsed=${trendingSeeds.length}`
         )
 
-        const seedSection = trendingSeeds.length > 0
-            ? `CHỦ ĐỀ GỢI Ý (có thể dùng hoặc không):\n${trendingSeeds.join('\n')}\n\n`
-            : ''
-
-        const prompt = `Bạn là một người dùng Bing thật ở Việt Nam. Hãy tạo ${sessionCount} phi��n tìm kiếm tự nhiên, mỗi phiên gồm 6-10 câu search liên tiếp.
-
-${seedSection}QUY TẮC BẮT BUỘC:
-- Mỗi phiên PHẢI có luồng suy nghĩ liên quan: bắt đầu từ 1 nhu cầu → đào sâu/mở rộng/chuyển hướng tự nhiên
-- Mỗi phiên PHẢI chứa: ít nhất 1 query ngắn (2-4 từ), 1 query dài (8-15 từ), 1 query refine/sửa đổi từ query tr��ớc đó
-- KHÔNG đánh số, KHÔNG gạch đầu dòng, KHÔNG giải thích
-- Mỗi dòng 1 câu search, các phiên cách nhau bằng dòng trống
-- Viết như đang NGHĨ và GÕ trên bàn phím, không phải viết văn
-- Chủ đề đa dạng: ẩm thực, sức khỏe, công nghệ, du lịch, giáo dục, giải trí, thể thao, tài chính, gia đình, thời trang
-
-VÍ D��� FORMAT ĐÚNG:
-cách làm bún bò huế
-bún bò huế ngon nhất sài g��n
-quán bún bò huế quận 3
-cách nấu bún bò huế tại nhà đơn giản
-mua nguyên liệu bún bò huế ở đâu
-bún bò huế bao nhiêu calo
-
-laptop bị nóng khi chơi game
-tại sao laptop dell bị nóng
-cách vệ sinh quạt laptop dell
-keo tản nhiệt loại nào tốt 2024
-thay keo tản nhiệt laptop giá bao nhiêu`
+        const prompt = this.buildAISessionPrompt(sessionCount, langCode, geo, trendingSeeds)
 
         this.bot.logger.info(false, 'AI-SESSION', `[AI] Requesting ${sessionCount} search sessions from AI API...`)
 
@@ -850,7 +922,7 @@ thay keo tản nhiệt laptop giá bao nhiêu`
         const [googleTrends, wikiTrends, redditTopics] = await Promise.all([
             this.getGoogleTrends(geo).catch(() => []),
             this.getWikipediaTrending(langCode).catch(() => []),
-            this.getRedditTopics().catch(() => [])
+            this.getRedditTopics('MachineLearning+compsci+programming').catch(() => [])
         ])
 
         // Get local queries

@@ -305,6 +305,18 @@ class WindowsController {
         return await this.vpsRequest('/api/accounts', 'GET');
     }
 
+    static async getVPSScheduler() {
+        return await this.vpsRequest('/api/scheduler', 'GET');
+    }
+
+    static async updateVPSScheduler(payload) {
+        return await this.vpsRequest('/api/scheduler', 'PUT', payload);
+    }
+
+    static async rerollVPSScheduler() {
+        return await this.vpsRequest('/api/scheduler/reroll', 'POST', {});
+    }
+
     static async getVPSLogs() {
         return await this.vpsRequest('/api/logs', 'GET');
     }

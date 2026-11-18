@@ -13,15 +13,32 @@
  */
 import fs from 'fs'
 import path from 'path'
-import { chromium, type Browser } from 'patchright'
+import { chromium, type Browser, type Page } from 'patchright'
 
+import { resolveExecutionProfile } from '../browser/humanize/ExecutionProfile'
+import { AccountService } from '../dashboard/accountService'
 import type { Account } from '../interface/Account'
-import type { AccountState } from './stateService'
-import { calculateAccountAge, extractStreak } from '../util/RewardUtils'
+import type { Config } from '../interface/Config'
+import { loadConfig } from '../util/Load'
+import {
+    calculateAccountAge,
+    extractStreak,
+    hasZeroRedemptionEvidence,
+    isNewAccountAge,
+    parseOrderHistoryText,
+    syncNewTagByAge
+} from '../util/RewardUtils'
+import { stateService, type AccountState } from './stateService'
 
 interface UserStatusShape {
     availablePoints?: number
     lifetimePoints?: number
+    lifetimePointsRedeemed?: number
+    lastOrder?: {
+        id?: string | null
+        timestamp?: string | Date | null
+        catalogItem?: { title?: string } | null
+    } | null
     redeemGoal?: { title?: string; price?: number }
     levelInfo?: { activeLevelName?: string; activeLevel?: string }
 }
@@ -35,15 +52,30 @@ interface DashboardShape {
     streakProtectionPromo?: unknown
 }
 
+interface RefreshPayload {
+    lifetimePoints: number
+    level: string
+    streak: string
+    accountAge: string
+    redeemGoalTitle: string
+    redeemGoalPrice: number
+    isNew: boolean | null
+    redemptionCount?: number
+    lifetimePointsRedeemed: number
+    syncedLifetimeRedeemed?: number
+    lastOrderTitle?: string
+    lastOrderDate?: string
+}
+
 interface RefreshResult {
     email: string
     ok: boolean
     points?: number
     reason?: string
+    data?: RefreshPayload
 }
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..')
-const DB_PATH = path.resolve(PROJECT_ROOT, 'src/dashboard/db.json')
 const SESSIONS_DIR = path.resolve(PROJECT_ROOT, 'sessions')
 const API_URL = 'https://rewards.bing.com/api/getuserinfo?type=1&X-Requested-With=XMLHttpRequest'
 
@@ -69,21 +101,6 @@ function loadAccounts(): Account[] {
     return JSON.parse(fs.readFileSync(file, 'utf-8')) as Account[]
 }
 
-function loadStates(): AccountState[] {
-    if (!fs.existsSync(DB_PATH)) return []
-    try {
-        return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')) as AccountState[]
-    } catch {
-        return []
-    }
-}
-
-function saveStates(states: AccountState[]) {
-    const temp = `${DB_PATH}.${process.pid}.tmp`
-    fs.writeFileSync(temp, JSON.stringify(states, null, 4), 'utf-8')
-    fs.renameSync(temp, DB_PATH)
-}
-
 function readCookies(email: string): any[] | null {
     for (const variant of ['session_desktop.json', 'session_mobile.json']) {
         const file = path.join(SESSIONS_DIR, email, variant)
@@ -104,7 +121,95 @@ function proxyConfig(url?: string, port?: number) {
     return { server: port ? `${server}:${port}` : server }
 }
 
-async function refreshOne(browser: Browser, account: Account, args: ReturnType<typeof parseArgs>): Promise<RefreshResult> {
+async function scrapeOrderHistory(
+    page: Page
+): Promise<{ redemptionCount: number | null; lastOrderTitle?: string; lastOrderDate?: string }> {
+    try {
+        await page.goto('https://rewards.bing.com/redeem/orderhistory', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+        })
+
+        await page
+            .waitForFunction(
+                () => {
+                    const body = document.body
+                    if (!body) return false
+                    const hasBusy = Boolean(
+                        document.querySelector('[aria-busy="true"], [class*="skeleton" i], [class*="spinner" i]')
+                    )
+                    const text = (body.innerText || body.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+                    if (!text || text.startsWith('loading') || text.includes('đang tải')) return false
+                    const hasMarker =
+                        /results?|orders?|order\s+no\.|no\s+orders|haven't\s+placed|kết\s*quả|đơn\s*hàng|mã\s+đơn/i.test(
+                            text
+                        )
+                    return hasMarker && !hasBusy
+                },
+                { timeout: 8000 }
+            )
+            .catch(() => {})
+
+        await new Promise(resolve => setTimeout(resolve, 800))
+
+        const extracted = await page.evaluate(() => {
+            const main = document.querySelector('main') || document.body
+            const mainText = ((main as HTMLElement)?.innerText || main?.textContent || '').trim()
+
+            let lastOrderTitle: string | undefined
+            let lastOrderDate: string | undefined
+
+            const firstRow =
+                document.querySelector(
+                    'table tbody tr, [role="row"]:not(:first-child), [class*="order" i][class*="item" i], [class*="order" i][class*="card" i]'
+                ) ?? null
+            if (firstRow) {
+                const cells = Array.from(firstRow.querySelectorAll('td, [role="cell"], p, span, h3, h4'))
+                    .map(el => (el.textContent || '').trim())
+                    .filter(Boolean)
+
+                for (const cell of cells) {
+                    if (
+                        !lastOrderDate &&
+                        /\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b/i.test(
+                            cell
+                        )
+                    ) {
+                        lastOrderDate = cell
+                        continue
+                    }
+                    if (
+                        !lastOrderTitle &&
+                        cell.length >= 3 &&
+                        cell.length <= 120 &&
+                        !/^(?:order\s*no\.|mã\s+đơn|sent|shipped|completed|pending|canceled|cancelled|đã\s+gửi|hoàn\s+thành|\d+\s*(?:pts|points|điểm))$/i.test(
+                            cell
+                        ) &&
+                        !/^\d{4,}$/.test(cell)
+                    ) {
+                        lastOrderTitle = cell
+                    }
+                }
+            }
+
+            return { mainText, lastOrderTitle, lastOrderDate }
+        })
+
+        return {
+            redemptionCount: parseOrderHistoryText(extracted.mainText),
+            ...(extracted.lastOrderTitle ? { lastOrderTitle: extracted.lastOrderTitle } : {}),
+            ...(extracted.lastOrderDate ? { lastOrderDate: extracted.lastOrderDate } : {})
+        }
+    } catch {
+        return { redemptionCount: null }
+    }
+}
+
+async function refreshOne(
+    browser: Browser,
+    account: Account,
+    existing?: AccountState
+): Promise<RefreshResult> {
     const cookies = readCookies(account.email)
     if (!cookies) return { email: account.email, ok: false, reason: 'no session cookies' }
 
@@ -134,19 +239,56 @@ async function refreshOne(browser: Browser, account: Account, args: ReturnType<t
         const userStatus = dashboard.userStatus ?? {}
         const levelInfo = userStatus.levelInfo ?? {}
         const created = dashboard.created ?? dashboard.userProfile?.attributes?.created
+        const accountAge = calculateAccountAge(created)
+        const isNew = isNewAccountAge(created || accountAge)
+
+        const lifetimePointsRedeemed = Number(
+            userStatus.lifetimePointsRedeemed ?? existing?.lifetimePointsRedeemed ?? 0
+        )
+        let lastOrderTitle = userStatus.lastOrder?.catalogItem?.title || existing?.lastOrderTitle
+        let lastOrderDate = userStatus.lastOrder?.timestamp
+            ? String(userStatus.lastOrder.timestamp)
+            : existing?.lastOrderDate
+
+        let redemptionCount: number | undefined = existing?.redemptionCount
+        let syncedLifetimeRedeemed: number | undefined = existing?.syncedLifetimeRedeemed
+
+        if (hasZeroRedemptionEvidence(userStatus)) {
+            redemptionCount = 0
+            syncedLifetimeRedeemed = 0
+        } else if (
+            existing?.redemptionCount !== undefined &&
+            existing?.syncedLifetimeRedeemed === lifetimePointsRedeemed
+        ) {
+            redemptionCount = existing.redemptionCount
+        } else {
+            const orderRes = await scrapeOrderHistory(page)
+            if (orderRes.redemptionCount !== null) {
+                redemptionCount = orderRes.redemptionCount
+                syncedLifetimeRedeemed = lifetimePointsRedeemed
+            }
+            if (orderRes.lastOrderTitle) lastOrderTitle = orderRes.lastOrderTitle
+            if (orderRes.lastOrderDate) lastOrderDate = orderRes.lastOrderDate
+        }
 
         return {
             email: account.email,
             ok: true,
             points: userStatus.availablePoints ?? 0,
-            reason: JSON.stringify({
+            data: {
                 lifetimePoints: userStatus.lifetimePoints ?? 0,
                 level: levelInfo.activeLevelName || levelInfo.activeLevel || 'Level 1',
                 streak: extractStreak(dashboard),
-                accountAge: calculateAccountAge(created),
+                accountAge,
                 redeemGoalTitle: userStatus.redeemGoal?.title || 'None',
-                redeemGoalPrice: userStatus.redeemGoal?.price || 0
-            })
+                redeemGoalPrice: userStatus.redeemGoal?.price || 0,
+                isNew,
+                redemptionCount,
+                lifetimePointsRedeemed,
+                syncedLifetimeRedeemed,
+                lastOrderTitle,
+                lastOrderDate
+            }
         }
     } catch (error) {
         return { email: account.email, ok: false, reason: error instanceof Error ? error.message.slice(0, 120) : 'unknown' }
@@ -168,8 +310,17 @@ async function main() {
         return
     }
 
-    const states = loadStates()
+    let config: Config | undefined
+    try {
+        config = loadConfig()
+    } catch {
+        config = undefined
+    }
+
+    const accountService = new AccountService()
+    const states = stateService.getStates()
     const byEmail = new Map(states.map(state => [state.email.toLowerCase(), state]))
+    const accountByEmail = new Map(accounts.map(acc => [acc.email.toLowerCase(), acc]))
 
     console.log(`[refresh] ${accounts.length} account(s) | concurrency=${args.concurrency}`)
 
@@ -186,19 +337,31 @@ async function main() {
             )
         )
 
-        const results = await Promise.all(batch.map((account, index) => refreshOne(browsers[index]!, account, args)))
+        const results = await Promise.all(
+            batch.map((account, index) => refreshOne(browsers[index]!, account, byEmail.get(account.email.toLowerCase())))
+        )
         await Promise.all(browsers.map(browser => browser.close().catch(() => {})))
 
         for (const result of results) {
-            if (!result.ok) {
+            if (!result.ok || !result.data) {
                 console.log(`[refresh] ✗ ${result.email} — ${result.reason}`)
                 continue
             }
 
-            const extra = JSON.parse(result.reason!)
-            const existing = byEmail.get(result.email.toLowerCase())
-            const next: AccountState = {
-                email: result.email,
+            const extra = result.data
+            const emailKey = result.email.toLowerCase()
+            const existing = byEmail.get(emailKey)
+            const account = accountByEmail.get(emailKey)
+
+            const synced = accountService.syncNewTagByEmailSync(result.email, extra.isNew)
+            const effectiveTag = synced?.tag ?? syncNewTagByAge(account?.tag, extra.isNew).tag
+            const profile = resolveExecutionProfile({
+                tag: effectiveTag,
+                redemptionCount: extra.redemptionCount,
+                config
+            })
+
+            const nextUpdate: Partial<AccountState> = {
                 totalPoints: result.points ?? 0,
                 dailyPoints: existing?.dailyPoints ?? 0,
                 pcProgress: existing?.pcProgress ?? '0/90',
@@ -206,21 +369,28 @@ async function main() {
                 status: existing?.status === 'SUSPENDED' ? 'SUSPENDED' : existing?.status === 'OK' ? 'OK' : 'IDLE',
                 accountAge: extra.accountAge,
                 streak: extra.streak,
-                updatedAt: new Date().toLocaleString('vi-VN'),
                 level: extra.level,
                 lifetimePoints: extra.lifetimePoints,
                 questPoints: existing?.questPoints ?? 0,
                 redeemGoalTitle: extra.redeemGoalTitle,
                 redeemGoalPrice: extra.redeemGoalPrice,
-                geoLocale: existing?.geoLocale ?? 'vn',
-                proxy: existing?.proxy ?? 'Direct',
-                lastError: ''
+                geoLocale: existing?.geoLocale ?? account?.geoLocale ?? 'vn',
+                proxy: existing?.proxy ?? (account?.proxy?.url ? `${account.proxy.url}:${account.proxy.port}` : 'Direct'),
+                lastError: '',
+                tag: effectiveTag,
+                redemptionCount: extra.redemptionCount,
+                lifetimePointsRedeemed: extra.lifetimePointsRedeemed,
+                syncedLifetimeRedeemed: extra.syncedLifetimeRedeemed,
+                lastOrderTitle: extra.lastOrderTitle,
+                lastOrderDate: extra.lastOrderDate,
+                executionMode: profile.mode
             }
-            byEmail.set(result.email.toLowerCase(), next)
-            console.log(`[refresh] ✓ ${result.email} — ${next.totalPoints} pts | ${next.level} | streak ${next.streak}`)
-        }
 
-        saveStates(Array.from(byEmail.values()))
+            stateService.applyAccountState(result.email, nextUpdate)
+            console.log(
+                `[refresh] ✓ ${result.email} — ${result.points ?? 0} pts | ${extra.level} | streak ${extra.streak} | mode=${profile.mode} | redemptions=${extra.redemptionCount ?? '?'}`
+            )
+        }
     }
 
     console.log('[refresh] done')

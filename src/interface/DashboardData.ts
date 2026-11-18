@@ -675,12 +675,12 @@ export interface UserStatus {
     levelInfo: LevelInfo
     availablePoints: number
     lifetimePoints: number
-    lifetimePointsRedeemed: number
+    lifetimePointsRedeemed?: number
     migratedGiveBalance: number
     ePuid: string
     redeemGoal: AutoRedeemItem
     counters: Counters
-    lastOrder: LastOrder
+    lastOrder?: LastOrder | null
     dashboardImpression: DashboardImpression
     highvalueSweepstakesHVAImpression: DashboardImpression
     highvalueSweepstakesWinnerImpression: DashboardImpression
@@ -721,12 +721,12 @@ export interface ActivityAndQuizAttributes {
 export type ActivityAndQuiz = BasePromotion<ActivityAndQuizAttributes>
 
 export interface LastOrder {
-    id: null
+    id: string | null
     price: number
-    status: null
-    sku: null
-    timestamp: Date
-    catalogItem: null
+    status: string | null
+    sku: string | null
+    timestamp: Date | string | null
+    catalogItem: { title?: string; [key: string]: unknown } | null
 }
 
 export interface LevelInfo {

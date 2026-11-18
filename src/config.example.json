@@ -107,5 +107,33 @@
         },
         "enableSessionBreaks": true,
         "telemetry": true
+    },
+    "profiles": {
+        "safe": {
+            "searchDelay": {
+                "min": "22sec",
+                "max": "45sec"
+            },
+            "readDelay": {
+                "min": "20sec",
+                "max": "40sec"
+            },
+            "searchTargetRatioMin": 0.7,
+            "searchTargetRatioMax": 0.85,
+            "readArticlesMin": 7,
+            "readArticlesMax": 10
+        },
+        "fast": {
+            "searchDelay": {
+                "min": "6sec",
+                "max": "12sec"
+            },
+            "readDelay": {
+                "min": "5sec",
+                "max": "10sec"
+            },
+            "extraSearchVerifyRounds": 2,
+            "thoroughTasks": true
+        }
     }
 }

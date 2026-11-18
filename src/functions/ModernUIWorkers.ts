@@ -64,18 +64,25 @@ export class ModernUIWorkers {
      * zero cards, logged "no earnable cards" and skipped every task in it.
      */
     private async waitForSectionContent(page: Page, section: SectionProfile, timeoutMs = 25000): Promise<boolean> {
+        const cardSelectors =
+            section.key === SECTIONS.quests.key
+                ? [...new Set([...this.selectors.cardLinkSelectors, ...this.selectors.missionCardSelectors])]
+                : this.selectors.cardLinkSelectors
+
         const args = {
             ids: [...section.ids],
             headings: [...section.headings],
-            cardSelectors: this.selectors.cardLinkSelectors,
-            skeletonSelectors: this.selectors.skeletonSelectors
+            cardSelectors,
+            skeletonSelectors: this.selectors.skeletonSelectors,
+            infoLabelPrefixes: this.selectors.infoButtonLabelPrefixes,
+            isQuests: section.key === SECTIONS.quests.key
         }
 
         const deadline = Date.now() + timeoutMs
         let lastState = { found: false, cards: 0, skeletons: 0 }
 
         while (Date.now() < deadline) {
-            lastState = await page.evaluate(({ ids, headings, cardSelectors, skeletonSelectors }: typeof args) => {
+            lastState = await page.evaluate(({ ids, headings, cardSelectors, skeletonSelectors, infoLabelPrefixes, isQuests }: typeof args) => {
                 const candidates: Element[] = []
                 for (const id of ids) {
                     document.querySelectorAll(`section[id="${id}"]`).forEach(el => candidates.push(el))
@@ -91,9 +98,16 @@ export class ModernUIWorkers {
                 let skeletons = 0
                 for (const container of candidates) {
                     for (const selector of cardSelectors) {
-                        const count = container.querySelectorAll(selector).length
-                        if (count) {
-                            cards = Math.max(cards, count)
+                        const matched = Array.from(container.querySelectorAll(selector)).filter(el => {
+                            if (!isQuests) return true
+                            if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) return false
+                            const label = (el.getAttribute('aria-label') ?? '').trim().toLowerCase()
+                            if (infoLabelPrefixes.some(prefix => label.startsWith(prefix))) return false
+                            if (el.closest('header, nav')) return false
+                            return true
+                        })
+                        if (matched.length) {
+                            cards = Math.max(cards, matched.length)
                             break
                         }
                     }
@@ -826,32 +840,34 @@ export class ModernUIWorkers {
 
             this.bot.logger.info(this.bot.isMobile, 'MODERN-MISSIONS', `Found ${missions.length} mission card(s)`)
 
-            if (!missions.length) {
-                this.bot.logger.info(this.bot.isMobile, 'MODERN-MISSIONS', 'No incomplete missions found')
-                return
-            }
+            if (missions.length) {
+                for (const mission of missions) {
+                    try {
+                        this.bot.logger.info(
+                            this.bot.isMobile,
+                            'MODERN-MISSIONS',
+                            `Processing mission: "${mission.title}" (${mission.points}) - ${mission.completedTasks}/${mission.totalTasks} tasks`
+                        )
 
-            for (const mission of missions) {
-                try {
-                    this.bot.logger.info(
-                        this.bot.isMobile,
-                        'MODERN-MISSIONS',
-                        `Processing mission: "${mission.title}" (${mission.points}) - ${mission.completedTasks}/${mission.totalTasks} tasks`
-                    )
-
-                    await this.completeMission(page, mission)
-                } catch (error) {
-                    this.bot.logger.error(
-                        this.bot.isMobile,
-                        'MODERN-MISSIONS',
-                        `Error on mission "${mission.title}": ${errMsg(error)}`
-                    )
-                    await this.closeAllExtraTabs(page)
+                        await this.completeMission(page, mission)
+                    } catch (error) {
+                        this.bot.logger.error(
+                            this.bot.isMobile,
+                            'MODERN-MISSIONS',
+                            `Error on mission "${mission.title}": ${errMsg(error)}`
+                        )
+                        await this.closeAllExtraTabs(page)
+                    }
                 }
+
+                // Verify: reload /earn page and check for remaining missions
+                await this.verifyMissions(page)
+            } else {
+                this.bot.logger.info(this.bot.isMobile, 'MODERN-MISSIONS', 'No incomplete missions found')
             }
 
-            // Verify: reload /earn page and check for remaining missions
-            await this.verifyMissions(page)
+            // Safely check Streaks section ONLY for clickable outbound Activity anchors
+            await this.doStreakActivities(page)
 
             this.bot.logger.info(this.bot.isMobile, 'MODERN-MISSIONS', 'Missions completed')
         } catch (error) {
@@ -862,22 +878,36 @@ export class ModernUIWorkers {
 
     private async findMissionCards(page: Page): Promise<MissionInfo[]> {
         const args = {
+            questIds: [...SECTIONS.quests.ids],
+            questHeadings: [...SECTIONS.quests.headings],
             taskCountPattern: this.selectors.taskCountPattern,
+            activityCountPattern: this.selectors.activityCountPattern,
             streakProgressPattern: this.selectors.streakProgressPattern,
             missionExpiryPattern: this.selectors.missionExpiryPattern,
             barePointsPattern: this.selectors.barePointsPattern,
             titleSelectors: this.selectors.titleSelectors,
-            completedBadgeSelectors: this.selectors.completedBadgeSelectors
+            completedBadgeSelectors: this.selectors.completedBadgeSelectors,
+            completedTexts: this.selectors.completedTexts,
+            lockedTexts: this.selectors.lockedTexts,
+            infoButtonLabelPrefixes: this.selectors.infoButtonLabelPrefixes,
+            missionCardSelectors: this.selectors.missionCardSelectors
         }
 
         return await page.evaluate(
             ({
+                questIds,
+                questHeadings,
                 taskCountPattern,
+                activityCountPattern,
                 streakProgressPattern,
                 missionExpiryPattern,
                 barePointsPattern,
                 titleSelectors,
-                completedBadgeSelectors
+                completedBadgeSelectors,
+                completedTexts,
+                lockedTexts,
+                infoButtonLabelPrefixes,
+                missionCardSelectors
             }: typeof args) => {
                 const result: {
                     index: number
@@ -889,80 +919,119 @@ export class ModernUIWorkers {
                 }[] = []
 
                 const taskCountRegex = new RegExp(taskCountPattern, 'i')
+                const activityCountRegex = new RegExp(activityCountPattern, 'i')
                 const streakRegex = new RegExp(streakProgressPattern, 'i')
                 const expiryRegex = new RegExp(missionExpiryPattern, 'i')
                 const barePointsRegex = new RegExp(barePointsPattern, 'i')
+                const bareRatioRegex = /\b(\d+)\s*\/\s*(\d+)\b/
+                const dateLikeRegex = /\b\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{2,4}\b/
+                const taskbarSkipRegex = /windows taskbar|thanh taskbar|search box on the windows/i
 
-                // Missions live under <section id="quests">. Scoping here matters:
-                // the Streaks section above it renders captions that look like task
-                // counters ("Search: 1/1") but are daily-reset cards that cannot be
-                // completed by navigating anywhere.
-                const questsSection =
-                    document.querySelector('section#quests') ??
-                    Array.from(document.querySelectorAll('h2')).find(h =>
-                        (h.textContent ?? '').trim().toLowerCase().startsWith('quest')
-                    )?.closest('section') ??
-                    null
+                // Unified section resolution via SECTIONS.quests.ids and localized h2/h3 headings.
+                const questContainers: Element[] = []
+                for (const id of questIds) {
+                    document.querySelectorAll(`section[id="${id}"]`).forEach(el => {
+                        if (!questContainers.includes(el)) questContainers.push(el)
+                    })
+                }
+                Array.from(document.querySelectorAll('h2, h3')).forEach(h => {
+                    const text = (h.textContent ?? '').trim().toLowerCase()
+                    if (!questHeadings.some(alias => text.startsWith(alias))) return
+                    const container = h.closest('section') ?? h.parentElement?.parentElement
+                    if (container && !questContainers.includes(container)) questContainers.push(container)
+                })
 
-                const scope: ParentNode = questsSection ?? document
+                const hasQuestsSection = questContainers.length > 0
+                const scopes: ParentNode[] = hasQuestsSection ? questContainers : [document]
 
-                const seen = new Set<string>()
-                const results: (typeof result)[number][] = []
-
-                // 1. Preferred path: real mission anchors (/earn/quest/...).
-                //    These carry the quest slug, its title and its N/M counter.
-                Array.from(
-                    scope.querySelectorAll<HTMLAnchorElement>('a[href*="/earn/quest/"], a[href*="/quest"]')
-                ).forEach(anchor => {
-                    const card = anchor.querySelector('div') ?? anchor
-                    const fullText = (card.textContent ?? '').trim()
-                    if (!fullText) return
-
-                    // Skip punchcards that need an app/OS install and can never be
-                    // finished by a headless browser; they only burn time.
-                    if (/windows taskbar|thanh taskbar|search bar/i.test(fullText)) return
-
-                    const taskMatch = fullText.match(taskCountRegex)
-                    const streakMatch = fullText.match(streakRegex)
-                    const match = taskMatch ?? streakMatch
-
-                    // Daily streak cards have no "Expires in N days" caption. Only
-                    // punchcards (expiring over days/weeks) are worth opening.
-                    if (!match || !expiryRegex.test(fullText)) return
-
-                    const completedTasks = parseInt(match[1] ?? '0')
-                    const totalTasks = parseInt(match[2] ?? '0')
-                    if (completedTasks >= totalTasks || totalTasks === 0) return
-
-                    let isCompleted = false
-                    let temp: HTMLElement | null = card as HTMLElement
-                    while (temp && temp.tagName !== 'BODY') {
-                        if (
-                            completedBadgeSelectors.some(selector => !!temp!.querySelector(selector)) ||
-                            temp.className.toString().toLowerCase().includes('success')
-                        ) {
-                            isCompleted = true
-                            break
-                        }
-                        // Stop at the section boundary. Walking past it reached
-                        // <main>, whose completed Daily Set cards carry success
-                        // badges, so every punchcard looked already finished and
-                        // was dropped before it could be clicked.
-                        if (temp.tagName === 'SECTION') break
-                        temp = temp.parentElement
+                const isTriggerOrInfoControl = (el: HTMLElement): boolean => {
+                    if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) return true
+                    if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return true
+                    if (
+                        el.hasAttribute('disabled') ||
+                        el.getAttribute('aria-disabled') === 'true' ||
+                        el.getAttribute('data-disabled') === 'true'
+                    ) {
+                        return true
                     }
-                    if (isCompleted) return
+                    const label = (el.getAttribute('aria-label') ?? '').trim().toLowerCase()
+                    if (label && infoButtonLabelPrefixes.some(prefix => label.startsWith(prefix))) return true
+                    if (label && questHeadings.some(h => label === h)) return true
+                    return false
+                }
 
+                const isSearchStreakBanner = (text: string): boolean => {
+                    const lower = text.toLowerCase()
+                    if (/bing\s+search\s+streak/i.test(lower)) return true
+                    if (
+                        /(?:search|tìm\s*kiếm)\s*:\s*\d+\s*\/\s*\d+/i.test(lower) &&
+                        !/(?:activity|hoạt\s*động|quest|nhiệm\s*vụ|task)/i.test(lower)
+                    ) {
+                        return true
+                    }
+                    return false
+                }
+
+                const parseTaskCounts = (
+                    text: string,
+                    allowDefaultInQuests: boolean
+                ): { completedTasks: number; totalTasks: number } | null => {
+                    const taskMatch = text.match(taskCountRegex)
+                    if (taskMatch) {
+                        return {
+                            completedTasks: parseInt(taskMatch[1] ?? '0', 10),
+                            totalTasks: parseInt(taskMatch[2] ?? '0', 10)
+                        }
+                    }
+
+                    const actMatch = text.match(activityCountRegex)
+                    if (actMatch) {
+                        return {
+                            completedTasks: parseInt(actMatch[1] ?? '0', 10),
+                            totalTasks: parseInt(actMatch[2] ?? '0', 10)
+                        }
+                    }
+
+                    const streakMatch = text.match(streakRegex)
+                    if (streakMatch && !isSearchStreakBanner(text)) {
+                        return {
+                            completedTasks: parseInt(streakMatch[1] ?? '0', 10),
+                            totalTasks: parseInt(streakMatch[2] ?? '0', 10)
+                        }
+                    }
+
+                    const sanitized = text.replace(dateLikeRegex, ' ')
+                    const bareMatch = sanitized.match(bareRatioRegex)
+                    if (bareMatch) {
+                        const completed = parseInt(bareMatch[1] ?? '0', 10)
+                        const total = parseInt(bareMatch[2] ?? '0', 10)
+                        if (total > 0 && total <= 50 && completed <= total) {
+                            return { completedTasks: completed, totalTasks: total }
+                        }
+                    }
+
+                    if (allowDefaultInQuests) {
+                        return { completedTasks: 0, totalTasks: 1 }
+                    }
+                    return null
+                }
+
+                const extractPoints = (card: HTMLElement, fullText: string): string => {
                     let pointsText = ''
                     card.querySelectorAll('span, div, p').forEach(sub => {
                         const text = (sub.textContent ?? '').trim()
-                        if (/^\+?\d{1,4}$/.test(text) && sub.children.length === 0) pointsText = `+${text.replace('+', '')}`
+                        if (/^\+?\d{1,4}$/.test(text) && sub.children.length === 0) {
+                            pointsText = `+${text.replace('+', '')}`
+                        }
                     })
                     if (!pointsText) {
                         const bare = fullText.match(barePointsRegex)
-                        if (bare?.[1] && parseInt(bare[1]) > 0) pointsText = `+${bare[1]}`
+                        if (bare?.[1] && parseInt(bare[1], 10) > 0) pointsText = `+${bare[1]}`
                     }
+                    return pointsText || '+0'
+                }
 
+                const extractTitle = (card: HTMLElement, fullText: string, fallbackIndex: number): string => {
                     let title = ''
                     for (const selector of titleSelectors) {
                         const titleEl = card.querySelector(selector)
@@ -971,35 +1040,91 @@ export class ModernUIWorkers {
                             break
                         }
                     }
-                    if (!title) title = fullText.replace(taskCountRegex, '').trim().substring(0, 60) || 'Quest'
+                    if (!title) {
+                        title =
+                            fullText
+                                .replace(taskCountRegex, '')
+                                .replace(activityCountRegex, '')
+                                .replace(/\+\d+/, '')
+                                .replace(/Expires in.*?$/i, '')
+                                .trim()
+                                .substring(0, 60) || `Quest_${fallbackIndex}`
+                    }
+                    return title
+                }
 
-                    const href = anchor.href
-                    if (seen.has(href)) return
-                    seen.add(href)
+                const isCardCompleted = (card: HTMLElement): boolean => {
+                    const lowerText = (card.textContent ?? '').toLowerCase()
+                    if (completedTexts.some(marker => lowerText.includes(marker))) return true
+                    let isCompleted = false
+                    let temp: HTMLElement | null = card
+                    while (temp && temp.tagName !== 'BODY') {
+                        if (
+                            completedBadgeSelectors.some(selector => !!temp!.querySelector(selector)) ||
+                            temp.className.toString().toLowerCase().includes('success')
+                        ) {
+                            isCompleted = true
+                            break
+                        }
+                        if (temp.tagName === 'SECTION') break
+                        temp = temp.parentElement
+                    }
+                    return isCompleted
+                }
 
-                    results.push({ index: 0, title, points: pointsText || '+0', totalTasks, completedTasks, href })
-                })
+                const seenKeys = new Set<string>()
+                const seenElements = new Set<Element>()
+                const results: (typeof result)[number][] = []
 
-                // 2. Fallback path: the redesign also renders mission cards as
-                //    <button aria-expanded>, resolved by climbing from the counter.
-                //    Only used when no anchor matched, so the primary path wins.
-                if (!results.length) {
-                    const allElements = Array.from(scope.querySelectorAll('*'))
-                    const taskElements = allElements.filter(el => {
-                        const childNodes = Array.from(el.childNodes)
-                        return childNodes.some(
-                            node => node.nodeType === 3 && (taskCountRegex.test(node.textContent || '') || streakRegex.test(node.textContent || ''))
-                        )
+                const addMission = (card: HTMLElement, href: string, counts: { completedTasks: number; totalTasks: number }) => {
+                    if (counts.totalTasks <= 0 || counts.completedTasks >= counts.totalTasks) return
+                    const fullText = (card.textContent ?? '').trim()
+                    if (!fullText || fullText.length < 2) return
+                    if (taskbarSkipRegex.test(fullText) || isSearchStreakBanner(fullText)) return
+                    const lowerText = fullText.toLowerCase()
+                    if (lockedTexts.some(marker => lowerText.includes(marker))) return
+
+                    const title = extractTitle(card, fullText, results.length)
+                    const dedupeKey = href || title.toLowerCase()
+                    if (seenKeys.has(dedupeKey)) return
+                    for (const prevEl of seenElements) {
+                        if (prevEl === card || prevEl.contains(card) || card.contains(prevEl)) return
+                    }
+
+                    seenKeys.add(dedupeKey)
+                    seenElements.add(card)
+
+                    results.push({
+                        index: results.length,
+                        title,
+                        points: extractPoints(card, fullText),
+                        totalTasks: counts.totalTasks,
+                        completedTasks: counts.completedTasks,
+                        href
                     })
+                }
 
-                    taskElements.forEach((taskEl, i) => {
-                        const el = taskEl as HTMLElement
-                        const fullText = el.textContent?.trim() || ''
-                        if (!expiryRegex.test(fullText)) return
+                // 1. Path 1: Anchor cards (/earn/quest/... when unscoped, or any anchor inside questsSection).
+                const anchorSelector = hasQuestsSection
+                    ? 'a[href]'
+                    : 'a[href*="/earn/quest/"], a[href*="/quest"]'
+                for (const scope of scopes) {
+                    Array.from(scope.querySelectorAll<HTMLAnchorElement>(anchorSelector)).forEach(anchor => {
+                        if (isTriggerOrInfoControl(anchor)) return
+                        const card = anchor.querySelector('div') ?? anchor
+                        const fullText = (anchor.textContent ?? card.textContent ?? '').trim()
+                        if (!fullText) return
+                        if (taskbarSkipRegex.test(fullText) || isSearchStreakBanner(fullText)) return
 
-                        let isCompleted = false
-                        let temp: HTMLElement | null = el
-                        while (temp && temp.tagName !== 'BODY') {
+                        // Only enforce expiryRegex when questsSection could not be scoped (avoid Streaks false positives).
+                        if (!hasQuestsSection && !expiryRegex.test(fullText)) return
+
+                        const counts = parseTaskCounts(fullText, hasQuestsSection)
+                        if (!counts || counts.completedTasks >= counts.totalTasks || counts.totalTasks === 0) return
+
+                        let isCompleted = completedTexts.some(marker => fullText.toLowerCase().includes(marker))
+                        let temp: HTMLElement | null = card as HTMLElement
+                        while (!isCompleted && temp && temp.tagName !== 'BODY') {
                             if (
                                 completedBadgeSelectors.some(selector => !!temp!.querySelector(selector)) ||
                                 temp.className.toString().toLowerCase().includes('success')
@@ -1007,33 +1132,70 @@ export class ModernUIWorkers {
                                 isCompleted = true
                                 break
                             }
+                            // Stop at the section boundary. Walking past it reached
+                            // <main>, whose completed Daily Set cards carry success
+                            // badges, so every punchcard looked already finished and
+                            // was dropped before it could be clicked.
                             if (temp.tagName === 'SECTION') break
                             temp = temp.parentElement
                         }
                         if (isCompleted) return
 
-                        const match = fullText.match(taskCountRegex) ?? fullText.match(streakRegex)
-                        if (!match) return
+                        const href = anchor.href || ''
+                        addMission(anchor, href, counts)
+                    })
+                }
 
-                        const completedTasks = parseInt(match[1] ?? '0')
-                        const totalTasks = parseInt(match[2] ?? '0')
-                        if (completedTasks >= totalTasks || totalTasks === 0) return
+                // 2. Path 2: Run alongside Path 1 (for <button aria-expanded>, nested counter spans, etc.).
+                //    Climb to the outer clickable card FIRST before checking expiry or card text.
+                for (const scope of scopes) {
+                    const allElements = Array.from(scope.querySelectorAll('*'))
+                    const taskElements = allElements.filter(el => {
+                        const childNodes = Array.from(el.childNodes)
+                        return childNodes.some(node => {
+                            if (node.nodeType !== 3) return false
+                            const txt = node.textContent || ''
+                            return (
+                                taskCountRegex.test(txt) ||
+                                activityCountRegex.test(txt) ||
+                                streakRegex.test(txt) ||
+                                (hasQuestsSection && bareRatioRegex.test(txt.replace(dateLikeRegex, ' ')))
+                            )
+                        })
+                    })
 
+                    taskElements.forEach(taskEl => {
+                        const el = taskEl as HTMLElement
                         let card: HTMLElement | null = el
-                        while (card && card.tagName !== 'BODY') {
+                        while (card && card.tagName !== 'BODY' && card.tagName !== 'SECTION') {
+                            const cls = card.className.toString().toLowerCase()
+                            const role = card.getAttribute('role')
                             if (
                                 card.tagName === 'A' ||
                                 card.tagName === 'BUTTON' ||
-                                card.getAttribute('role') === 'link' ||
+                                role === 'link' ||
+                                role === 'button' ||
                                 card.tagName === 'LI' ||
-                                card.className.toString().toLowerCase().includes('card') ||
-                                card.className.toString().toLowerCase().includes('item')
+                                cls.includes('card') ||
+                                cls.includes('cursor-pointer') ||
+                                cls.includes('item')
                             ) {
                                 break
                             }
                             card = card.parentElement
                         }
-                        if (!card) card = el.parentElement || el
+                        if (!card || card.tagName === 'BODY' || card.tagName === 'SECTION') {
+                            card = el.parentElement || el
+                        }
+
+                        if (isTriggerOrInfoControl(card)) return
+                        const cardText = (card.textContent ?? '').trim()
+                        if (!cardText) return
+                        if (!hasQuestsSection && !expiryRegex.test(cardText)) return
+                        if (isCardCompleted(card)) return
+
+                        const counts = parseTaskCounts(cardText, false)
+                        if (!counts || counts.completedTasks >= counts.totalTasks || counts.totalTasks === 0) return
 
                         const anchor =
                             card.tagName === 'A'
@@ -1048,48 +1210,65 @@ export class ModernUIWorkers {
                               ? `${window.location.origin}${rawHref}`
                               : ''
 
-                        let pointsText = ''
-                        card.querySelectorAll('span, div, p').forEach(sub => {
-                            const text = sub.textContent?.trim() || ''
-                            if (/^\+\d+$/.test(text)) pointsText = text
-                        })
-
-                        if (!pointsText) {
-                            const bare = (card.textContent || '').match(barePointsRegex)
-                            if (bare?.[1] && parseInt(bare[1]) > 0) pointsText = `+${bare[1]}`
-                        }
-
-                        let title = ''
-                        for (const selector of titleSelectors) {
-                            const titleEl = card.querySelector(selector)
-                            if (titleEl?.textContent?.trim()) {
-                                title = titleEl.textContent.trim().substring(0, 60)
-                                break
-                            }
-                        }
-                        if (!title) {
-                            title =
-                                (card.textContent ?? '')
-                                    .replace(taskCountRegex, '')
-                                    .replace(/\+\d+/, '')
-                                    .replace(/Expires in.*?$/i, '')
-                                    .trim()
-                                    .substring(0, 60) || `Quest_${i}`
-                        }
-
-                        const dedupeKey = href || title
-                        if (seen.has(dedupeKey)) return
-                        seen.add(dedupeKey)
-
-                        results.push({
-                            index: results.length,
-                            title,
-                            points: pointsText || '+0',
-                            totalTasks,
-                            completedTasks,
-                            href
-                        })
+                        addMission(card, href, counts)
                     })
+                }
+
+                // 3. Path 3: When questsSection is explicitly resolved, trust any remaining incomplete
+                //    interactive card directly inside questsSection even without N/M or expiry text.
+                if (hasQuestsSection) {
+                    const cardSelectorChain = missionCardSelectors.join(', ')
+                    for (const container of questContainers) {
+                        Array.from(container.querySelectorAll<HTMLElement>(cardSelectorChain)).forEach(rawCard => {
+                            if (isTriggerOrInfoControl(rawCard)) return
+                            if (rawCard.closest('h2, h3')) return
+
+                            // Prefer the actual clickable <a> or <button> inside a wrapper <div>/<li> if present
+                            const innerClickable =
+                                rawCard.tagName === 'A' ||
+                                rawCard.tagName === 'BUTTON' ||
+                                rawCard.getAttribute('role') === 'button' ||
+                                rawCard.getAttribute('role') === 'link'
+                                    ? rawCard
+                                    : (rawCard.querySelector<HTMLElement>(
+                                          'a[href], button:not([slot="trigger"]), [role="button"], [role="link"]'
+                                      ) ?? rawCard)
+
+                            if (isTriggerOrInfoControl(innerClickable)) return
+                            if (isCardCompleted(innerClickable)) return
+
+                            const cardText = (innerClickable.textContent ?? '').trim()
+                            if (!cardText || cardText.length < 2) return
+                            if (taskbarSkipRegex.test(cardText) || isSearchStreakBanner(cardText)) return
+
+                            const counts = parseTaskCounts(cardText, true)
+                            if (!counts || counts.completedTasks >= counts.totalTasks || counts.totalTasks === 0) return
+
+                            const anchor =
+                                innerClickable.tagName === 'A'
+                                    ? (innerClickable as HTMLAnchorElement)
+                                    : innerClickable.querySelector('a[href]')
+                            const rawHref = anchor
+                                ? (anchor as HTMLAnchorElement).href
+                                : innerClickable.getAttribute('href') || ''
+                            const href = rawHref.startsWith('http')
+                                ? rawHref
+                                : rawHref
+                                  ? `${window.location.origin}${rawHref}`
+                                  : ''
+
+                            // Require either a navigable href, a button/role=button, or a title/points cue
+                            const isInteractiveTag =
+                                Boolean(href) ||
+                                innerClickable.tagName === 'BUTTON' ||
+                                innerClickable.getAttribute('role') === 'button' ||
+                                innerClickable.getAttribute('role') === 'link' ||
+                                innerClickable.className.toString().toLowerCase().includes('cursor-pointer')
+                            if (!isInteractiveTag) return
+
+                            addMission(innerClickable, href, counts)
+                        })
+                    }
                 }
 
                 results.forEach((r, i) => {
@@ -1107,51 +1286,125 @@ export class ModernUIWorkers {
 
         const args = {
             mission,
+            questIds: [...SECTIONS.quests.ids],
+            questHeadings: [...SECTIONS.quests.headings],
             missionCardSelectors: this.selectors.missionCardSelectors,
-            taskCountPattern: this.selectors.taskCountPattern,
-            streakProgressPattern: this.selectors.streakProgressPattern
+            infoButtonLabelPrefixes: this.selectors.infoButtonLabelPrefixes,
+            completedTexts: this.selectors.completedTexts,
+            lockedTexts: this.selectors.lockedTexts
         }
 
-        const clicked = await page.evaluate(
-            ({ mission: m, missionCardSelectors, taskCountPattern, streakProgressPattern }: typeof args) => {
-                const taskCountRegex = new RegExp(taskCountPattern, 'i')
-                const streakRegex = new RegExp(streakProgressPattern, 'i')
-                const elements = document.querySelectorAll(missionCardSelectors.join(', '))
+        const locateResult = await page.evaluate(
+            ({
+                mission: m,
+                questIds,
+                questHeadings,
+                missionCardSelectors,
+                infoButtonLabelPrefixes,
+                completedTexts,
+                lockedTexts
+            }: typeof args) => {
+                // Clear previous target marker
+                document.querySelectorAll('[data-arp-mission-target]').forEach(el => {
+                    el.removeAttribute('data-arp-mission-target')
+                })
 
-                // Prefer the exact quest anchor when one exists: it is unambiguous
-                // and safe to click even if several cards share a similar title.
-                if (m.href && m.href.includes('/quest')) {
-                    const exact = document.querySelector<HTMLAnchorElement>(`a[href="${new URL(m.href).pathname}"]`)
-                    if (exact) {
-                        exact.scrollIntoView({ block: 'center' })
-                        exact.click()
-                        return true
+                const normalize = (val: string) => val.replace(/\s+/g, ' ').trim().toLowerCase()
+                const targetTitleNorm = normalize(m.title)
+
+                const questContainers: Element[] = []
+                for (const id of questIds) {
+                    document.querySelectorAll(`section[id="${id}"]`).forEach(el => {
+                        if (!questContainers.includes(el)) questContainers.push(el)
+                    })
+                }
+                Array.from(document.querySelectorAll('h2, h3')).forEach(h => {
+                    const text = (h.textContent ?? '').trim().toLowerCase()
+                    if (!questHeadings.some(alias => text.startsWith(alias))) return
+                    const container = h.closest('section') ?? h.parentElement?.parentElement
+                    if (container && !questContainers.includes(container)) questContainers.push(container)
+                })
+
+                const scopes: ParentNode[] = questContainers.length > 0 ? questContainers : [document]
+
+                const isExcluded = (el: HTMLElement): boolean => {
+                    if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) return true
+                    if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return true
+                    const label = normalize(el.getAttribute('aria-label') ?? '')
+                    if (label && infoButtonLabelPrefixes.some(p => label.startsWith(p))) return true
+                    const lower = normalize(el.textContent ?? '')
+                    if (completedTexts.some(t => lower.includes(t))) return true
+                    if (lockedTexts.some(t => lower.includes(t))) return true
+                    return false
+                }
+
+                const stampTarget = (target: HTMLElement) => {
+                    target.setAttribute('data-arp-mission-target', '1')
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    const tag = target.tagName
+                    const role = target.getAttribute('role')
+                    return {
+                        found: true,
+                        isButtonControl: tag === 'BUTTON' || role === 'button' || target.hasAttribute('aria-expanded'),
+                        isAnchor: tag === 'A'
                     }
                 }
 
-                for (const el of elements) {
-                    const fullText = el.textContent?.trim() || ''
-                    if (!taskCountRegex.test(fullText) && !streakRegex.test(fullText)) continue
+                // 1. Exact href / pathname match across scopes
+                if (m.href) {
+                    let targetPathname = ''
+                    try {
+                        targetPathname = new URL(m.href, window.location.origin).pathname
+                    } catch {}
 
-                    const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
-                    const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
-
-                    if ((m.href && href === m.href) || (m.title && fullText.includes(m.title))) {
-                        const target = (anchor || el) as HTMLElement
-                        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                        target.click()
-                        return true
+                    for (const scope of scopes) {
+                        const anchors = Array.from(scope.querySelectorAll<HTMLElement>('a[href], [href]'))
+                        for (const el of anchors) {
+                            if (isExcluded(el)) continue
+                            const rawHref = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
+                            if (!rawHref) continue
+                            let elPathname = ''
+                            try {
+                                elPathname = new URL(rawHref, window.location.origin).pathname
+                            } catch {}
+                            if (rawHref === m.href || (targetPathname && elPathname === targetPathname)) {
+                                return stampTarget(el)
+                            }
+                        }
                     }
                 }
-                return false
+
+                // 2. Normalized title / text match inside quest scopes
+                const selectorChain = [...new Set([...missionCardSelectors, 'button', '[role="button"]'])].join(', ')
+                for (const scope of scopes) {
+                    const elements = Array.from(scope.querySelectorAll<HTMLElement>(selectorChain))
+                    for (const el of elements) {
+                        if (isExcluded(el)) continue
+                        const fullTextNorm = normalize(el.textContent ?? '')
+                        if (!fullTextNorm) continue
+
+                        const anchor = el.tagName === 'A' ? (el as HTMLAnchorElement) : el.querySelector('a[href]')
+                        const href = anchor ? (anchor as HTMLAnchorElement).href : el.getAttribute('href') || ''
+
+                        const matchesHref = Boolean(m.href && href && href === m.href)
+                        const matchesTitle = Boolean(targetTitleNorm && fullTextNorm.includes(targetTitleNorm))
+
+                        if (matchesHref || matchesTitle) {
+                            const target =
+                                el.tagName === 'A' || el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+                                    ? el
+                                    : ((anchor as HTMLElement | null) || el)
+                            return stampTarget(target)
+                        }
+                    }
+                }
+
+                return { found: false, isButtonControl: false, isAnchor: false }
             },
             args
         )
 
-        if (!clicked) {
-            // Deliberately no positional fallback: the old code clicked
-            // `cards[mission.index]` from a differently-filtered list, which
-            // could open an unrelated card.
+        if (!locateResult.found) {
             this.bot.logger.warn(
                 this.bot.isMobile,
                 'MODERN-MISSIONS',
@@ -1163,6 +1416,41 @@ export class ModernUIWorkers {
                 `Mission "${mission.title}" href="${mission.href}" not matched by any of: ${this.selectors.missionCardSelectors.join(' | ')}`
             )
             return
+        }
+
+        const beforeClickUrl = page.url()
+        const targetLocator = page.locator('[data-arp-mission-target="1"]').first()
+
+        if (locateResult.isButtonControl) {
+            const clickedViaLocator = await targetLocator
+                .click({ timeout: 5000 })
+                .then(() => true)
+                .catch(() => false)
+            if (!clickedViaLocator) {
+                await page.evaluate(() => {
+                    const el = document.querySelector<HTMLElement>('[data-arp-mission-target="1"]')
+                    el?.click()
+                })
+            }
+        } else {
+            await page.evaluate(() => {
+                const el = document.querySelector<HTMLElement>('[data-arp-mission-target="1"]')
+                el?.click()
+            })
+            await this.bot.utils.wait(600)
+            // Fallback to Playwright Locator click if DOM click did not trigger navigation or tab or expansion
+            const currentTabs = page.context().pages().length
+            const sameUrl = page.url() === beforeClickUrl
+            const expandedNow = await page
+                .evaluate(() => {
+                    const el = document.querySelector('[data-arp-mission-target="1"]')
+                    const hasDialog = Boolean(document.querySelector('[role="dialog"], dialog, [aria-modal="true"]'))
+                    return el?.getAttribute('aria-expanded') === 'true' || hasDialog
+                })
+                .catch(() => false)
+            if (currentTabs <= 1 && sameUrl && !expandedNow) {
+                await targetLocator.click({ timeout: 5000 }).catch(() => {})
+            }
         }
 
         await this.bot.utils.wait(3000)
@@ -1180,7 +1468,10 @@ export class ModernUIWorkers {
             const currentUrl = page.url()
             const hasNavigated = !currentUrl.endsWith('/earn') && !currentUrl.endsWith('/earn/')
             const isQuestPage =
-                currentUrl.includes('/quest') || currentUrl.includes('/mission') || currentUrl.includes('/challenge')
+                currentUrl.includes('/quest') ||
+                currentUrl.includes('/mission') ||
+                currentUrl.includes('/challenge') ||
+                currentUrl.includes('/activity')
 
             if (hasNavigated || isQuestPage) {
                 this.bot.logger.info(this.bot.isMobile, 'MODERN-MISSIONS', `Navigated to quest detail: ${currentUrl}`)
@@ -1193,58 +1484,121 @@ export class ModernUIWorkers {
                 })
                 await this.bot.utils.wait(2000)
             } else {
-                this.bot.logger.warn(
-                    this.bot.isMobile,
-                    'MODERN-MISSIONS',
-                    `Quest "${mission.title}" did not navigate to detail page (URL: ${currentUrl})`
-                )
+                // Check for inline expansion (aria-expanded="true") or modal dialog right on /earn
+                const inlineScope = await page.evaluate(() => {
+                    const dialog = document.querySelector('[role="dialog"], dialog, [aria-modal="true"]')
+                    if (dialog) {
+                        dialog.setAttribute('data-arp-inline-quest', '1')
+                        return '[data-arp-inline-quest="1"]'
+                    }
+
+                    const target = document.querySelector('[data-arp-mission-target="1"]')
+                    if (target && target.getAttribute('aria-expanded') === 'true') {
+                        const controlsId = target.getAttribute('aria-controls')
+                        if (controlsId) {
+                            const controlled = document.getElementById(controlsId)
+                            if (controlled) {
+                                controlled.setAttribute('data-arp-inline-quest', '1')
+                                return '[data-arp-inline-quest="1"]'
+                            }
+                        }
+                        const wrapper = target.closest('[class*="Card"], li, div') ?? target.parentElement
+                        if (wrapper) {
+                            wrapper.setAttribute('data-arp-inline-quest', '1')
+                            return '[data-arp-inline-quest="1"]'
+                        }
+                    }
+                    return null
+                })
+
+                if (inlineScope) {
+                    this.bot.logger.info(
+                        this.bot.isMobile,
+                        'MODERN-MISSIONS',
+                        `Inline quest panel/dialog opened for "${mission.title}"`
+                    )
+                    await this.completeMissionTasks(page, mission.title, inlineScope)
+                    await page
+                        .evaluate(() => {
+                            document
+                                .querySelectorAll('[data-arp-inline-quest]')
+                                .forEach(el => el.removeAttribute('data-arp-inline-quest'))
+                        })
+                        .catch(() => {})
+                } else {
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'MODERN-MISSIONS',
+                        `Quest "${mission.title}" did not navigate to detail page (URL: ${currentUrl})`
+                    )
+                }
             }
         }
+
+        await page
+            .evaluate(() => {
+                document
+                    .querySelectorAll('[data-arp-mission-target]')
+                    .forEach(el => el.removeAttribute('data-arp-mission-target'))
+            })
+            .catch(() => {})
 
         await this.bot.utils.wait(this.bot.utils.randomDelay(2000, 5000))
     }
 
-    private async completeMissionTasks(missionPage: Page, missionTitle: string): Promise<void> {
+    private normalizeUrlWithoutHash(rawUrl: string): string {
+        try {
+            const parsed = new URL(rawUrl)
+            parsed.hash = ''
+            return parsed.toString()
+        } catch {
+            return rawUrl.split('#')[0] ?? rawUrl
+        }
+    }
+
+    private async completeMissionTasks(
+        missionPage: Page,
+        missionTitle: string,
+        scopeSelector?: string
+    ): Promise<void> {
+        const missionUrl = missionPage.url()
         this.bot.logger.info(
             this.bot.isMobile,
             'MODERN-MISSIONS',
-            `On mission detail page for "${missionTitle}": ${missionPage.url()}`
+            `On mission detail page for "${missionTitle}": ${missionUrl}`
         )
 
         // Dismiss any popups on mission page
         await this.bot.browser.utils.tryDismissAllMessages(missionPage)
         await this.bot.utils.wait(1000)
 
-        // Scroll to load all content
-        await missionPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-        await this.bot.utils.wait(1500)
-        await missionPage.evaluate(() => window.scrollTo(0, 0))
-        await this.bot.utils.wait(1000)
-
-        // Punchcards frequently need an external action (open the Windows taskbar,
-        // install the mobile app). Clicking those links navigates away without ever
-        // completing a task, which is what made the whole mission silently stall.
-        // Detect that upfront and report it instead of looping three times.
-        if (await this.isUnreachableMission(missionPage)) {
-            this.bot.logger.warn(
-                this.bot.isMobile,
-                'MODERN-MISSIONS',
-                `Skipping "${missionTitle}": requires a desktop taskbar or mobile app action that this browser cannot perform`
-            )
-            return
+        if (!scopeSelector) {
+            // Scroll to load all content
+            await missionPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+            await this.bot.utils.wait(1500)
+            await missionPage.evaluate(() => window.scrollTo(0, 0))
+            await this.bot.utils.wait(1000)
         }
 
         const maxAttempts = 3
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const tasks = await this.findMissionSubTasks(missionPage)
+            const { tasks, unreachableCount } = await this.findMissionSubTasksDetailed(missionPage, scopeSelector)
 
             if (!tasks.length) {
                 if (attempt === 0) {
-                    this.bot.logger.info(
-                        this.bot.isMobile,
-                        'MODERN-MISSIONS',
-                        `All tasks already completed for "${missionTitle}"`
-                    )
+                    if (unreachableCount > 0 || (!scopeSelector && (await this.isUnreachableMission(missionPage)))) {
+                        this.bot.logger.warn(
+                            this.bot.isMobile,
+                            'MODERN-MISSIONS',
+                            `Skipping "${missionTitle}": all sub-tasks require a desktop taskbar or mobile app action that this browser cannot perform`
+                        )
+                    } else {
+                        this.bot.logger.info(
+                            this.bot.isMobile,
+                            'MODERN-MISSIONS',
+                            `All tasks already completed for "${missionTitle}"`
+                        )
+                    }
                 }
                 break
             }
@@ -1252,12 +1606,12 @@ export class ModernUIWorkers {
             this.bot.logger.info(
                 this.bot.isMobile,
                 'MODERN-MISSIONS',
-                `Found ${tasks.length} incomplete task(s) for "${missionTitle}" (attempt ${attempt + 1})`
+                `Found ${tasks.length} incomplete task(s) for "${missionTitle}" (attempt ${attempt + 1}${unreachableCount > 0 ? `, skipped ${unreachableCount} unreachable` : ''})`
             )
 
             for (const task of tasks) {
                 try {
-                    await this.clickMissionSubTask(missionPage, task)
+                    await this.clickMissionSubTask(missionPage, task, missionUrl)
                 } catch (error) {
                     this.bot.logger.error(
                         this.bot.isMobile,
@@ -1268,134 +1622,216 @@ export class ModernUIWorkers {
                 }
             }
 
-            // Reload mission page to check progress
-            await missionPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
-            await this.bot.utils.wait(3000)
+            if (scopeSelector) {
+                if (this.normalizeUrlWithoutHash(missionPage.url()) !== this.normalizeUrlWithoutHash(missionUrl)) {
+                    await missionPage.goto(missionUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                }
+                await this.bot.utils.wait(1500)
+            } else {
+                // Ensure we are back on missionUrl before reloading to check progress
+                if (this.normalizeUrlWithoutHash(missionPage.url()) !== this.normalizeUrlWithoutHash(missionUrl)) {
+                    await missionPage.goto(missionUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                } else {
+                    await missionPage.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                }
+                await this.bot.utils.wait(3000)
+            }
         }
     }
 
     /**
      * Matches missions whose completion requires an OS/app-level action.
-     * These are the "search the Windows taskbar" and "check in on the Bing app"
-     * punchcards: their sub-tasks only render an install/launch prompt, so the
-     * browser can never satisfy them no matter how many times they are clicked.
+     * Kept as fallback signal when zero actionable web sub-tasks are present.
      */
     private async isUnreachableMission(page: Page): Promise<boolean> {
-        return await page.evaluate(() => {
+        const markers = this.selectors.unreachableSubTaskMarkers
+        return await page.evaluate((markerList: string[]) => {
             const text = (document.body.textContent ?? '').toLowerCase()
-            const markers = [
-                'windows taskbar',
-                'thanh taskbar',
-                'search box on the windows',
-                'hộp tìm kiếm trên thanh',
-                'download the bing app',
-                'tải ứng dụng bing',
-                'install the bing app',
-                'cài đặt ứng dụng bing',
-                'open the bing app',
-                'mở ứng dụng bing'
-            ]
-            return markers.some(marker => text.includes(marker))
-        })
+            return markerList.some(marker => text.includes(marker))
+        }, markers)
     }
 
-    private async findMissionSubTasks(page: Page): Promise<CardInfo[]> {
+    public async findMissionSubTasks(page: Page, scopeSelector?: string): Promise<CardInfo[]> {
+        const { tasks } = await this.findMissionSubTasksDetailed(page, scopeSelector)
+        return tasks
+    }
+
+    private async findMissionSubTasksDetailed(
+        page: Page,
+        scopeSelector?: string
+    ): Promise<{ tasks: CardInfo[]; unreachableCount: number }> {
         const args = {
             taskSelectors: this.selectors.missionTaskSelectors,
             titleSelectors: this.selectors.titleSelectors,
             completedTexts: this.selectors.completedTexts,
-            completedBadgeSelectors: this.selectors.completedBadgeSelectors
+            completedBadgeSelectors: this.selectors.completedBadgeSelectors,
+            unreachableMarkers: this.selectors.unreachableSubTaskMarkers,
+            readMoreTexts: this.selectors.readMoreTexts,
+            infoLabelPrefixes: this.selectors.infoButtonLabelPrefixes,
+            scopeSelector: scopeSelector ?? ''
         }
 
         return await page.evaluate(
-            ({ taskSelectors, titleSelectors, completedTexts, completedBadgeSelectors }: typeof args) => {
-                const result: { index: number; title: string; points: string; completed: boolean; href: string }[] = []
+            ({
+                taskSelectors,
+                titleSelectors,
+                completedTexts,
+                completedBadgeSelectors,
+                unreachableMarkers,
+                readMoreTexts,
+                infoLabelPrefixes,
+                scopeSelector
+            }: typeof args) => {
+                const tasks: { index: number; title: string; points: string; completed: boolean; href: string }[] = []
+                let unreachableCount = 0
 
-                const allLinks = document.querySelectorAll(taskSelectors.join(', '))
+                const roots: ParentNode[] = scopeSelector
+                    ? Array.from(document.querySelectorAll(scopeSelector))
+                    : [document]
+                if (!roots.length) return { tasks, unreachableCount }
+
+                const selectorChain = taskSelectors.join(', ')
                 const seen = new Set<string>()
                 let logicalIndex = 0
 
-                allLinks.forEach(link => {
-                    const el = link as HTMLElement
-                    const fullText = el.textContent?.trim() || ''
-                    const lowerText = fullText.toLowerCase()
+                for (const root of roots) {
+                    const allLinks = root.querySelectorAll(selectorChain)
+                    allLinks.forEach(link => {
+                        const el = link as HTMLElement
+                        const fullText = el.textContent?.trim() || ''
+                        const lowerText = fullText.toLowerCase()
+                        const normalizedLabel = lowerText.replace(/[.…]+$/g, '').trim()
 
-                    if (el.getAttribute('aria-disabled') === 'true') return
-                    if (el.getAttribute('data-disabled') === 'true') return
-                    if (el.closest('[aria-disabled="true"], [data-disabled="true"]')) return
+                        if (el.hasAttribute('disabled')) return
+                        if (el.getAttribute('aria-disabled') === 'true') return
+                        if (el.getAttribute('data-disabled') === 'true') return
+                        if (el.closest('[disabled], [aria-disabled="true"], [data-disabled="true"]')) return
 
-                    if (completedTexts.some(marker => lowerText.includes(marker))) return
-                    const parentRow = el.closest('div, li, article')
-                    if (parentRow && completedBadgeSelectors.some(selector => !!parentRow.querySelector(selector))) {
-                        return
-                    }
+                        if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) return
+                        if (el.getAttribute('data-arp-mission-target') === '1') return
+                        const ariaLabel = (el.getAttribute('aria-label') ?? '').trim().toLowerCase()
+                        if (ariaLabel && infoLabelPrefixes.some(p => ariaLabel.startsWith(p))) return
 
-                    if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return
-
-                    const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
-                    if (href) {
-                        try {
-                            const path = new URL(href, window.location.origin).pathname
-                            if (
-                                path === '/earn' ||
-                                path === '/earn/' ||
-                                path === '/dashboard' ||
-                                path === '/dashboard/'
-                            ) {
-                                return
-                            }
-                        } catch {
-                            /* a non-parsable href is still worth clicking */
+                        if (completedTexts.some(marker => lowerText.includes(marker))) return
+                        const parentRow = el.closest('div, li, article')
+                        if (
+                            parentRow &&
+                            completedBadgeSelectors.some(selector => !!parentRow.querySelector(selector))
+                        ) {
+                            return
                         }
-                    }
 
-                    if (fullText.length < 2) return
+                        if (el.closest('header, footer, nav, [role="banner"], [role="navigation"]')) return
 
-                    const dedupeKey = href || fullText.substring(0, 40)
-                    if (seen.has(dedupeKey)) return
-                    seen.add(dedupeKey)
+                        const hrefAttr = el.getAttribute('href') || ''
+                        const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : hrefAttr
+                        const isRealLink = Boolean(
+                            href && href !== '#' && !href.startsWith('javascript:')
+                        )
 
-                    let taskContainer: Element | null = el.parentElement
-                    for (let depth = 0; depth < 6 && taskContainer; depth++) {
-                        if (taskContainer.querySelector(titleSelectors.join(', '))) break
-                        taskContainer = taskContainer.parentElement
-                    }
+                        // Exclude pure "Read more" / "Tìm hiểu thêm" non-navigating toggles
+                        if (!isRealLink && readMoreTexts.includes(normalizedLabel)) {
+                            return
+                        }
+                        if (el.tagName === 'SPAN' && el.hasAttribute('href') && !hrefAttr.trim()) {
+                            return
+                        }
 
-                    let title = ''
-                    if (taskContainer) {
-                        const titleEl = taskContainer.querySelector(titleSelectors.join(', '))
-                        title = titleEl?.textContent?.trim()?.substring(0, 60) || ''
-                    }
-                    if (!title) {
-                        const innerEl = el.querySelector('span, h3, h4')
-                        title = innerEl?.textContent?.trim()?.substring(0, 60) || fullText.substring(0, 60)
-                    }
+                        if (href) {
+                            try {
+                                const path = new URL(href, window.location.origin).pathname
+                                if (
+                                    path === '/earn' ||
+                                    path === '/earn/' ||
+                                    path === '/dashboard' ||
+                                    path === '/dashboard/'
+                                ) {
+                                    return
+                                }
+                            } catch {
+                                /* a non-parsable href is still worth clicking */
+                            }
+                        }
 
-                    result.push({
-                        index: logicalIndex,
-                        title,
-                        points: '',
-                        completed: false,
-                        // Identity used to re-find this row later; the index alone
-                        // is not stable once earlier tasks complete.
-                        href: href || fullText.substring(0, 40)
+                        if (fullText.length < 2) return
+
+                        // Per-sub-task unreachable check: check href scheme and tight row text
+                        if (/^(?:bing:|ms-windows-store:)/i.test(href)) {
+                            unreachableCount++
+                            return
+                        }
+
+                        let rowContainer: Element | null = el.closest(
+                            'li, article, tr, [class*="row" i], [class*="task" i], div'
+                        )
+                        if (rowContainer) {
+                            const controlsInRow = Array.from(rowContainer.querySelectorAll(selectorChain)).filter(c => {
+                                const cHref =
+                                    c.tagName === 'A'
+                                        ? (c as HTMLAnchorElement).href
+                                        : (c.getAttribute('href') || '')
+                                const cNorm = (c.textContent ?? '').trim().toLowerCase().replace(/[.…]+$/g, '')
+                                return Boolean(cHref && cHref !== '#') || !readMoreTexts.includes(cNorm)
+                            })
+                            if (controlsInRow.length > 1) {
+                                rowContainer = el
+                            }
+                        }
+                        const rowText = (rowContainer?.textContent ?? fullText).toLowerCase()
+                        if (unreachableMarkers.some(marker => rowText.includes(marker))) {
+                            unreachableCount++
+                            return
+                        }
+
+                        const dedupeKey = href || fullText.substring(0, 40)
+                        if (seen.has(dedupeKey)) return
+                        seen.add(dedupeKey)
+
+                        let taskContainer: Element | null = el.parentElement
+                        for (let depth = 0; depth < 6 && taskContainer; depth++) {
+                            if (taskContainer.querySelector(titleSelectors.join(', '))) break
+                            taskContainer = taskContainer.parentElement
+                        }
+
+                        let title = ''
+                        if (taskContainer) {
+                            const titleEl = taskContainer.querySelector(titleSelectors.join(', '))
+                            title = titleEl?.textContent?.trim()?.substring(0, 60) || ''
+                        }
+                        if (!title) {
+                            const innerEl = el.querySelector('span, h3, h4')
+                            title = innerEl?.textContent?.trim()?.substring(0, 60) || fullText.substring(0, 60)
+                        }
+
+                        tasks.push({
+                            index: logicalIndex,
+                            title,
+                            points: '',
+                            completed: false,
+                            // Identity used to re-find this row later; the index alone
+                            // is not stable once earlier tasks complete.
+                            href: href || fullText.substring(0, 40)
+                        })
+                        logicalIndex++
                     })
-                    logicalIndex++
-                })
+                }
 
-                return result
+                return { tasks, unreachableCount }
             },
             args
         )
     }
 
-    private async clickMissionSubTask(page: Page, task: CardInfo): Promise<boolean> {
+    private async clickMissionSubTask(page: Page, task: CardInfo, missionUrl?: string): Promise<boolean> {
         await this.closeAllExtraTabs(page)
+        const returnUrl = missionUrl || page.url()
 
         const args = {
             taskSelectors: this.selectors.missionTaskSelectors,
             completedTexts: this.selectors.completedTexts,
             completedBadgeSelectors: this.selectors.completedBadgeSelectors,
+            unreachableMarkers: this.selectors.unreachableSubTaskMarkers,
+            readMoreTexts: this.selectors.readMoreTexts,
             taskKey: task.href ?? '',
             taskTitle: task.title
         }
@@ -1403,18 +1839,34 @@ export class ModernUIWorkers {
         // Matched by identity rather than by position. Completing one sub-task
         // removes it from the incomplete list, which shifted every later index
         // and made the loop click the wrong row and skip the last one.
-        const clicked = await page.evaluate(
-            ({ taskSelectors, completedTexts, completedBadgeSelectors, taskKey, taskTitle }: typeof args) => {
+        const clickMeta = await page.evaluate(
+            ({
+                taskSelectors,
+                completedTexts,
+                completedBadgeSelectors,
+                unreachableMarkers,
+                readMoreTexts,
+                taskKey,
+                taskTitle
+            }: typeof args) => {
+                document.querySelectorAll('[data-arp-subtask-target]').forEach(el => {
+                    el.removeAttribute('data-arp-subtask-target')
+                })
+
                 const allLinks = document.querySelectorAll(taskSelectors.join(', '))
 
                 for (const link of allLinks) {
                     const el = link as HTMLElement
                     const fullText = el.textContent?.trim() || ''
                     const lowerText = fullText.toLowerCase()
+                    const normalizedLabel = lowerText.replace(/[.…]+$/g, '').trim()
 
+                    if (el.hasAttribute('disabled')) continue
                     if (el.getAttribute('aria-disabled') === 'true') continue
                     if (el.getAttribute('data-disabled') === 'true') continue
-                    if (el.closest('[aria-disabled="true"], [data-disabled="true"]')) continue
+                    if (el.closest('[disabled], [aria-disabled="true"], [data-disabled="true"]')) continue
+                    if (el.getAttribute('slot') === 'trigger' || el.closest('[slot="trigger"]')) continue
+                    if (el.getAttribute('data-arp-mission-target') === '1') continue
 
                     if (completedTexts.some(marker => lowerText.includes(marker))) continue
                     const parentRow = el.closest('div, li, article')
@@ -1426,22 +1878,31 @@ export class ModernUIWorkers {
                     if (fullText.length < 2) continue
 
                     const href = el.tagName === 'A' ? (el as HTMLAnchorElement).href : el.getAttribute('href') || ''
-                    const identity = href || fullText.substring(0, 40)
+                    const isRealLink = Boolean(href && href !== '#' && !href.startsWith('javascript:'))
+                    if (!isRealLink && readMoreTexts.includes(normalizedLabel)) continue
+                    if (/^(?:bing:|ms-windows-store:)/i.test(href)) continue
+                    if (unreachableMarkers.some(marker => lowerText.includes(marker))) continue
 
+                    const identity = href || fullText.substring(0, 40)
                     const matches = taskKey ? identity === taskKey : !!taskTitle && fullText.includes(taskTitle)
 
                     if (matches) {
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        const isButton = el.tagName === 'BUTTON' || el.getAttribute('role') === 'button'
+                        if (isButton) {
+                            el.setAttribute('data-arp-subtask-target', '1')
+                            return { matched: true, isButton: true }
+                        }
                         el.click()
-                        return true
+                        return { matched: true, isButton: false }
                     }
                 }
-                return false
+                return { matched: false, isButton: false }
             },
             args
         )
 
-        if (!clicked) {
+        if (!clickMeta.matched) {
             // Usually means the task completed as a side effect of an earlier
             // click, so this is expected rather than an error.
             this.bot.logger.debug(
@@ -1450,6 +1911,28 @@ export class ModernUIWorkers {
                 `Sub-task no longer present (likely already completed): "${task.title}"`
             )
             return false
+        }
+
+        if (clickMeta.isButton) {
+            const clickedViaLocator = await page
+                .locator('[data-arp-subtask-target="1"]')
+                .first()
+                .click({ timeout: 5000 })
+                .then(() => true)
+                .catch(() => false)
+            if (!clickedViaLocator) {
+                await page.evaluate(() => {
+                    const el = document.querySelector<HTMLElement>('[data-arp-subtask-target="1"]')
+                    el?.click()
+                })
+            }
+            await page
+                .evaluate(() => {
+                    document
+                        .querySelectorAll('[data-arp-subtask-target]')
+                        .forEach(el => el.removeAttribute('data-arp-subtask-target'))
+                })
+                .catch(() => {})
         }
 
         this.bot.logger.info(
@@ -1466,11 +1949,157 @@ export class ModernUIWorkers {
         if (newTab !== page) {
             await newTab.waitForLoadState('domcontentloaded').catch(() => {})
             await this.bot.utils.wait(this.bot.utils.randomDelay(3000, 6000))
+        } else {
+            // If sub-task navigated same-tab away from missionUrl, dwell and navigate back
+            await page.waitForLoadState('domcontentloaded').catch(() => {})
+            const currentUrl = page.url()
+            if (this.normalizeUrlWithoutHash(currentUrl) !== this.normalizeUrlWithoutHash(returnUrl)) {
+                this.bot.logger.debug(
+                    this.bot.isMobile,
+                    'MODERN-MISSIONS',
+                    `Same-tab sub-task navigation detected (${currentUrl}); returning to ${returnUrl}`
+                )
+                await this.bot.utils.wait(this.bot.utils.randomDelay(3000, 6000))
+                await page.goto(returnUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                await this.bot.utils.wait(1500)
+            }
         }
 
         await this.closeAllExtraTabs(page)
         await this.bot.utils.wait(this.bot.utils.randomDelay(2000, 5000))
         return true
+    }
+
+    /**
+     * Safely checks SECTIONS.streaks on /earn ONLY for clickable outbound Activity anchors/CTAs.
+     * Never clicks non-navigable Bing Search Streak banner buttons.
+     */
+    public async doStreakActivities(page: Page): Promise<void> {
+        try {
+            if (!page.url().includes('rewards.bing.com/earn')) {
+                await this.navigateAndPrepare(page, 'https://rewards.bing.com/earn')
+            }
+
+            const args = {
+                streakIds: [...SECTIONS.streaks.ids],
+                streakHeadings: [...SECTIONS.streaks.headings],
+                completedTexts: this.selectors.completedTexts,
+                completedBadgeSelectors: this.selectors.completedBadgeSelectors,
+                lockedTexts: this.selectors.lockedTexts
+            }
+
+            const activities = await page.evaluate(
+                ({ streakIds, streakHeadings, completedTexts, completedBadgeSelectors, lockedTexts }: typeof args) => {
+                    const containers: Element[] = []
+                    for (const id of streakIds) {
+                        document.querySelectorAll(`section[id="${id}"]`).forEach(el => {
+                            if (!containers.includes(el)) containers.push(el)
+                        })
+                    }
+                    Array.from(document.querySelectorAll('h2, h3')).forEach(h => {
+                        const text = (h.textContent ?? '').trim().toLowerCase()
+                        if (!streakHeadings.some(alias => text.startsWith(alias))) return
+                        const container = h.closest('section') ?? h.parentElement?.parentElement
+                        if (container && !containers.includes(container)) containers.push(container)
+                    })
+
+                    const items: { href: string; title: string }[] = []
+                    const seen = new Set<string>()
+
+                    for (const container of containers) {
+                        Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]')).forEach(anchor => {
+                            if (anchor.closest('header, nav, [slot="trigger"]')) return
+                            const rawHref = anchor.getAttribute('href') || ''
+                            const fullHref = anchor.href || ''
+                            if (!rawHref || rawHref === '#' || rawHref.startsWith('javascript:')) return
+                            try {
+                                const pathname = new URL(fullHref, window.location.origin).pathname
+                                if (pathname === '/earn' || pathname === '/earn/' || pathname === '/dashboard') return
+                            } catch {
+                                return
+                            }
+
+                            const text = (anchor.textContent ?? '').trim()
+                            const lower = text.toLowerCase()
+                            if (!text) return
+                            // Never click Bing Search Streak banners or completed/locked items
+                            if (/bing\s+search\s+streak/i.test(lower)) return
+                            if (
+                                /(?:search|tìm\s*kiếm)\s*:\s*\d+\s*\/\s*\d+/i.test(lower) &&
+                                !/(?:activity|hoạt\s*động|check[\s-]?in|điểm\s*danh)/i.test(lower)
+                            ) {
+                                return
+                            }
+                            if (completedTexts.some(m => lower.includes(m))) return
+                            if (lockedTexts.some(m => lower.includes(m))) return
+                            if (completedBadgeSelectors.some(sel => !!anchor.querySelector(sel))) return
+                            if (!/(?:activity|hoạt\s*động|check[\s-]?in|điểm\s*danh)/i.test(lower)) return
+
+                            if (seen.has(fullHref)) return
+                            seen.add(fullHref)
+                            items.push({ href: fullHref, title: text.substring(0, 60) })
+                        })
+                    }
+
+                    return items
+                },
+                args
+            )
+
+            if (!activities.length) return
+
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'MODERN-STREAK-ACTIVITY',
+                `Found ${activities.length} clickable streak activity anchor(s)`
+            )
+
+            for (const act of activities) {
+                try {
+                    const beforeUrl = page.url()
+                    const clicked = await page.evaluate((targetHref: string) => {
+                        const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
+                        const match = anchors.find(a => a.href === targetHref)
+                        if (!match) return false
+                        match.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        match.click()
+                        return true
+                    }, act.href)
+                    if (!clicked) continue
+
+                    await this.bot.utils.wait(3000)
+                    const newTab = await this.bot.browser.utils.getLatestTab(page)
+                    if (newTab !== page) {
+                        await newTab.waitForLoadState('domcontentloaded').catch(() => {})
+                        await this.bot.utils.wait(this.bot.utils.randomDelay(3000, 6000))
+                        await this.closeAllExtraTabs(page)
+                    } else if (this.normalizeUrlWithoutHash(page.url()) !== this.normalizeUrlWithoutHash(beforeUrl)) {
+                        await this.bot.utils.wait(this.bot.utils.randomDelay(3000, 6000))
+                        await page.goto(beforeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+                        await this.bot.utils.wait(1500)
+                    }
+                    this.bot.logger.info(
+                        this.bot.isMobile,
+                        'MODERN-STREAK-ACTIVITY',
+                        `✔ Clicked streak activity: "${act.title}"`,
+                        'green'
+                    )
+                } catch (err) {
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'MODERN-STREAK-ACTIVITY',
+                        `Error on streak activity "${act.title}": ${errMsg(err)}`
+                    )
+                    await this.closeAllExtraTabs(page)
+                }
+            }
+        } catch (error) {
+            this.bot.logger.debug(
+                this.bot.isMobile,
+                'MODERN-STREAK-ACTIVITY',
+                `Streak activity check failed: ${errMsg(error)}`
+            )
+        }
     }
 
     private async verifyMissions(page: Page): Promise<void> {

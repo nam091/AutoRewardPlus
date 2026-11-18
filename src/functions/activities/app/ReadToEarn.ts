@@ -16,14 +16,16 @@ export class ReadToEarn extends Workers {
             return
         }
 
-        const delayMin = this.bot.config.searchSettings.readDelay.min
-        const delayMax = this.bot.config.searchSettings.readDelay.max
+        const profile = this.bot.currentExecutionProfile
+        const delayMin = profile?.readDelay.minMs ?? this.bot.config.searchSettings.readDelay.min
+        const delayMax = profile?.readDelay.maxMs ?? this.bot.config.searchSettings.readDelay.max
+        const articleCount = profile?.readArticlesTarget ?? 10
         const startBalance = Number(this.bot.userData.currentPoints ?? 0)
 
         this.bot.logger.info(
             this.bot.isMobile,
             'READ-TO-EARN',
-            `Starting Read to Earn | geo=${this.bot.userData.geoLocale} | delayRange=${delayMin}-${delayMax} | currentPoints=${startBalance}`
+            `Starting Read to Earn | mode=${profile?.mode ?? 'standard'} | articlesTarget=${articleCount} | geo=${this.bot.userData.geoLocale} | delayRange=${delayMin}-${delayMax} | currentPoints=${startBalance}`
         )
 
         try {
@@ -37,7 +39,6 @@ export class ReadToEarn extends Workers {
                 country: this.bot.userData.geoLocale
             }
 
-            const articleCount = 10
             let totalGained = 0
             let articlesRead = 0
             let oldBalance = startBalance

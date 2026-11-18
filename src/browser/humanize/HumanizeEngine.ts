@@ -299,8 +299,16 @@ export class HumanizeEngine {
      * - Hesitation pauses mid-thought
      * - Faster typing for common words
      */
-    public static async typeHumanlike(page: Page, selector: string, text: string): Promise<void> {
+    public static async typeHumanlike(
+        page: Page,
+        selector: string,
+        text: string,
+        speedMultiplier = 1
+    ): Promise<void> {
         await page.focus(selector)
+
+        const mult = Number.isFinite(speedMultiplier) ? Math.min(2.0, Math.max(0.5, speedMultiplier)) : 1
+        const scale = (ms: number): number => (mult === 1 ? ms : Math.round(ms * mult))
 
         const words = text.split(/(\s+)/)
         let prevChar = ''
@@ -311,10 +319,10 @@ export class HumanizeEngine {
 
             // Word boundary pause (longer between words) and type spaces
             if (wordIdx > 0 && /^\s+$/.test(word)) {
-                await this.gaussianSleep(180, 60)
+                await this.gaussianSleep(scale(180), scale(60))
                 for (let s = 0; s < word.length; s++) {
                     await page.keyboard.press('Space')
-                    await this.gaussianSleep(60, 20)
+                    await this.gaussianSleep(scale(60), scale(20))
                 }
                 prevChar = ' '
                 continue
@@ -330,45 +338,45 @@ export class HumanizeEngine {
 
                 // Hesitation pause: ~8% chance of thinking pause (longer at word starts)
                 if (this.rand() < (i === 0 ? 0.12 : 0.06)) {
-                    await this.gaussianSleep(400, 150)
+                    await this.gaussianSleep(scale(400), scale(150))
                 }
 
-                 // Fat-finger error: ~5% chance of hitting adjacent key
+                // Fat-finger error: ~5% chance of hitting adjacent key
                 if (this.rand() < 0.05 && i > 0) {
                     const adjacentKey = this.getAdjacentKey(char)
                     if (adjacentKey && adjacentKey.charCodeAt(0) < 128) {
                         await page.keyboard.down(adjacentKey)
-                        await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(45, 15)))
+                        await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(scale(45), scale(15))))
                         await page.keyboard.up(adjacentKey)
-                        await this.gaussianSleep(100, 35)
+                        await this.gaussianSleep(scale(100), scale(35))
                         await page.keyboard.press('Backspace')
-                        await this.gaussianSleep(120, 40)
+                        await this.gaussianSleep(scale(120), scale(40))
                     }
                 }
 
                 // Double-letter hesitation (e.g., "ll", "ss", "tt")
                 if (i > 0 && char === prevChar && this.rand() < 0.3) {
-                    await this.gaussianSleep(60, 20)
+                    await this.gaussianSleep(scale(60), scale(20))
                 }
 
                 const isStandardKey = char.charCodeAt(0) < 128
                 if (isStandardKey) {
                     await page.keyboard.down(char)
-                    await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(45, 15)))
+                    await new Promise(resolve => setTimeout(resolve, this.gaussianRandom(scale(45), scale(15))))
                     await page.keyboard.up(char)
                 } else {
                     await page.keyboard.type(char)
                 }
 
                 // Variable typing speed with Gaussian distribution
-                const jitter = this.gaussianRandom(0, 15)
-                await this.gaussianSleep(baseSpeed + jitter, 25)
+                const jitter = this.gaussianRandom(0, scale(15))
+                await this.gaussianSleep(scale(baseSpeed) + jitter, scale(25))
 
                 prevChar = char
             }
 
             // Brief pause after completing a word
-            await this.gaussianSleep(40, 15)
+            await this.gaussianSleep(scale(40), scale(15))
         }
     }
 
@@ -419,18 +427,19 @@ export class HumanizeEngine {
      * - Fixation pauses (stopping to read content)
      * - Momentum scrolling (acceleration/deceleration)
      */
-    public static async naturalScroll(page: Page): Promise<void> {
+    public static async naturalScroll(page: Page, readingBias = 0.6): Promise<void> {
         const viewportHeight = await page.evaluate(() => window.innerHeight)
         const totalHeight = await page.evaluate(() => document.body.scrollHeight)
         const scrollableHeight = totalHeight - viewportHeight
 
         if (scrollableHeight <= 0) return
 
+        const clampedBias = Number.isFinite(readingBias) ? Math.min(1, Math.max(0, readingBias)) : 0.6
         let currentScroll = 0
         const scrollSteps = this.gaussianRandom(5, 2)
 
         for (let i = 0; i < scrollSteps; i++) {
-            const isReading = this.rand() < 0.6 // 60% reading, 40% scanning
+            const isReading = this.rand() < clampedBias // Default 60% reading, 40% scanning
 
             if (isReading) {
                 // Reading mode: small scrolls with fixation pauses

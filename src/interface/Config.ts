@@ -1,3 +1,28 @@
+export type ExecutionMode = 'safe' | 'standard' | 'fast'
+
+export interface ConfigProfileSettings {
+    searchDelay?: ConfigDelay
+    readDelay?: ConfigDelay
+    searchTargetRatioMin?: number
+    searchTargetRatioMax?: number
+    readArticlesMin?: number
+    readArticlesMax?: number
+    readFractionMin?: number
+    readFractionMax?: number
+    typingMultiplier?: number
+    waitMultiplier?: number
+    resultVisitMultiplier?: number
+    extraSearchVerifyRounds?: number
+    thoroughTasks?: boolean
+}
+
+export type ConfigProfileRule = ConfigProfileSettings
+
+export interface ConfigProfiles {
+    safe?: ConfigProfileSettings
+    fast?: ConfigProfileSettings
+}
+
 export interface Config {
     baseURL: string
     sessionPath: string
@@ -16,6 +41,7 @@ export interface Config {
     ai?: ConfigAI
     googleSheets?: ConfigGoogleSheets
     behavior?: ConfigBehavior
+    profiles?: ConfigProfiles
 }
 
 export interface ConfigBehavior {
@@ -47,6 +73,7 @@ export interface ConfigGoogleSheets {
     enabled: boolean
     spreadsheetId: string
     sheetName: string
+    accountsSheetName?: string
     keyFilePath: string
 }
 

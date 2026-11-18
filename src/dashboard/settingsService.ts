@@ -17,7 +17,7 @@ export interface RedactedDashboardSettings extends DashboardSettings {
     hasDefaultProxyPassword: boolean
 }
 
-const DEFAULT_SETTINGS_FILE = path.resolve('src/dashboard/settings.json')
+const DEFAULT_SETTINGS_FILE = 'src/dashboard/settings.json'
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
     const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
@@ -38,10 +38,14 @@ function normalizeProxyUrl(raw: unknown): string {
 }
 
 export class SettingsService {
-    private readonly filePath: string
+    private readonly rawFilePath: string
 
     constructor(filePath = process.env.DASHBOARD_SETTINGS_PATH?.trim() || DEFAULT_SETTINGS_FILE) {
-        this.filePath = path.resolve(filePath)
+        this.rawFilePath = filePath
+    }
+
+    private get filePath(): string {
+        return path.resolve(this.rawFilePath)
     }
 
     getRaw(): DashboardSettings {

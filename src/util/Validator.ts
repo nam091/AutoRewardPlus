@@ -80,8 +80,47 @@ const GoogleSheetsSchema = z.object({
     enabled: z.boolean(),
     spreadsheetId: z.string(),
     sheetName: z.string().min(1),
+    accountsSheetName: z.string().min(1).optional(),
     keyFilePath: z.string().min(1)
 })
+
+const ProfileSettingsSchema = z
+    .object({
+        searchDelay: DelaySchema.optional(),
+        readDelay: DelaySchema.optional(),
+        searchTargetRatioMin: z.number().gt(0.1).max(1.0).optional(),
+        searchTargetRatioMax: z.number().gt(0.1).max(1.0).optional(),
+        readArticlesMin: z.number().int().min(1).max(20).optional(),
+        readArticlesMax: z.number().int().min(1).max(20).optional(),
+        readFractionMin: z.number().min(0.1).max(2.0).optional(),
+        readFractionMax: z.number().min(0.1).max(2.0).optional(),
+        typingMultiplier: z.number().min(0.2).max(5.0).optional(),
+        waitMultiplier: z.number().min(0.2).max(5.0).optional(),
+        resultVisitMultiplier: z.number().min(0.2).max(5.0).optional(),
+        extraSearchVerifyRounds: z.number().int().min(0).max(5).optional(),
+        thoroughTasks: z.boolean().optional()
+    })
+    .refine(
+        val =>
+            val.searchTargetRatioMin === undefined ||
+            val.searchTargetRatioMax === undefined ||
+            val.searchTargetRatioMin <= val.searchTargetRatioMax,
+        { message: 'searchTargetRatioMin must not exceed searchTargetRatioMax' }
+    )
+    .refine(
+        val =>
+            val.readArticlesMin === undefined ||
+            val.readArticlesMax === undefined ||
+            val.readArticlesMin <= val.readArticlesMax,
+        { message: 'readArticlesMin must not exceed readArticlesMax' }
+    )
+    .refine(
+        val =>
+            val.readFractionMin === undefined ||
+            val.readFractionMax === undefined ||
+            val.readFractionMin <= val.readFractionMax,
+        { message: 'readFractionMin must not exceed readFractionMax' }
+    )
 
 const BehaviorSchema = z.object({
     accountStartDelay: DelaySchema.default({ min: '2sec', max: '10sec' }),
@@ -134,7 +173,13 @@ export const ConfigSchema = z.object({
         accountStartDelay: { min: '2sec', max: '10sec' },
         enableSessionBreaks: true,
         telemetry: true
-    })
+    }),
+    profiles: z
+        .object({
+            safe: ProfileSettingsSchema.optional(),
+            fast: ProfileSettingsSchema.optional()
+        })
+        .optional()
 })
 
 // Account

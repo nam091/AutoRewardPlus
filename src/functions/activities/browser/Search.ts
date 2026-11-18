@@ -8,6 +8,7 @@ import { Workers } from '../../Workers'
 import { errMsg } from '../../../util/Utils'
 import { HumanizeEngine } from '../../../browser/humanize/HumanizeEngine'
 import { chooseResultInteraction, getSessionBreakMs } from '../../../browser/humanize/BehaviorPolicy'
+import { resolveExecutionProfile, type ResolvedExecutionProfile } from '../../../browser/humanize/ExecutionProfile'
 import { SeededRandom } from '../../../browser/humanize/SeededRandom'
 
 export class Search extends Workers {
@@ -17,6 +18,27 @@ export class Search extends Workers {
     private behaviorRandom = new SeededRandom('search-uninitialized')
     private searchStartedAt = 0
     private interactionStats: Record<'read' | 'scroll' | 'click', number> = { read: 0, scroll: 0, click: 0 }
+    private activeProfile: ResolvedExecutionProfile = resolveExecutionProfile({})
+
+    /**
+     * Computes full target queries, scaled target queries, and legacy safe-mode point cap.
+     */
+    public static computeTargetPlan(
+        missingPointsTotal: number,
+        isMobile: boolean,
+        isModern: boolean,
+        profile: Pick<ResolvedExecutionProfile, 'mode' | 'searchTargetRatio'>
+    ): { fullTarget: number; targetQueries: number; pointCap: number | null } {
+        const maxTarget = isMobile ? 23 : 33
+        const fullTarget = missingPointsTotal > 0 ? Math.min(maxTarget, Math.ceil(missingPointsTotal / 3) + 3) : 0
+        const ratio = Number.isFinite(profile.searchTargetRatio) ? Math.max(0.1, profile.searchTargetRatio) : 1
+        const targetQueries = fullTarget > 0 ? Math.max(1, Math.round(fullTarget * ratio)) : 0
+        const pointCap =
+            !isModern && profile.mode === 'safe' && missingPointsTotal > 0
+                ? Math.max(3, Math.round(missingPointsTotal * ratio))
+                : null
+        return { fullTarget, targetQueries, pointCap }
+    }
 
     /** Lightweight feedback tracker: counts successful vs failed queries per prefix pattern */
     private queryFeedback: Map<string, { success: number; fail: number }> = new Map()
@@ -48,8 +70,14 @@ export class Search extends Workers {
         this.behaviorRandom = SeededRandom.fromParts(this.bot.userData.userName, isMobile, dayKey, 'search')
         this.searchStartedAt = Date.now()
         this.interactionStats = { read: 0, scroll: 0, click: 0 }
+        const profile = this.bot.currentExecutionProfile ?? resolveExecutionProfile({ config: this.bot.config })
+        this.activeProfile = profile
 
-        this.bot.logger.info(isMobile, 'SEARCH-BING', `Starting Bing searches | currentPoints=${startBalance}`)
+        this.bot.logger.info(
+            isMobile,
+            'SEARCH-BING',
+            `Starting Bing searches | mode=${profile.mode} | currentPoints=${startBalance}`
+        )
 
         let totalGainedPoints = 0
 
@@ -71,15 +99,31 @@ export class Search extends Workers {
             )
 
             const isModern = this.bot.rewardsVersion === 'modern'
-            const maxTarget = isMobile ? 23 : 33
-            const targetQueries = missingPointsTotal > 0
-                ? Math.min(maxTarget, Math.ceil(missingPointsTotal / 3) + 3)
-                : 0
+            const { fullTarget, targetQueries, pointCap } = Search.computeTargetPlan(
+                missingPointsTotal,
+                isMobile,
+                isModern,
+                profile
+            )
+
+            if (profile.mode === 'safe') {
+                this.bot.logger.info(
+                    isMobile,
+                    'SEARCH-BING',
+                    `[SAFE-MODE] Profile cap applied | targetQueries=${targetQueries}/${fullTarget} | ratio=${profile.searchTargetRatio.toFixed(2)}${pointCap !== null ? ` | legacyPointCap=${pointCap}/${missingPointsTotal}` : ''}`
+                )
+            } else if (profile.mode === 'fast') {
+                this.bot.logger.info(
+                    isMobile,
+                    'SEARCH-BING',
+                    `[FAST-MODE] Profile active | targetQueries=${targetQueries}/${fullTarget} | verifyRounds=${profile.extraSearchVerifyRounds} | delay=${profile.searchDelay.minMs}-${profile.searchDelay.maxMs}ms`
+                )
+            }
 
             this.bot.logger.info(
                 isMobile,
                 'SEARCH-BING',
-                `Target queries: ${targetQueries} (missingPoints=${missingPointsTotal}, isModern=${isModern})`
+                `Target queries: ${targetQueries} (fullTarget=${fullTarget}, missingPoints=${missingPointsTotal}, isModern=${isModern})`
             )
 
             if (missingPointsTotal === 0) {
@@ -248,6 +292,15 @@ export class Search extends Workers {
                         return { stagnant: false }
                     }
 
+                    if (!isModern && pointCap !== null && totalGainedPoints >= pointCap) {
+                        this.bot.logger.info(
+                            isMobile,
+                            tag,
+                            `[SAFE-MODE] Legacy point cap reached (${totalGainedPoints}/${pointCap}), stopping early`
+                        )
+                        return { stagnant: false }
+                    }
+
                     if (isModern && completedQueries >= targetQueries) {
                         this.bot.logger.info(
                             isMobile,
@@ -293,8 +346,9 @@ export class Search extends Workers {
             }
 
             const mainResult = await runSearchLoop(queries, 'SEARCH-BING', 10, { refillQueries: true })
+            const reachedSafeCap = pointCap !== null && totalGainedPoints >= pointCap
 
-            if (!isModern && missingPointsTotal > 0 && !mainResult.stagnant) {
+            if (!isModern && missingPointsTotal > 0 && !mainResult.stagnant && !reachedSafeCap) {
                 this.bot.logger.info(
                     isMobile,
                     'SEARCH-BING',
@@ -303,6 +357,7 @@ export class Search extends Workers {
 
                 const MAX_EXTRA_ROUNDS = 3
                 for (let round = 0; round < MAX_EXTRA_ROUNDS && missingPointsTotal > 0; round++) {
+                    if (pointCap !== null && totalGainedPoints >= pointCap) break
                     const extra = await queryCore.generateAIQueries(30, langCode)
 
                     const merged = [...queries, ...extra].map(q => q.trim()).filter(Boolean)
@@ -315,7 +370,9 @@ export class Search extends Workers {
                     )
 
                     const extraResult = await runSearchLoop(queries, 'SEARCH-BING-EXTRA', 5)
-                    if (extraResult.stagnant || missingPointsTotal === 0) break
+                    if (extraResult.stagnant || missingPointsTotal === 0 || (pointCap !== null && totalGainedPoints >= pointCap)) {
+                        break
+                    }
                 }
             } else if (isModern && completedQueries < targetQueries) {
                 this.bot.logger.info(
@@ -326,6 +383,90 @@ export class Search extends Workers {
                 const extra = await queryCore.generateAIQueries(30, langCode)
                 queries = this.bot.utils.shuffleArray([...new Set(extra.map(q => q.trim()).filter(Boolean))])
                 await runSearchLoop(queries, 'SEARCH-BING-EXTRA', 10)
+            }
+
+            if (profile.mode === 'fast' && profile.extraSearchVerifyRounds > 0) {
+                for (let vRound = 0; vRound < profile.extraSearchVerifyRounds; vRound++) {
+                    const beforeVerifyPoints = await this.bot.browser.func
+                        .getCurrentPoints(true)
+                        .catch(() => Number(this.bot.userData.currentPoints ?? 0))
+
+                    let remainingMissing = 0
+                    if (!isMobile && isModern) {
+                        const breakdown = await this.bot.browser.func.getModernSearchBreakdown(page).catch(() => null)
+                        if (breakdown) {
+                            remainingMissing = Math.max(0, breakdown.desktop.max - breakdown.desktop.earned)
+                        } else {
+                            const freshCounters = await this.bot.browser.func.getSearchPoints().catch(() => searchCounters)
+                            remainingMissing = this.bot.browser.func.missingSearchPoints(freshCounters, isMobile).totalPoints
+                        }
+                    } else {
+                        const freshCounters = await this.bot.browser.func.getSearchPoints().catch(() => searchCounters)
+                        remainingMissing = this.bot.browser.func.missingSearchPoints(freshCounters, isMobile).totalPoints
+                    }
+
+                    // Ensure we return from /earn back to Bing before issuing catch-up queries
+                    const currentHost = (() => {
+                        try {
+                            return new URL(page.url()).hostname.toLowerCase()
+                        } catch {
+                            return ''
+                        }
+                    })()
+                    if (currentHost === 'rewards.bing.com' || (!currentHost.includes('bing.com'))) {
+                        await page.goto(this.bingHome, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {})
+                        await this.bot.browser.utils.tryDismissAllMessages(page)
+                    }
+
+                    if (remainingMissing <= 0) {
+                        this.bot.logger.info(
+                            isMobile,
+                            'SEARCH-FAST-VERIFY',
+                            `[FAST-MODE] Verify round ${vRound + 1}/${profile.extraSearchVerifyRounds}: 0 search points remaining`
+                        )
+                        break
+                    }
+
+                    const catchUpCount = Math.min(8, Math.max(2, Math.ceil(remainingMissing / 3)))
+                    this.bot.logger.info(
+                        isMobile,
+                        'SEARCH-FAST-VERIFY',
+                        `[FAST-MODE] Verify round ${vRound + 1}/${profile.extraSearchVerifyRounds}: remaining=${remainingMissing} pts, running ${catchUpCount} catch-up queries`
+                    )
+
+                    const extraPool = await queryCore.generateAIQueries(Math.max(15, catchUpCount), langCode)
+                    const catchUpQueries = this.bot.utils
+                        .shuffleArray([...new Set(extraPool.map(q => q.trim()).filter(Boolean))])
+                        .slice(0, catchUpCount)
+
+                    for (const q of catchUpQueries) {
+                        searchCounters = await this.bingSearch(page, q, isMobile)
+                        completedQueries++
+                    }
+
+                    const afterVerifyPoints = await this.bot.browser.func
+                        .getCurrentPoints(true)
+                        .catch(() => beforeVerifyPoints)
+                    const verifyDelta = Math.max(0, afterVerifyPoints - beforeVerifyPoints)
+                    if (verifyDelta > 0) {
+                        this.bot.userData.currentPoints = afterVerifyPoints
+                        this.bot.userData.gainedPoints = (this.bot.userData.gainedPoints ?? 0) + verifyDelta
+                        totalGainedPoints += verifyDelta
+                        this.bot.logger.info(
+                            isMobile,
+                            'SEARCH-FAST-VERIFY',
+                            `[FAST-MODE] Catch-up round ${vRound + 1} gained +${verifyDelta} points | balance=${afterVerifyPoints}`,
+                            'green'
+                        )
+                    } else {
+                        this.bot.logger.info(
+                            isMobile,
+                            'SEARCH-FAST-VERIFY',
+                            `[FAST-MODE] Points stopped moving on verify round ${vRound + 1}, ending catch-up`
+                        )
+                        break
+                    }
+                }
             }
 
             // Final point reconciliation check
@@ -426,11 +567,12 @@ export class Search extends Workers {
                 await searchBox.waitFor({ state: 'visible', timeout: 15000 })
 
                 // Human-like pre-typing pause: variable wait before starting to type
-                // Apply time-of-day multiplier for realistic behavior
+                // Apply time-of-day and profile wait multipliers for realistic behavior
                 const timeMultiplier = HumanizeEngine.getTimeOfDayMultiplier()
+                const waitMult = this.activeProfile.waitMultiplier
                 await this.bot.utils.wait(this.bot.utils.exponentialDelay(
-                    Math.floor(500 * timeMultiplier),
-                    Math.floor(2000 * timeMultiplier)
+                    Math.floor(500 * timeMultiplier * waitMult),
+                    Math.floor(2000 * timeMultiplier * waitMult)
                 ))
 
                 // Ensure searchbox is editable (Bing mobile sometimes sets readonly attribute on textarea)
@@ -455,11 +597,16 @@ export class Search extends Workers {
                     }, searchBar)
                 })
 
-                // Human-like typing with occasional typos and corrections
-                await HumanizeEngine.typeHumanlike(searchPage, searchBar, query)
+                // Human-like typing with occasional typos and corrections scaled by profile
+                await HumanizeEngine.typeHumanlike(searchPage, searchBar, query, this.activeProfile.typingMultiplier)
 
                 // Brief pause before pressing Enter (humans don't hit enter instantly)
-                await this.bot.utils.wait(this.bot.utils.exponentialDelay(200, 800))
+                await this.bot.utils.wait(
+                    this.bot.utils.exponentialDelay(
+                        Math.max(100, Math.floor(200 * waitMult)),
+                        Math.max(250, Math.floor(800 * waitMult))
+                    )
+                )
                 await searchPage.keyboard.press('Enter')
 
                 this.bot.logger.debug(
@@ -469,29 +616,45 @@ export class Search extends Workers {
                 )
 
                 // Variable post-search wait instead of fixed 3000ms
-                await this.bot.utils.wait(this.bot.utils.exponentialDelay(2000, 5000))
+                await this.bot.utils.wait(
+                    this.bot.utils.exponentialDelay(
+                        Math.max(800, Math.floor(2000 * waitMult)),
+                        Math.max(1500, Math.floor(5000 * waitMult))
+                    )
+                )
 
                 // Simulate reading search results page
                 await this.simulateReadingResults(searchPage, isMobile)
 
                 const interaction = chooseResultInteraction(this.behaviorRandom, {
                     allowScroll: this.bot.config.searchSettings.scrollRandomResults,
-                    allowClick: this.bot.config.searchSettings.clickRandomResults
+                    allowClick: this.bot.config.searchSettings.clickRandomResults,
+                    weights: this.activeProfile.interactionWeights
                 })
                 this.interactionStats[interaction]++
 
                 if (interaction === 'scroll') {
-                    await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
+                    await this.bot.utils.wait(
+                        this.bot.utils.exponentialDelay(
+                            Math.max(400, Math.floor(1000 * waitMult)),
+                            Math.max(1000, Math.floor(3000 * waitMult))
+                        )
+                    )
                     await this.randomScroll(searchPage, isMobile)
                 } else if (interaction === 'click') {
-                    await this.bot.utils.wait(this.bot.utils.exponentialDelay(1000, 3000))
+                    await this.bot.utils.wait(
+                        this.bot.utils.exponentialDelay(
+                            Math.max(400, Math.floor(1000 * waitMult)),
+                            Math.max(1000, Math.floor(3000 * waitMult))
+                        )
+                    )
                     await this.clickRandomLink(searchPage, isMobile)
                 }
 
-                // Exponential inter-query delay with time-of-day adjustment
+                // Exponential inter-query delay using resolved execution profile & time-of-day adjustment
                 const baseDelay = this.bot.utils.exponentialDelay(
-                    this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.min),
-                    this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchDelay.max)
+                    this.activeProfile.searchDelay.minMs,
+                    this.activeProfile.searchDelay.maxMs
                 )
                 const adjustedDelay = Math.floor(baseDelay * timeMultiplier)
                 await this.bot.utils.wait(adjustedDelay)
@@ -567,8 +730,10 @@ export class Search extends Workers {
 
             // Only pause if there's substantial content
             if (readingTime > 1000) {
-                // Don't read the full time - just a portion (humans scan)
-                const partialRead = Math.floor(readingTime * (0.3 + Math.random() * 0.4))
+                const fracMin = this.activeProfile.readFractionMin
+                const fracMax = this.activeProfile.readFractionMax
+                const fraction = fracMin + this.behaviorRandom.next() * Math.max(0, fracMax - fracMin)
+                const partialRead = Math.floor(readingTime * fraction)
                 await this.bot.utils.wait(partialRead)
             }
         } catch {
@@ -588,7 +753,9 @@ export class Search extends Workers {
                 `Random scroll | viewportHeight=${viewportHeight} | totalHeight=${totalHeight} | scrollPos=${randomScrollPosition}`
             )
 
-            await HumanizeEngine.naturalScroll(page)
+            const readingBias =
+                this.activeProfile.mode === 'safe' ? 0.75 : this.activeProfile.mode === 'fast' ? 0.45 : 0.6
+            await HumanizeEngine.naturalScroll(page, readingBias)
         } catch (error) {
             this.bot.logger.error(
                 isMobile,
@@ -630,7 +797,9 @@ export class Search extends Workers {
             await HumanizeEngine.humanHoverLocator(page, selected, this.behaviorRandom.int(250, 700))
             const clicked = await HumanizeEngine.humanClickLocator(page, selected)
             if (!clicked) return
-            await this.bot.utils.wait(this.bot.config.searchSettings.searchResultVisitTime)
+            const baseVisitMs = this.bot.utils.stringToNumber(this.bot.config.searchSettings.searchResultVisitTime)
+            const visitMs = Math.max(1000, Math.round(baseVisitMs * this.activeProfile.resultVisitMultiplier))
+            await this.bot.utils.wait(visitMs)
 
             if (isMobile) {
                 await page.goto(searchPageUrl)

@@ -2,6 +2,8 @@ import cluster from 'cluster'
 import fs from 'fs'
 import path from 'path'
 
+import type { ExecutionMode } from '../interface/Config'
+import { atomicWriteFileSync, withFileLockSync } from '../util/FileLock'
 import { runCheckpointService } from './runCheckpointService'
 
 export interface AccountState {
@@ -22,6 +24,13 @@ export interface AccountState {
     geoLocale?: string
     proxy?: string
     lastError?: string
+    tag?: string
+    redemptionCount?: number
+    lifetimePointsRedeemed?: number
+    syncedLifetimeRedeemed?: number
+    lastOrderTitle?: string
+    lastOrderDate?: string
+    executionMode?: ExecutionMode
 }
 
 export interface StateUpdateMessage {
@@ -35,53 +44,19 @@ export function isStateUpdateMessage(msg: unknown): msg is StateUpdateMessage {
     return typeof msg === 'object' && msg !== null && '__stateUpdate' in msg
 }
 
+export interface AccountTagSyncMessage {
+    __accountAgeSync: {
+        email: string
+        isNew: boolean
+    }
+}
+
+export function isAccountTagSyncMessage(msg: unknown): msg is AccountTagSyncMessage {
+    return typeof msg === 'object' && msg !== null && '__accountAgeSync' in msg
+}
+
 export class StateService {
     private dbPath = path.resolve('src/dashboard/db.json')
-
-    private withFileLock<T>(fn: () => T): T {
-        const lockPath = `${this.dbPath}.lock`
-        const dir = path.dirname(lockPath)
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true })
-        }
-
-        const deadline = Date.now() + 4000
-        let acquired = false
-
-        while (Date.now() < deadline) {
-            try {
-                const fd = fs.openSync(lockPath, 'wx')
-                fs.writeFileSync(fd, `${process.pid}\n${Date.now()}`)
-                fs.closeSync(fd)
-                acquired = true
-                break
-            } catch (err: any) {
-                if (err?.code !== 'EEXIST') break
-                try {
-                    const stat = fs.statSync(lockPath)
-                    if (Date.now() - stat.mtimeMs > 15000) {
-                        fs.unlinkSync(lockPath)
-                        continue
-                    }
-                } catch {
-                    continue
-                }
-                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25)
-            }
-        }
-
-        try {
-            return fn()
-        } finally {
-            if (acquired) {
-                try {
-                    fs.unlinkSync(lockPath)
-                } catch {
-                    // Best-effort unlock
-                }
-            }
-        }
-    }
 
     public getStates(): AccountState[] {
         try {
@@ -124,16 +99,9 @@ export class StateService {
 
     public saveStates(states: AccountState[]) {
         try {
-            const dir = path.dirname(this.dbPath)
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true })
-            }
-
             // Atomic write: a partially written db.json would be unparseable for
             // the dashboard, so stage the payload and rename it into place.
-            const tempPath = `${this.dbPath}.${process.pid}.tmp`
-            fs.writeFileSync(tempPath, JSON.stringify(states, null, 4), 'utf-8')
-            fs.renameSync(tempPath, this.dbPath)
+            atomicWriteFileSync(this.dbPath, JSON.stringify(states, null, 4))
         } catch (error) {
             console.error('[StateService] Error writing state DB:', error)
         }
@@ -159,7 +127,7 @@ export class StateService {
 
     /** Writes a state change to disk. Primary process only (locked across concurrent runs). */
     public applyAccountState(email: string, update: Partial<AccountState>) {
-        this.withFileLock(() => {
+        withFileLockSync(this.dbPath, () => {
             const states = this.getStates()
 
             // Checkpoint writes are primary-only: workers forward their state
@@ -175,6 +143,7 @@ export class StateService {
                 states[idx] = { ...states[idx]!, ...update, updatedAt: new Date().toLocaleString('vi-VN') }
             } else {
                 states.push({
+                    ...update,
                     email,
                     totalPoints: update.totalPoints || 0,
                     dailyPoints: update.dailyPoints || 0,
@@ -216,12 +185,16 @@ export class StateService {
             const accPath = candidates.find(c => fs.existsSync(c))
 
             if (accPath && fs.existsSync(accPath)) {
-                const accounts = JSON.parse(fs.readFileSync(accPath, 'utf-8'))
+                const accounts = JSON.parse(fs.readFileSync(accPath, 'utf-8')) as Array<{
+                    email: string
+                    geoLocale?: string
+                    proxy?: { url?: string; port?: number }
+                }>
                 const defaultProxyUrl = process.env.DEFAULT_PROXY_URL?.trim()
                 const defaultProxyPort = process.env.DEFAULT_PROXY_PORT ? parseInt(process.env.DEFAULT_PROXY_PORT, 10) : 0
                 const defaultProxyStr = defaultProxyUrl ? `${defaultProxyUrl}:${defaultProxyPort}` : 'Direct'
 
-                const states: AccountState[] = accounts.map((acc: any) => ({
+                const states: AccountState[] = accounts.map(acc => ({
                     email: acc.email,
                     totalPoints: 0,
                     dailyPoints: 0,

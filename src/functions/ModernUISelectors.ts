@@ -57,7 +57,7 @@ export const SECTIONS = {
         key: 'quests',
         label: 'Quests',
         ids: ['quests'],
-        headings: ['quests', 'quest', 'nhiệm vụ', 'thử thách']
+        headings: ['quests', 'quest', 'nhiệm vụ', 'thử thách', 'hoạt động']
     },
     levelUp: {
         key: 'levelUp',
@@ -199,15 +199,49 @@ export const MISSION_CARD_SELECTORS = [
     // rather than anchors, so an href-only chain never matched them and every
     // mission reported "Could not locate mission card".
     'button[aria-expanded][id^="react-aria-"]',
+    'button[aria-expanded]',
     'a[href]',
     '[role="link"]',
+    '[role="button"]',
     'div[class*="Card"]',
     'div[class*="cursor-pointer"]',
     'li'
 ] as const
 
 /** Fallback chain for sub-task rows on a mission detail page. */
-export const MISSION_TASK_SELECTORS = ['a[href]', 'button', '[role="link"]', 'div[class*="cursor-pointer"]'] as const
+export const MISSION_TASK_SELECTORS = [
+    'a[href]',
+    'button',
+    '[role="link"]',
+    '[role="button"]',
+    'div[class*="cursor-pointer"]'
+] as const
+
+/** Sub-task text markers for OS/app actions that a headless browser cannot satisfy. */
+export const UNREACHABLE_SUBTASK_MARKERS = [
+    'windows taskbar',
+    'thanh taskbar',
+    'search box on the windows',
+    'hộp tìm kiếm trên thanh',
+    'download the bing app',
+    'tải ứng dụng bing',
+    'install the bing app',
+    'cài đặt ứng dụng bing',
+    'open the bing app',
+    'mở ứng dụng bing'
+] as const
+
+/** Lowercased non-navigating "read more" toggle texts to skip when discovering sub-tasks. */
+export const READ_MORE_TEXTS = [
+    'read more',
+    'learn more',
+    'tìm hiểu thêm',
+    'xem thêm',
+    'show more',
+    'show less',
+    'details',
+    'chi tiết'
+] as const
 
 /** Fallback chain for the "Ready to claim" card container. */
 export const CLAIM_CARD_SELECTORS = [
@@ -256,9 +290,17 @@ export interface EvaluateProfile {
     missionExpiryPattern: string
     /** Source for the bare "N points" pattern, multi-locale. */
     barePointsPattern: string
+    /** Source for flexible Quest/Activity progress counters ("Activity: 0/3", "0/5 tasks"). */
+    activityCountPattern: string
+    /** Sub-task text markers requiring OS/native app actions. */
+    unreachableSubTaskMarkers: string[]
+    /** Non-navigating informational toggle labels. */
+    readMoreTexts: string[]
 }
 
 export const TASK_COUNT_PATTERN = '(\\d+)\\s*\\/\\s*(\\d+)\\s*(?:tasks?|nhiệm\\s*vụ|nv|hoạt\\s*động)'
+export const ACTIVITY_COUNT_PATTERN =
+    '(?:activity|hoạt\\s*động|tasks?|nhiệm\\s*vụ|nv)\\s*:?\\s*(\\d+)\\s*\\/\\s*(\\d+)'
 export const EARN_POINTS_PATTERN =
     '(?:earn|pick\\s*up|get|collect|nhận|kiếm|thu\\s*thập)\\s+(\\d+)\\s+(?:bonus\\s+)?(?:rewards\\s+)?(?:points?|điểm)'
 export const BARE_POINTS_PATTERN = '(\\d+)\\s+(?:points?|điểm)\\b'
@@ -282,9 +324,12 @@ export function buildEvaluateProfile(): EvaluateProfile {
         infoButtonLabelPrefixes: [...INFO_BUTTON_LABEL_PREFIXES],
         maxCardPoints: MAX_CARD_POINTS,
         taskCountPattern: TASK_COUNT_PATTERN,
+        activityCountPattern: ACTIVITY_COUNT_PATTERN,
         earnPointsPattern: EARN_POINTS_PATTERN,
         barePointsPattern: BARE_POINTS_PATTERN,
         streakProgressPattern: STREAK_PROGRESS_PATTERN,
-        missionExpiryPattern: MISSION_EXPIRY_PATTERN
+        missionExpiryPattern: MISSION_EXPIRY_PATTERN,
+        unreachableSubTaskMarkers: [...UNREACHABLE_SUBTASK_MARKERS],
+        readMoreTexts: [...READ_MORE_TEXTS]
     }
 }

@@ -10,6 +10,8 @@ import { timingSafeEqual } from 'node:crypto'
 
 import axios from 'axios'
 import AxiosClient from '../util/Axios'
+import { resolveExecutionProfile } from '../browser/humanize/ExecutionProfile'
+import type { ExecutionMode } from '../interface/Config'
 import type { AccountProxy } from '../interface/Account'
 import { stateService } from '../services/stateService'
 import { runCheckpointService } from '../services/runCheckpointService'
@@ -21,7 +23,8 @@ import { SessionService } from './sessionService'
 import { ConfigService } from './configService'
 import { AccountService, type AccountUpsertPayload } from './accountService'
 import { SettingsService, type DashboardSettings } from './settingsService'
-import { calculateAccountAge, extractStreak } from '../util/RewardUtils'
+import { SchedulerService } from './schedulerService'
+import { calculateAccountAge, extractStreak, hasZeroRedemptionEvidence, isNewAccountAge } from '../util/RewardUtils'
 
 export interface AccountStatus {
     id: number
@@ -45,6 +48,11 @@ export interface AccountStatus {
     lastError?: string
     enabled?: boolean
     tag?: string
+    redemptionCount?: number
+    lifetimePointsRedeemed?: number
+    lastOrderTitle?: string
+    lastOrderDate?: string
+    executionMode?: ExecutionMode
     hasSession?: boolean
     hasDesktopSession?: boolean
     hasMobileSession?: boolean
@@ -119,6 +127,7 @@ export class DashboardServer {
     private readonly diagnosticService = new DiagnosticService()
     private readonly sessionService = new SessionService()
     private readonly configService = new ConfigService()
+    private readonly schedulerService: SchedulerService
     private readonly apiToken = process.env.DASHBOARD_API_TOKEN?.trim() || null
     private readonly host = process.env.DASHBOARD_HOST?.trim() || '127.0.0.1'
     private readonly logSubscribers: Set<DashboardSocket> = new Set()
@@ -137,6 +146,19 @@ export class DashboardServer {
             cwd: process.cwd(),
             maxConcurrent: runtimeSettings.maxConcurrentSingleRuns,
             getEnv: () => this.settingsService.buildChildEnv(process.env)
+        })
+        this.schedulerService = new SchedulerService({
+            isBotBusy: () => this.isAnyBotRunning(),
+            startBatch: async () => {
+                await this.processManager.start()
+            },
+            checkProxy: async () => {
+                const s = this.settingsService.getRaw()
+                const h = await this.checkProxyEndpoint(s)
+                return { ok: !h.configured || h.tcpReachable, reason: h.error }
+            },
+            onChange: st => this.broadcast({ type: 'SCHEDULER', data: st }),
+            onLog: (lvl, msg) => this.processManager.log(lvl, msg)
         })
         this.loadAccounts()
         void this.refreshSessionCache()
@@ -196,6 +218,7 @@ export class DashboardServer {
                 }
             } catch {}
             this.loadAccounts()
+            this.schedulerService.notifyBatchFinished()
             this.broadcast({ type: 'ACCOUNTS_CHANGED' })
             void this.syncToSheets()
         })
@@ -284,6 +307,10 @@ export class DashboardServer {
                       : defaultProxyStr
                 const sessMeta = this.sessionMapCache.get(lower)
                 const qPos = queuePosMap.get(lower) ?? null
+                const tag = rawAcc?.tag || state.tag || ''
+                const executionMode =
+                    state.executionMode ??
+                    resolveExecutionProfile({ tag, redemptionCount: state.redemptionCount }).mode
 
                 return {
                     id: index + 1,
@@ -306,7 +333,12 @@ export class DashboardServer {
                     proxy: accProxy,
                     lastError: state.lastError,
                     enabled: rawAcc ? rawAcc.enabled !== false : true,
-                    tag: rawAcc?.tag || '',
+                    tag,
+                    redemptionCount: state.redemptionCount,
+                    lifetimePointsRedeemed: state.lifetimePointsRedeemed,
+                    lastOrderTitle: state.lastOrderTitle,
+                    lastOrderDate: state.lastOrderDate,
+                    executionMode,
                     hasSession: Boolean(sessMeta?.hasDesktop || sessMeta?.hasMobile),
                     hasDesktopSession: Boolean(sessMeta?.hasDesktop),
                     hasMobileSession: Boolean(sessMeta?.hasMobile),
@@ -418,7 +450,8 @@ export class DashboardServer {
                     resumeEmail: runCheckpointService.getResumeEmail(),
                     singlePool: this.singlePool.getSnapshot(),
                     batchStatus: this.processManager.getStatus(),
-                    settings
+                    settings,
+                    scheduler: await this.schedulerService.getStatus()
                 }
             }
         })
@@ -449,6 +482,7 @@ export class DashboardServer {
                 const created = await this.accountService.create(request.body || {})
                 this.loadAccounts()
                 this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+                void this.syncToSheets()
                 return { success: true, data: created, message: `Đã thêm tài khoản ${created.email}.` }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
@@ -476,6 +510,7 @@ export class DashboardServer {
                 })
                 this.loadAccounts()
                 this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+                void this.syncToSheets()
                 return {
                     success: true,
                     data: res,
@@ -505,8 +540,23 @@ export class DashboardServer {
                 }
                 try {
                     const updated = await this.accountService.update(target, request.body || {})
+                    if (request.body?.tag !== undefined) {
+                        const existingState = stateService
+                            .getStates()
+                            .find(s => s.email.toLowerCase() === updated.email.toLowerCase())
+                        if (existingState) {
+                            stateService.updateAccountState(updated.email, {
+                                tag: updated.tag || '',
+                                executionMode: resolveExecutionProfile({
+                                    tag: updated.tag,
+                                    redemptionCount: existingState.redemptionCount
+                                }).mode
+                            })
+                        }
+                    }
                     this.loadAccounts()
                     this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+                    void this.syncToSheets()
                     return { success: true, data: updated, message: `Đã cập nhật tài khoản ${updated.email}.` }
                 } catch (error) {
                     return reply.code(400).send({
@@ -530,6 +580,7 @@ export class DashboardServer {
                     const updated = await this.accountService.toggleEnabled(target, request.body?.enabled)
                     this.loadAccounts()
                     this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+                    void this.syncToSheets()
                     return {
                         success: true,
                         data: updated,
@@ -564,6 +615,7 @@ export class DashboardServer {
             await this.refreshSessionCache()
             this.loadAccounts()
             this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+            void this.syncToSheets()
             return { success: true, message: `Đã xoá tài khoản ${target}.` }
         })
 
@@ -578,7 +630,8 @@ export class DashboardServer {
                     ...batch,
                     active: batch.active || singlePool.activeCount > 0,
                     mode,
-                    singlePool
+                    singlePool,
+                    scheduler: await this.schedulerService.getStatus()
                 }
             }
         })
@@ -696,6 +749,7 @@ export class DashboardServer {
             const rawAccounts = this.accountService.readRawAccounts()
             const customProxyAccounts = rawAccounts.filter(a => Boolean(a.proxy?.url)).length
             const result = await this.checkProxyEndpoint(settings)
+            this.schedulerService.recordProxyHeartbeat(!result.configured || result.tcpReachable)
             return {
                 success: true,
                 data: {
@@ -708,6 +762,83 @@ export class DashboardServer {
                 }
             }
         })
+
+        // VPS Smart Auto-Scheduler
+        this.app.get('/api/scheduler', async () => ({
+            success: true,
+            data: this.schedulerService.getStatus()
+        }))
+
+        this.app.put<{ Body: Record<string, unknown> }>('/api/scheduler', async (request, reply) => {
+            if (!this.canWriteConfig(request)) {
+                return reply
+                    .code(403)
+                    .send({ success: false, message: 'Scheduler writes are restricted to trusted hosts.' })
+            }
+            try {
+                const updated = await this.schedulerService.updateConfig(request.body || {})
+                return { success: true, data: updated, message: 'Đã cập nhật Auto-Scheduler VPS.' }
+            } catch (error) {
+                return reply.code(400).send({
+                    success: false,
+                    message: error instanceof Error ? error.message : String(error)
+                })
+            }
+        })
+
+        this.app.post('/api/scheduler/reroll', async (request, reply) => {
+            if (!this.canWriteConfig(request)) {
+                return reply
+                    .code(403)
+                    .send({ success: false, message: 'Scheduler writes are restricted to trusted hosts.' })
+            }
+            try {
+                const data = await this.schedulerService.reroll()
+                return { success: true, data, message: 'Đã random lại khung giờ chạy hôm nay.' }
+            } catch (error) {
+                return reply.code(400).send({
+                    success: false,
+                    message: error instanceof Error ? error.message : String(error)
+                })
+            }
+        })
+
+        this.app.post('/api/scheduler/run-now', async (request, reply) => {
+            if (!this.canWriteConfig(request)) {
+                return reply
+                    .code(403)
+                    .send({ success: false, message: 'Scheduler writes are restricted to trusted hosts.' })
+            }
+            try {
+                const data = await this.schedulerService.runNow()
+                this.loadAccounts()
+                return { success: true, data, message: 'Đã kích hoạt chạy Batch qua Auto-Scheduler.' }
+            } catch (error) {
+                return reply.code(409).send({
+                    success: false,
+                    message: error instanceof Error ? error.message : String(error)
+                })
+            }
+        })
+
+        this.app.post<{ Body: { localTimezone?: string; proxyOk?: boolean } }>(
+            '/api/scheduler/heartbeat',
+            async (request, reply) => {
+                if (!this.canWriteConfig(request)) {
+                    return reply
+                        .code(403)
+                        .send({ success: false, message: 'Scheduler writes are restricted to trusted hosts.' })
+                }
+                const body = request.body || {}
+                if (typeof body.localTimezone === 'string' && body.localTimezone.trim()) {
+                    await this.schedulerService.updateConfig({ localTimezone: body.localTimezone.trim() }).catch(() => {})
+                }
+                if (typeof body.proxyOk === 'boolean') {
+                    this.schedulerService.recordProxyHeartbeat(body.proxyOk)
+                }
+                return { success: true, data: this.schedulerService.getStatus() }
+            }
+        )
 
         this.app.post<{ Body: ProxyTestBody }>('/api/proxy/test', async request => {
             const settings = this.settingsService.getRaw()
@@ -888,6 +1019,7 @@ export class DashboardServer {
             try {
                 const updated = await this.refreshAccountInfo(email)
                 this.loadAccounts()
+                void this.syncToSheets()
                 return { success: true, data: updated, message: `Đã làm mới thông tin cho: ${email}` }
             } catch (error) {
                 return reply.code(400).send({
@@ -913,8 +1045,10 @@ export class DashboardServer {
                     else failCount++
                 }
             }
+            await this.accountService.reconcileNewTagsFromStates(stateService.getStates()).catch(() => {})
             this.loadAccounts()
             this.broadcast({ type: 'ACCOUNTS_CHANGED' })
+            void this.syncToSheets()
             return {
                 success: true,
                 okCount,
@@ -923,9 +1057,15 @@ export class DashboardServer {
             }
         })
 
-        this.app.post('/api/sync-sheets', async () => {
-            await this.syncToSheets()
-            return { success: true, message: 'Đồng bộ Google Sheets hoàn tất.' }
+        this.app.post('/api/sync-sheets', async (_request, reply) => {
+            const res = await this.syncToSheets()
+            if (!res.ok) {
+                return reply.code(400).send({
+                    success: false,
+                    message: res.message || 'Đồng bộ Google Sheets thất bại.'
+                })
+            }
+            return { success: true, message: res.message || 'Đồng bộ Google Sheets hoàn tất.' }
         })
 
         this.app.register(async instance => {
@@ -1136,9 +1276,14 @@ export class DashboardServer {
         }
     }
 
-    private async syncToSheets(): Promise<void> {
+    private async syncToSheets(): Promise<{ ok: boolean; message?: string }> {
         try {
             const status = this.processManager.getStatus()
+            const onlineEmails = new Set(
+                this.accounts
+                    .filter(a => a.status === 'RUNNING' || a.singleRunning || a.onlineStatus === 'ONLINE')
+                    .map(a => a.email.toLowerCase())
+            )
             const rows = this.accounts.map(account => ({
                 email: account.email,
                 totalPoints: account.totalPoints,
@@ -1149,14 +1294,34 @@ export class DashboardServer {
                 accountAge: account.accountAge,
                 updatedAt: account.updatedAt,
                 streak: account.streak,
-                onlineStatus: account.onlineStatus || (status.active ? 'ONLINE' : 'OFFLINE')
+                onlineStatus:
+                    account.onlineStatus || (status.active || account.singleRunning ? 'ONLINE' : 'OFFLINE'),
+                tag: account.tag,
+                redemptionCount: account.redemptionCount,
+                executionMode: account.executionMode,
+                level: account.level,
+                lifetimePoints: account.lifetimePoints,
+                geoLocale: account.geoLocale,
+                proxy: account.proxy,
+                redeemGoalTitle: account.redeemGoalTitle,
+                lastError: account.lastError
             }))
-            await sheetService.syncAccountsToSheet(rows)
+            const ok = await sheetService.syncAllFromDisk({
+                onlineEmails,
+                sessionMap: this.sessionMapCache,
+                statsOverride: rows
+            })
+            if (!ok) {
+                return {
+                    ok: false,
+                    message: sheetService.lastError || 'Google Sheets chưa được bật hoặc thiếu cấu hình.'
+                }
+            }
+            return { ok: true, message: 'Đồng bộ Google Sheets hoàn tất.' }
         } catch (error) {
-            this.processManager.log(
-                'warn',
-                `Google Sheets sync skipped: ${error instanceof Error ? error.message : String(error)}`
-            )
+            const msg = error instanceof Error ? error.message : String(error)
+            this.processManager.log('warn', `Google Sheets sync skipped: ${msg}`)
+            return { ok: false, message: msg }
         }
     }
 
@@ -1212,9 +1377,14 @@ export class DashboardServer {
             throw new Error('Không lấy được dữ liệu dashboard. Cookie có thể đã hết hạn.')
         }
 
+        const existingState = stateService.getStates().find(s => s.email.toLowerCase() === email.toLowerCase())
         const streak = extractStreak(dashboard)
         const accountCreated = dashboard.created || dashboard.userProfile?.attributes?.created
         const accountAge = calculateAccountAge(accountCreated)
+        const isNew = isNewAccountAge(accountCreated || accountAge)
+        const syncedTag = await this.accountService.syncNewTagByEmail(email, isNew)
+        const effectiveTag = syncedTag?.tag ?? this.accountService.getRawAccount(email)?.tag ?? existingState?.tag ?? ''
+
         const level =
             dashboard.userStatus?.levelInfo?.activeLevelName ||
             dashboard.userStatus?.levelInfo?.activeLevel ||
@@ -1225,6 +1395,25 @@ export class DashboardServer {
         const redeemGoalTitle = dashboard.userStatus?.redeemGoal?.title || 'None'
         const redeemGoalPrice = dashboard.userStatus?.redeemGoal?.price || 0
         const geoLocale = dashboard.userProfile?.attributes?.country?.toLowerCase() || 'vn'
+
+        const rawLifetimeRedeemed = dashboard.userStatus?.lifetimePointsRedeemed
+        const lifetimePointsRedeemed =
+            typeof rawLifetimeRedeemed === 'number' ? rawLifetimeRedeemed : existingState?.lifetimePointsRedeemed
+        const lastOrder = dashboard.userStatus?.lastOrder
+        const lastOrderTitle =
+            (typeof lastOrder?.catalogItem?.title === 'string' && lastOrder.catalogItem.title) ||
+            (typeof lastOrder?.title === 'string' && lastOrder.title) ||
+            existingState?.lastOrderTitle
+        const lastOrderDate =
+            lastOrder?.timestamp !== undefined && lastOrder?.timestamp !== null
+                ? String(lastOrder.timestamp)
+                : existingState?.lastOrderDate
+        const zeroRedemption = hasZeroRedemptionEvidence(dashboard.userStatus)
+        const redemptionCount = zeroRedemption ? 0 : existingState?.redemptionCount
+        const executionMode = resolveExecutionProfile({
+            tag: effectiveTag,
+            redemptionCount
+        }).mode
 
         const sumCounters = (entries: Array<{ pointProgress?: number; pointProgressMax?: number }> | undefined) =>
             (entries ?? []).reduce(
@@ -1238,7 +1427,6 @@ export class DashboardServer {
         const mobCounters = sumCounters(dashboard.userStatus?.counters?.mobileSearch)
         const dailyCounter = sumCounters(dashboard.userStatus?.counters?.dailyPoint)
 
-        const existingState = stateService.getStates().find(s => s.email.toLowerCase() === email.toLowerCase())
         const nextStatus =
             existingState?.status === 'SUSPENDED'
                 ? 'SUSPENDED'
@@ -1260,10 +1448,19 @@ export class DashboardServer {
             geoLocale,
             proxy: effectiveProxy.url ? `${effectiveProxy.url}:${effectiveProxy.port}` : 'Direct',
             status: nextStatus,
-            lastError: ''
+            lastError: '',
+            tag: effectiveTag,
+            ...(redemptionCount !== undefined ? { redemptionCount } : {}),
+            ...(lifetimePointsRedeemed !== undefined ? { lifetimePointsRedeemed } : {}),
+            ...(lastOrderTitle !== undefined ? { lastOrderTitle } : {}),
+            ...(lastOrderDate !== undefined ? { lastOrderDate } : {}),
+            executionMode
         }
 
-        stateService.updateAccountState(email, updateData)
+        stateService.updateAccountState(email, {
+            ...updateData,
+            ...(zeroRedemption ? { syncedLifetimeRedeemed: 0 } : {})
+        })
         return updateData
     }
 
@@ -1274,6 +1471,13 @@ export class DashboardServer {
         }
         try {
             await this.app.listen({ port, host: this.host })
+            this.schedulerService.start()
+            void this.accountService
+                .reconcileNewTagsFromStates(stateService.getStates())
+                .then(changed => {
+                    if (changed > 0) this.loadAccounts()
+                })
+                .catch(() => {})
             console.log(`[DashboardServer] Running at http://${this.host}:${port}`)
         } catch (error) {
             console.error(error)
@@ -1282,6 +1486,7 @@ export class DashboardServer {
     }
 
     public async close(): Promise<void> {
+        this.schedulerService.stop()
         await this.singlePool.stopAll()
         await this.processManager.shutdown()
         await this.app.close()

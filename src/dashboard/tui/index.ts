@@ -1,5 +1,7 @@
 import select from '@inquirer/select';
 import { spawn } from 'child_process';
+import { resolveExecutionProfile } from '../../browser/humanize/ExecutionProfile';
+import { AccountService } from '../accountService';
 import { SheetService } from '../../services/sheetService';
 import { stateService } from '../../services/stateService';
 
@@ -48,12 +50,17 @@ export class CLIInteractiveDashboard {
                 case 'list':
                     this.showAccountTable();
                     break;
-                case 'sync':
+                case 'sync': {
                     console.log('☁ Đang đồng bộ Google Sheets...');
                     const sheetService = new SheetService();
-                    await sheetService.syncAccountsToSheet([]);
-                    console.log('✅ Hoàn tất đồng bộ.');
+                    const ok = await sheetService.syncAllFromDisk();
+                    if (ok) {
+                        console.log('✅ Hoàn tất đồng bộ.');
+                    } else {
+                        console.log(`⚠️ Không thể đồng bộ: ${sheetService.lastError || 'Chưa bật hoặc thiếu cấu hình.'}`);
+                    }
                     break;
+                }
                 case 'web':
                     console.log('🌐 Hãy mở trình duyệt và truy cập: http://localhost:3000');
                     break;
@@ -76,20 +83,36 @@ export class CLIInteractiveDashboard {
                 return;
             }
 
+            const rawMap = new Map(
+                new AccountService().readRawAccounts().map(acc => [acc.email.toLowerCase(), acc])
+            );
+
             console.log('\n--- DANH SÁCH TÀI KHOẢN ---');
-            console.table(states.map((state, idx) => ({
-                ID: idx + 1,
-                Email: state.email,
-                Level: state.level || 'Level 1',
-                Điểm: state.totalPoints,
-                'Điểm Ngày': state.dailyPoints > 0 ? `+${state.dailyPoints}` : '0',
-                PC: state.pcProgress,
-                Mobile: state.mobileProgress,
-                'Trạng Thái': state.status,
-                'Tuổi Acc': state.accountAge,
-                'Chuỗi': state.streak ? `🔥 ${state.streak}` : '0',
-                'Cập Nhật': state.updatedAt
-            })));
+            console.table(
+                states.map((state, idx) => {
+                    const rawAcc = rawMap.get(state.email.toLowerCase());
+                    const tag = rawAcc?.tag || state.tag || '';
+                    const mode =
+                        state.executionMode ??
+                        resolveExecutionProfile({ tag, redemptionCount: state.redemptionCount }).mode;
+                    return {
+                        ID: idx + 1,
+                        Email: state.email,
+                        Tag: tag || '-',
+                        Quà: state.redemptionCount ?? '—',
+                        'Chế độ': mode,
+                        Level: state.level || 'Level 1',
+                        Điểm: state.totalPoints,
+                        'Điểm Ngày': state.dailyPoints > 0 ? `+${state.dailyPoints}` : '0',
+                        PC: state.pcProgress,
+                        Mobile: state.mobileProgress,
+                        'Trạng Thái': state.status,
+                        'Tuổi Acc': state.accountAge,
+                        'Chuỗi': state.streak ? `🔥 ${state.streak}` : '0',
+                        'Cập Nhật': state.updatedAt
+                    };
+                })
+            );
             console.log('\n');
         } catch (e) {
             console.error('Lỗi đọc trạng thái tài khoản:', e);
